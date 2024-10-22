@@ -1,0 +1,9 @@
+Package: dev.adrian.gonerino
+Name: Gonerino
+Version: 0.0.1
+Architecture: iphoneos-arm
+Description: Remove videos uploaded by specific channels
+Maintainer: Adrian Castro
+Author: Adrian Castro
+Section: Tweaks
+Depends: mobilesubstrate (>= 0.9.5000)
