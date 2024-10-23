@@ -103,6 +103,7 @@ static const NSInteger GonerinoSection = 200;
             titleDescription:nil
             accessibilityIdentifier:nil
             detailTextBlock:nil
+            selectBlock:nil];
         separator.enabled = NO;
         [sectionItems addObject:separator];
     }
