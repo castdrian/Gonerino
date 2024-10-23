@@ -1,8 +1,7 @@
 #import <UIKit/UIKit.h>
 #import <Foundation/Foundation.h>
 #import <objc/runtime.h>
-
-#define TARGET_CHANNEL_NAME @"test"
+#import "ChannelManager.h"
 
 @class YTAsyncCollectionView;
 @class _ASCollectionViewCell;
@@ -22,9 +21,9 @@ NS_ASSUME_NONNULL_BEGIN
 
 - (nullable NSIndexPath *)indexPathForCell:(UICollectionViewCell *)cell;
 
-- (BOOL)node:(id)node containsChannelName:(NSString *)channelName;
-
 - (void)removeOffendingCells;
+
+- (BOOL)nodeContainsBlockedChannelName:(id)node;
 
 @end
 

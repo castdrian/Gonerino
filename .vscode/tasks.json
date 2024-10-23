@@ -1,0 +1,35 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "type": "shell",
+            "label": "Make and Copy Gonerino",
+            "command": "zsh",
+            "args": [
+                "-c",
+                "make && cp .theos/obj/debug/Gonerino.dylib ~/Library/Mobile\\ Documents/com~apple~CloudDocs/Gonerino.dylib"
+            ],
+            "problemMatcher": {
+                "owner": "cpp",
+                "pattern": {
+                    "regexp": "^(.*):(\\d+):(\\d+):\\s+(warning|error):\\s+(.*)$",
+                    "file": 1,
+                    "line": 2,
+                    "column": 3,
+                    "severity": 4,
+                    "message": 5
+                }
+            },
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+			"presentation": {
+				"panel": "shared",
+				"showReuseMessage": false,
+				"clear": true,
+				"close": true
+			}
+        }
+    ]
+}

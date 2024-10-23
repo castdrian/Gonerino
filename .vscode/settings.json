@@ -1,0 +1,9 @@
+{
+    "VsCodeTaskButtons.tasks": [
+        {
+            "label": "$(tools) Make and Copy",
+            "task": "Make and Copy Gonerino",
+            "tooltip": "Make and copy Gonerino.dylib"
+        }
+    ]
+}

@@ -1,7 +1,5 @@
 #import "Tweak.h"
 
-#define TARGET_CHANNEL_NAME @"test"
-
 %hook YTAsyncCollectionView
 
 - (void)layoutSubviews {
@@ -23,7 +21,7 @@
             _ASCollectionViewCell *asCell = (_ASCollectionViewCell *)cell;
             if ([asCell respondsToSelector:@selector(node)]) {
                 id node = [asCell node];
-                if ([self node:node containsChannelName:TARGET_CHANNEL_NAME]) {
+                if ([self nodeContainsBlockedChannelName:node]) {
                     NSIndexPath *indexPath = [self indexPathForCell:cell];
                     if (indexPath) {
                         [indexPathsToRemove addObject:indexPath];
@@ -42,24 +40,26 @@
 
 %new
 
-- (BOOL)node:(id)node containsChannelName:(NSString *)channelName {
+- (BOOL)nodeContainsBlockedChannelName:(id)node {
     if ([node isKindOfClass:NSClassFromString(@"ASTextNode")]) {
         NSAttributedString *attributedText = [(ASTextNode *)node attributedText];
         NSString *text = [attributedText string];
-        if ([text containsString:channelName]) {
-            return YES;
+        for (NSString *channelName in [[ChannelManager sharedInstance] blockedChannels]) {
+            if ([text containsString:channelName]) {
+                return YES;
+            }
         }
     }
 
     if ([node respondsToSelector:@selector(channelName)]) {
         NSString *nodeChannelName = [node channelName];
-        if ([nodeChannelName isEqualToString:channelName]) {
+        if ([[ChannelManager sharedInstance] isChannelBlocked:nodeChannelName]) {
             return YES;
         }
     }
     if ([node respondsToSelector:@selector(ownerName)]) {
         NSString *nodeOwnerName = [node ownerName];
-        if ([nodeOwnerName isEqualToString:channelName]) {
+        if ([[ChannelManager sharedInstance] isChannelBlocked:nodeOwnerName]) {
             return YES;
         }
     }
@@ -67,7 +67,7 @@
     if ([node respondsToSelector:@selector(subnodes)]) {
         NSArray *subnodes = [node subnodes];
         for (id subnode in subnodes) {
-            if ([self node:subnode containsChannelName:channelName]) {
+            if ([self nodeContainsBlockedChannelName:subnode]) {
                 return YES;
             }
         }

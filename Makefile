@@ -6,7 +6,8 @@ include $(THEOS)/makefiles/common.mk
 
 TWEAK_NAME = Gonerino
 
-Gonerino_FILES = Tweak.x Settings.x
+Gonerino_FILES = Tweak.x Settings.x ChannelManager.m
+Gonerino_FRAMEWORKS = UIKit Foundation
 Gonerino_CFLAGS = -fobjc-arc
 
 include $(THEOS_MAKE_PATH)/tweak.mk
