@@ -7,8 +7,10 @@ env:
   GH_TOKEN: ${{ github.token }}
 
 jobs:
-  build-tweak:
+  build-tweak-and-release:
     runs-on: macos-14
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout code
