@@ -18,7 +18,8 @@ jobs:
         uses: Randomblock1/theos-action@v1
 
       - name: Clone YouTubeHeader
-        run: git clone https://github.com/PoomSmart/YouTubeHeader $THEOS/include
+        run: |
+          git clone https://github.com/PoomSmart/YouTubeHeader $THEOS/include/YouTubeHeader
 
       - name: Build packages
         run: make package FINALPACKAGE=1 && make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=rootless
@@ -48,4 +49,3 @@ jobs:
           token: ${{ env.GITHUB_TOKEN }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
