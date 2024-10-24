@@ -1,0 +1,51 @@
+name: Release
+
+on:
+   workflow_dispatch:
+
+env:
+  GH_TOKEN: ${{ github.token }}
+
+jobs:
+  build-tweak:
+    runs-on: macos-14
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Prepare Theos
+        uses: Randomblock1/theos-action@v1
+
+      - name: Clone YouTubeHeader
+        run: git clone https://github.com/PoomSmart/YouTubeHeader $THEOS/include
+
+      - name: Build packages
+        run: make package FINALPACKAGE=1 && make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=rootless
+
+      - name: Extract Values
+        run: |
+          NAME=$(grep '^Name:' control | cut -d ' ' -f 2)
+          echo "NAME=$NAME" >> $GITHUB_ENV
+          PACKAGE=$(grep '^Package:' control | cut -d ' ' -f 2)
+          VERSION=$(grep '^Version:' control | cut -d ' ' -f 2)
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          DEB_FILE_NAME="${PACKAGE}_${VERSION}_iphoneos-arm.deb"
+          echo "DEB_FILE_NAME=$DEB_FILE_NAME" >> $GITHUB_ENV
+          ROOTLESS_DEB_FILE_NAME="${PACKAGE}_${VERSION}_iphoneos-arm64.deb"
+          echo "ROOTLESS_DEB_FILE_NAME=$ROOTLESS_DEB_FILE_NAME" >> $GITHUB_ENV
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ env.VERSION }}
+          files: |
+            .theos/obj/${{ env.NAME }}.dylib
+            packages/${{ env.DEB_FILE_NAME }}
+            packages/${{ env.ROOTLESS_DEB_FILE_NAME }}
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          token: ${{ env.GITHUB_TOKEN }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
