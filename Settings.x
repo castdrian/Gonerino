@@ -6,10 +6,15 @@
 #import <YouTubeHeader/YTSettingsSectionItemManager.h>
 #import <YouTubeHeader/YTAppSettingsSectionItemActionController.h>
 #import "ChannelManager.h"
-
 #define LOC(x) [tweakBundle localizedStringForKey:x value:nil table:nil]
 
 static const NSInteger GonerinoSection = 200;
+
+@interface YTToastResponderEvent : NSObject
++ (instancetype _Nonnull)eventWithMessage:(NSString * _Nonnull)message 
+                          firstResponder:(id _Nonnull)responder;
+- (void)send;
+@end
 
 @interface YTSettingsSectionItemManager (Gonerino)
 - (void)updateGonerinoSectionWithEntry:(id)entry;
@@ -53,6 +58,10 @@ static const NSInteger GonerinoSection = 200;
                 NSString *channelName = alertController.textFields.firstObject.text;
                 if (channelName.length > 0) {
                     [[ChannelManager sharedInstance] addBlockedChannel:channelName];
+                    
+                    [[%c(YTToastResponderEvent) eventWithMessage:[NSString stringWithFormat:@"Blocked %@", channelName] 
+                                                firstResponder:delegate] send];
+
                     dispatch_async(dispatch_get_main_queue(), ^{
                         [self reloadGonerinoSection];
                     });
@@ -78,6 +87,10 @@ static const NSInteger GonerinoSection = 200;
                     [[ChannelManager sharedInstance] addBlockedChannel:channelName];
                 }
             }
+
+            [[%c(YTToastResponderEvent) eventWithMessage:[NSString stringWithFormat:@"Imported %lu blocked channels", (unsigned long)channelNames.count] 
+                                        firstResponder:delegate] send];
+
             dispatch_async(dispatch_get_main_queue(), ^{
                 [self reloadGonerinoSection];
             });
@@ -93,6 +106,9 @@ static const NSInteger GonerinoSection = 200;
             NSArray *blockedChannels = [[ChannelManager sharedInstance] blockedChannels];
             NSString *channelList = [blockedChannels componentsJoinedByString:@"\n"];
             [UIPasteboard generalPasteboard].string = channelList;
+
+            [[%c(YTToastResponderEvent) eventWithMessage:@"Copied blocked channels to clipboard" 
+                                        firstResponder:delegate] send];
             return YES;
         }];
     [sectionItems addObject:exportChannels];
@@ -127,6 +143,9 @@ static const NSInteger GonerinoSection = 200;
                     UIImpactFeedbackGenerator *generator = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleMedium];
                     [generator prepare];
                     [generator impactOccurred];
+
+                    [[%c(YTToastResponderEvent) eventWithMessage:[NSString stringWithFormat:@"Deleted %@", channelName] 
+                                                firstResponder:delegate] send];
                 }];
                 
                 UIAlertAction *cancelAction = [UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil];
