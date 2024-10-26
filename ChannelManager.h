@@ -1,5 +1,7 @@
 #import <Foundation/Foundation.h>
 
+extern NSString *const ChannelManagerBlockedChannelsChangedNotification;
+
 @interface ChannelManager : NSObject
 
 + (instancetype)sharedInstance;

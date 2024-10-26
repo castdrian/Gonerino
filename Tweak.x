@@ -168,7 +168,7 @@
                                 if ([parentNode isKindOfClass:NSClassFromString(@"YTVideoWithContextNode")]) {
                                     NSLog(@"[Gonerino] Found video context node in parent: %@", parentNode);
                                     
-                                    // Try to get all methods of the video context node
+                                    // Log video context node methods
                                     unsigned int methodCount;
                                     Method *methods = class_copyMethodList([parentNode class], &methodCount);
                                     NSMutableArray *methodNames = [NSMutableArray array];
@@ -183,57 +183,90 @@
                                     free(methods);
                                     NSLog(@"[Gonerino] Video context node methods: %@", methodNames);
                                     
-                                    // Try different methods to get the channel name
-                                    SEL selectors[] = {
-                                        @selector(video),
-                                        @selector(videoData),
-                                        @selector(videoContext),
-                                        @selector(metadata),
-                                        @selector(owner),
-                                        @selector(channelName)
-                                    };
-                                    
-                                    for (int i = 0; i < sizeof(selectors)/sizeof(SEL); i++) {
-                                        if ([parentNode respondsToSelector:selectors[i]]) {
-                                            @try {
-                                                NSMethodSignature *signature = [parentNode methodSignatureForSelector:selectors[i]];
-                                                NSInvocation *invocation = [NSInvocation invocationWithMethodSignature:signature];
-                                                [invocation setTarget:parentNode];
-                                                [invocation setSelector:selectors[i]];
-                                                [invocation invoke];
+                                    // Try to get element
+                                    if ([parentNode respondsToSelector:@selector(element)]) {
+                                        @try {
+                                            NSMethodSignature *elementSig = [parentNode methodSignatureForSelector:@selector(element)];
+                                            NSInvocation *elementInvocation = [NSInvocation invocationWithMethodSignature:elementSig];
+                                            [elementInvocation setTarget:parentNode];
+                                            [elementInvocation setSelector:@selector(element)];
+                                            [elementInvocation invoke];
+                                            
+                                            __unsafe_unretained id element = nil;
+                                            [elementInvocation getReturnValue:&element];
+                                            
+                                            if (element) {
+                                                NSLog(@"[Gonerino] Element: %@", element);
+                                                NSLog(@"[Gonerino] Element class: %@", [element class]);
                                                 
-                                                __unsafe_unretained id result = nil;
-                                                [invocation getReturnValue:&result];
+                                                // Log element methods
+                                                unsigned int elementMethodCount;
+                                                Method *elementMethods = class_copyMethodList([element class], &elementMethodCount);
+                                                NSMutableArray *elementMethodNames = [NSMutableArray array];
                                                 
-                                                if (result) {
-                                                    NSLog(@"[Gonerino] Found result for selector %@: %@ (%@)", 
-                                                        NSStringFromSelector(selectors[i]), 
-                                                        result, 
-                                                        [result class]);
-                                                    
-                                                    // If this is the video object, try to get channel name
-                                                    if ([result respondsToSelector:@selector(channelName)]) {
-                                                        NSMethodSignature *channelSig = [result methodSignatureForSelector:@selector(channelName)];
-                                                        NSInvocation *channelInvocation = [NSInvocation invocationWithMethodSignature:channelSig];
-                                                        [channelInvocation setTarget:result];
-                                                        [channelInvocation setSelector:@selector(channelName)];
-                                                        [channelInvocation invoke];
+                                                for (unsigned int i = 0; i < elementMethodCount; i++) {
+                                                    Method method = elementMethods[i];
+                                                    SEL selector = method_getName(method);
+                                                    NSString *methodName = NSStringFromSelector(selector);
+                                                    [elementMethodNames addObject:methodName];
+                                                }
+                                                
+                                                free(elementMethods);
+                                                NSLog(@"[Gonerino] Element methods: %@", elementMethodNames);
+                                                
+                                                // Try to get properties
+                                                unsigned int propertyCount;
+                                                objc_property_t *properties = class_copyPropertyList([element class], &propertyCount);
+                                                NSMutableArray *propertyNames = [NSMutableArray array];
+                                                
+                                                for (unsigned int i = 0; i < propertyCount; i++) {
+                                                    objc_property_t property = properties[i];
+                                                    NSString *propertyName = @(property_getName(property));
+                                                    [propertyNames addObject:propertyName];
+                                                }
+                                                
+                                                free(properties);
+                                                NSLog(@"[Gonerino] Element properties: %@", propertyNames);
+                                                
+                                                // Try to get video data directly from element
+                                                SEL selectors[] = {
+                                                    @selector(videoData),
+                                                    @selector(video),
+                                                    @selector(metadata),
+                                                    @selector(channelName),
+                                                    @selector(ownerName),
+                                                    @selector(author)
+                                                };
+                                                
+                                                for (int i = 0; i < sizeof(selectors)/sizeof(SEL); i++) {
+                                                    if ([element respondsToSelector:selectors[i]]) {
+                                                        NSMethodSignature *sig = [element methodSignatureForSelector:selectors[i]];
+                                                        NSInvocation *invocation = [NSInvocation invocationWithMethodSignature:sig];
+                                                        [invocation setTarget:element];
+                                                        [invocation setSelector:selectors[i]];
+                                                        [invocation invoke];
                                                         
-                                                        __unsafe_unretained NSString *channelName = nil;
-                                                        [channelInvocation getReturnValue:&channelName];
+                                                        __unsafe_unretained id result = nil;
+                                                        [invocation getReturnValue:&result];
                                                         
-                                                        if (channelName) {
-                                                            NSLog(@"[Gonerino] Found channel name: %@", channelName);
-                                                            [[ChannelManager sharedInstance] addBlockedChannel:channelName];
+                                                        NSLog(@"[Gonerino] Element result for %@: %@", NSStringFromSelector(selectors[i]), result);
+                                                        
+                                                        if ([result isKindOfClass:[NSString class]]) {
+                                                            NSLog(@"[Gonerino] Found channel name: %@", result);
+                                                            [[ChannelManager sharedInstance] addBlockedChannel:result];
                                                             [strongSelf dismiss];
                                                             return;
                                                         }
                                                     }
                                                 }
-                                            } @catch (NSException *e) {
-                                                NSLog(@"[Gonerino] Error accessing selector %@: %@", 
-                                                    NSStringFromSelector(selectors[i]), e);
+                                                
+                                                // Only try instance if we haven't found the channel name yet
+                                                if ([element respondsToSelector:@selector(instance)]) {
+                                                    // ... rest of the instance code ...
+                                                }
                                             }
+                                        } @catch (NSException *e) {
+                                            NSLog(@"[Gonerino] Error accessing element: %@", e);
                                         }
                                     }
                                 }
@@ -307,6 +340,3 @@
 }
 
 %end
-
-
-

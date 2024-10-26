@@ -1,9 +1,10 @@
 {
-    "VsCodeTaskButtons.tasks": [
-        {
-            "label": "$(tools) Make and Copy",
-            "task": "Make and Copy Gonerino",
-            "tooltip": "Make and copy Gonerino.dylib"
-        }
-    ]
+	"editor.formatOnSave": true,
+	"VsCodeTaskButtons.tasks": [
+		{
+			"label": "$(tools) Make and Copy",
+			"task": "Make and Copy Gonerino",
+			"tooltip": "Make and copy Gonerino.dylib"
+		}
+	],
 }

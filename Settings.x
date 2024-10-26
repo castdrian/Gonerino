@@ -115,7 +115,11 @@ static const NSInteger GonerinoSection = 200;
 
     NSArray *blockedChannels = [[ChannelManager sharedInstance] blockedChannels];
     if (blockedChannels.count > 0) {
-        YTSettingsSectionItem *separator = [%c(YTSettingsSectionItem) itemWithTitle:@"Blocked Channels"
+		        NSString *channelCountText = [NSString stringWithFormat:@"%lu %@", 
+                                    (unsigned long)blockedChannels.count, 
+                                    blockedChannels.count == 1 ? @"Blocked Channel" : @"Blocked Channels"];
+									
+        YTSettingsSectionItem *separator = [%c(YTSettingsSectionItem) itemWithTitle:channelCountText
             titleDescription:nil
             accessibilityIdentifier:nil
             detailTextBlock:nil

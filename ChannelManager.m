@@ -1,51 +1,58 @@
 #import "ChannelManager.h"
 
 @interface ChannelManager ()
-@property (nonatomic, strong) NSMutableArray<NSString *> *channels;
+@property(nonatomic, strong) NSMutableSet<NSString *> *blockedChannelSet;
 @end
 
 @implementation ChannelManager
 
 + (instancetype)sharedInstance {
-    static ChannelManager *instance = nil;
-    static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{
-        instance = [[self alloc] init];
-    });
-    return instance;
+  static ChannelManager *instance = nil;
+  static dispatch_once_t onceToken;
+  dispatch_once(&onceToken, ^{
+    instance = [[self alloc] init];
+  });
+  return instance;
 }
 
 - (instancetype)init {
-    self = [super init];
-    if (self) {
-        _channels = [[[NSUserDefaults standardUserDefaults] arrayForKey:@"GonerinoBlockedChannels"] mutableCopy] ?: [NSMutableArray array];
-    }
-    return self;
+  self = [super init];
+  if (self) {
+    _blockedChannelSet =
+        [[[NSUserDefaults standardUserDefaults]
+            arrayForKey:@"GonerinoBlockedChannels"] mutableCopy]
+            ?: [NSMutableSet set];
+  }
+  return self;
 }
 
 - (NSArray<NSString *> *)blockedChannels {
-    return [self.channels copy];
+  return [self.blockedChannelSet allObjects];
 }
 
 - (void)addBlockedChannel:(NSString *)channelName {
-    if (![self.channels containsObject:channelName]) {
-        [self.channels addObject:channelName];
-        [self saveChannels];
-    }
+  if (channelName.length > 0) {
+    [self.blockedChannelSet addObject:channelName];
+    [self saveBlockedChannels];
+  }
 }
 
 - (void)removeBlockedChannel:(NSString *)channelName {
-    [self.channels removeObject:channelName];
-    [self saveChannels];
+  if (channelName) {
+    [self.blockedChannelSet removeObject:channelName];
+    [self saveBlockedChannels];
+  }
 }
 
 - (BOOL)isChannelBlocked:(NSString *)channelName {
-    return [self.channels containsObject:channelName];
+  return [self.blockedChannelSet containsObject:channelName];
 }
 
-- (void)saveChannels {
-    [[NSUserDefaults standardUserDefaults] setObject:self.channels forKey:@"GonerinoBlockedChannels"];
-    [[NSUserDefaults standardUserDefaults] synchronize];
+- (void)saveBlockedChannels {
+  [[NSUserDefaults standardUserDefaults]
+      setObject:[self.blockedChannelSet allObjects]
+         forKey:@"GonerinoBlockedChannels"];
+  [[NSUserDefaults standardUserDefaults] synchronize];
 }
 
 @end

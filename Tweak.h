@@ -1,7 +1,7 @@
-#import <UIKit/UIKit.h>
-#import <Foundation/Foundation.h>
-#import <objc/runtime.h>
 #import "ChannelManager.h"
+#import <Foundation/Foundation.h>
+#import <UIKit/UIKit.h>
+#import <objc/runtime.h>
 
 @class YTAsyncCollectionView;
 @class _ASCollectionViewCell;
@@ -19,8 +19,8 @@ NS_ASSUME_NONNULL_BEGIN
 
 - (void)layoutSubviews;
 
-- (void)performBatchUpdates:(void (NS_NOESCAPE ^ _Nullable)(void))updates
-                 completion:(void (^ _Nullable)(BOOL finished))completion;
+- (void)performBatchUpdates:(void(NS_NOESCAPE ^ _Nullable)(void))updates
+                 completion:(void (^_Nullable)(BOOL finished))completion;
 
 - (NSArray<UICollectionViewCell *> *)visibleCells;
 
@@ -40,8 +40,8 @@ NS_ASSUME_NONNULL_BEGIN
 
 @interface ASDisplayNode : NSObject
 
-@property (nonatomic, copy, nullable) NSString *accessibilityLabel;
-@property (nonatomic, copy, nullable) NSString *accessibilityIdentifier;
+@property(nonatomic, copy, nullable) NSString *accessibilityLabel;
+@property(nonatomic, copy, nullable) NSString *accessibilityIdentifier;
 
 - (nullable NSArray<ASDisplayNode *> *)subnodes;
 
@@ -49,7 +49,7 @@ NS_ASSUME_NONNULL_BEGIN
 
 @interface ASTextNode : ASDisplayNode
 
-@property (nonatomic, copy, nullable) NSAttributedString *attributedText;
+@property(nonatomic, copy, nullable) NSAttributedString *attributedText;
 
 @end
 
@@ -61,12 +61,13 @@ NS_ASSUME_NONNULL_BEGIN
 @end
 
 @interface YTWatchController : NSObject
-@property (nonatomic, strong, readonly) YTSingleVideoController *singleVideoController;
+@property(nonatomic, strong, readonly)
+    YTSingleVideoController *singleVideoController;
 - (YTSingleVideoController *)valueForKey:(NSString *)key;
 @end
 
 @interface YTSingleVideoController : NSObject
-@property (nonatomic, copy, readonly) NSString *channelName;
+@property(nonatomic, copy, readonly) NSString *channelName;
 - (NSString *)valueForKey:(NSString *)key;
 @end
 
@@ -75,21 +76,22 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)dismiss; // YouTube's actual dismiss method
 - (id)valueForKey:(NSString *)key;
 
-- (UIImage *)createBlockIconWithOriginalAction:(YTActionSheetAction *)originalAction;
+- (UIImage *)createBlockIconWithOriginalAction:
+    (YTActionSheetAction *)originalAction;
 
 @end
 
 @interface YTActionSheetAction : NSObject
 + (instancetype)actionWithTitle:(NSString *)title
-                     iconImage:(UIImage *)iconImage
-                         style:(NSInteger)style
-                      handler:(void (^)(void))handler;
+                      iconImage:(UIImage *)iconImage
+                          style:(NSInteger)style
+                        handler:(void (^)(void))handler;
 - (id)valueForKey:(NSString *)key;
 @end
 
 @interface YTToastResponderEvent : NSObject
-+ (instancetype)eventWithMessage:(NSString *)message 
-                 firstResponder:(UIViewController *)responder;
++ (instancetype)eventWithMessage:(NSString *)message
+                  firstResponder:(UIViewController *)responder;
 - (void)send;
 @end
 
