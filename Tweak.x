@@ -102,49 +102,149 @@
                                                                                  style:style
                                                                               handler:^{
         @try {
-            id contextElement = [weakSelf valueForKey:@"_contextElement"];
-            UIViewController *parentVC = [weakSelf valueForKey:@"_parentResponder"];
-
-            if (!contextElement) {
-                return;
-            }
-
-            NSString *channelName = nil;
-            if ([contextElement respondsToSelector:@selector(channelName)]) {
-                channelName = [contextElement channelName];
-            }
-            else if ([contextElement respondsToSelector:@selector(ownerName)]) {
-                channelName = [contextElement ownerName];
-            }
-            else if ([contextElement respondsToSelector:@selector(videoCreatorName)]) {
-                channelName = [contextElement valueForKey:@"videoCreatorName"];
-            }
-
-            if (!channelName) {
-                YTWatchController *watchController = [weakSelf valueForKey:@"_watchController"];
-                if (watchController) {
-                    id videoController = [watchController valueForKey:@"_singleVideoController"];
-                    if (videoController) {
-                        channelName = [videoController valueForKey:@"_channelName"];
+            __strong typeof(weakSelf) strongSelf = weakSelf;
+            if (!strongSelf) return;
+            
+            NSLog(@"[Gonerino] Block action handler called");
+            NSLog(@"[Gonerino] Sheet controller: %@", strongSelf);
+            
+            // Try to get sourceView and examine it
+            UIView *sourceView = nil;
+            @try {
+                sourceView = [strongSelf valueForKey:@"sourceView"];
+                if ([sourceView isKindOfClass:NSClassFromString(@"_ASDisplayView")]) {
+                    NSLog(@"[Gonerino] Found _ASDisplayView: %@", sourceView);
+                    
+                    // Try to get the node
+                    if ([sourceView respondsToSelector:@selector(asyncdisplaykit_node)]) {
+                        id node = [sourceView performSelector:@selector(asyncdisplaykit_node)];
+                        NSLog(@"[Gonerino] Node: %@", node);
+                        NSLog(@"[Gonerino] Node class: %@", [node class]);
+                        
+                        // Try to find YTVideoWithContextNode in the view hierarchy
+                        NSMutableArray *viewsToCheck = [NSMutableArray arrayWithObject:sourceView];
+                        while (viewsToCheck.count > 0) {
+                            UIView *currentView = viewsToCheck.firstObject;
+                            [viewsToCheck removeObjectAtIndex:0];
+                            
+                            // Check if this view is an _ASDisplayView
+                            if ([currentView isKindOfClass:NSClassFromString(@"_ASDisplayView")]) {
+                                id currentNode = [currentView performSelector:@selector(asyncdisplaykit_node)];
+                                NSLog(@"[Gonerino] Checking node: %@ (%@)", currentNode, [currentNode class]);
+                                
+                                // Check if this is a video context node
+                                if ([currentNode isKindOfClass:NSClassFromString(@"YTVideoWithContextNode")]) {
+                                    NSLog(@"[Gonerino] Found video context node: %@", currentNode);
+                                    
+                                    // Try to get video
+                                    if ([currentNode respondsToSelector:@selector(video)]) {
+                                        id video = [currentNode performSelector:@selector(video)];
+                                        NSLog(@"[Gonerino] Video: %@", video);
+                                        
+                                        if ([video respondsToSelector:@selector(channelName)]) {
+                                            NSString *channelName = [video performSelector:@selector(channelName)];
+                                            if (channelName) {
+                                                NSLog(@"[Gonerino] Found channel name: %@", channelName);
+                                                [[ChannelManager sharedInstance] addBlockedChannel:channelName];
+                                                [strongSelf dismiss];
+                                                return;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            // Add subviews to check
+                            [viewsToCheck addObjectsFromArray:currentView.subviews];
+                        }
+                        
+                        // If we didn't find it in the view hierarchy, try the parent view
+                        UIView *parentView = sourceView.superview;
+                        while (parentView) {
+                            if ([parentView isKindOfClass:NSClassFromString(@"_ASDisplayView")]) {
+                                id parentNode = [parentView performSelector:@selector(asyncdisplaykit_node)];
+                                NSLog(@"[Gonerino] Checking parent node: %@ (%@)", parentNode, [parentNode class]);
+                                
+                                if ([parentNode isKindOfClass:NSClassFromString(@"YTVideoWithContextNode")]) {
+                                    NSLog(@"[Gonerino] Found video context node in parent: %@", parentNode);
+                                    
+                                    // Try to get all methods of the video context node
+                                    unsigned int methodCount;
+                                    Method *methods = class_copyMethodList([parentNode class], &methodCount);
+                                    NSMutableArray *methodNames = [NSMutableArray array];
+                                    
+                                    for (unsigned int i = 0; i < methodCount; i++) {
+                                        Method method = methods[i];
+                                        SEL selector = method_getName(method);
+                                        NSString *methodName = NSStringFromSelector(selector);
+                                        [methodNames addObject:methodName];
+                                    }
+                                    
+                                    free(methods);
+                                    NSLog(@"[Gonerino] Video context node methods: %@", methodNames);
+                                    
+                                    // Try different methods to get the channel name
+                                    SEL selectors[] = {
+                                        @selector(video),
+                                        @selector(videoData),
+                                        @selector(videoContext),
+                                        @selector(metadata),
+                                        @selector(owner),
+                                        @selector(channelName)
+                                    };
+                                    
+                                    for (int i = 0; i < sizeof(selectors)/sizeof(SEL); i++) {
+                                        if ([parentNode respondsToSelector:selectors[i]]) {
+                                            @try {
+                                                NSMethodSignature *signature = [parentNode methodSignatureForSelector:selectors[i]];
+                                                NSInvocation *invocation = [NSInvocation invocationWithMethodSignature:signature];
+                                                [invocation setTarget:parentNode];
+                                                [invocation setSelector:selectors[i]];
+                                                [invocation invoke];
+                                                
+                                                __unsafe_unretained id result = nil;
+                                                [invocation getReturnValue:&result];
+                                                
+                                                if (result) {
+                                                    NSLog(@"[Gonerino] Found result for selector %@: %@ (%@)", 
+                                                        NSStringFromSelector(selectors[i]), 
+                                                        result, 
+                                                        [result class]);
+                                                    
+                                                    // If this is the video object, try to get channel name
+                                                    if ([result respondsToSelector:@selector(channelName)]) {
+                                                        NSMethodSignature *channelSig = [result methodSignatureForSelector:@selector(channelName)];
+                                                        NSInvocation *channelInvocation = [NSInvocation invocationWithMethodSignature:channelSig];
+                                                        [channelInvocation setTarget:result];
+                                                        [channelInvocation setSelector:@selector(channelName)];
+                                                        [channelInvocation invoke];
+                                                        
+                                                        __unsafe_unretained NSString *channelName = nil;
+                                                        [channelInvocation getReturnValue:&channelName];
+                                                        
+                                                        if (channelName) {
+                                                            NSLog(@"[Gonerino] Found channel name: %@", channelName);
+                                                            [[ChannelManager sharedInstance] addBlockedChannel:channelName];
+                                                            [strongSelf dismiss];
+                                                            return;
+                                                        }
+                                                    }
+                                                }
+                                            } @catch (NSException *e) {
+                                                NSLog(@"[Gonerino] Error accessing selector %@: %@", 
+                                                    NSStringFromSelector(selectors[i]), e);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            parentView = parentView.superview;
+                        }
                     }
                 }
+            } @catch (NSException *e) {
+                // Ignore property access errors
             }
-
-            if (!channelName) {
-                return;
-            }
-
-            [[ChannelManager sharedInstance] addBlockedChannel:channelName];
-
-            [weakSelf dismiss];
-
-            dispatch_async(dispatch_get_main_queue(), ^{
-                if (parentVC) {
-                    [[%c(YTToastResponderEvent) eventWithMessage:[NSString stringWithFormat:@"Blocked channel: %@", channelName]
-                                                firstResponder:parentVC] send];
-                }
-            });
-
         } @catch (NSException *e) {
             NSLog(@"[Gonerino] Error in block action handler: %@", e);
         }
@@ -155,7 +255,18 @@
 }
 
 %new
+- (UIViewController *)findViewControllerForView:(UIView *)view {
+    UIResponder *responder = view;
+    while (responder) {
+        if ([responder isKindOfClass:[UIViewController class]]) {
+            return (UIViewController *)responder;
+        }
+        responder = [responder nextResponder];
+    }
+    return nil;
+}
 
+%new
 - (UIImage *)createBlockIconWithOriginalAction:(YTActionSheetAction *)originalAction {
     @try {
         CGSize targetSize = CGSizeMake(24, 24);
@@ -196,3 +307,6 @@
 }
 
 %end
+
+
+
