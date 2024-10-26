@@ -74,6 +74,9 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)addAction:(YTActionSheetAction *)action;
 - (void)dismiss; // YouTube's actual dismiss method
 - (id)valueForKey:(NSString *)key;
+
+- (UIImage *)createBlockIconWithOriginalAction:(YTActionSheetAction *)originalAction;
+
 @end
 
 @interface YTActionSheetAction : NSObject
