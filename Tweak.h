@@ -75,7 +75,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)addAction:(YTActionSheetAction *)action;
 - (void)dismiss;
 - (id)valueForKey:(NSString *)key;
-- (UIImage *)createBlockIconWithOriginalAction:(YTActionSheetAction *)originalAction;
+- (UIImage *)createBlockIconWithOriginalAction:(nullable YTActionSheetAction *)originalAction;
 - (UIViewController *)findViewControllerForView:(UIView *)view;
 - (void)extractChannelNameFromNode:(id)node completion:(void (^)(NSString *channelName))completion;
 @end

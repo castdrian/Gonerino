@@ -115,51 +115,54 @@
 }
 
 - (void)addAction:(YTActionSheetAction *)action {
-    if ([action.title isEqualToString:@"Play next in queue"]) {
-        __weak typeof(self) weakSelf = self;
-        
-        UIImage *blockIcon = [self createBlockIconWithOriginalAction:action];
-        NSInteger style = 0;
-        
-        YTActionSheetAction *blockChannelAction = [%c(YTActionSheetAction) actionWithTitle:@"Block Channel"
-                                                                              iconImage:blockIcon
-                                                                                  style:style
-                                                                               handler:^(YTActionSheetAction *action) {
-            __strong typeof(self) strongSelf = weakSelf;
-            @try {
-                UIView *sourceView = [strongSelf valueForKey:@"sourceView"];
-                id node = [sourceView valueForKey:@"asyncdisplaykit_node"];
-                
-                NSString *debugDescription = [node debugDescription];
-                NSRegularExpression *regex = [NSRegularExpression regularExpressionWithPattern:@"cellNode = <YTVideoWithContextNode: (0x[0-9a-f]+)>" options:0 error:nil];
-                NSTextCheckingResult *match = [regex firstMatchInString:debugDescription options:0 range:NSMakeRange(0, debugDescription.length)];
-                
-                if (match) {
-                    NSString *address = [debugDescription substringWithRange:[match rangeAtIndex:1]];
-                    void *videoNodePtr;
-                    sscanf([address UTF8String], "%p", &videoNodePtr);
-                    id videoNode = (__bridge id)videoNodePtr;
-                    
-                    if ([videoNode isKindOfClass:NSClassFromString(@"YTVideoWithContextNode")]) {
-                        [self extractChannelNameFromNode:videoNode completion:^(NSString *channelName) {
-                            if (channelName) {
-                                [[ChannelManager sharedInstance] addBlockedChannel:channelName];
-                                UIViewController *viewController = (UIViewController *)strongSelf;
-                                [[%c(YTToastResponderEvent) eventWithMessage:[NSString stringWithFormat:@"Blocked channel: %@", channelName] 
-                                                            firstResponder:viewController] send];
-                            }
-                        }];
-                    }
-                }
-            } @catch (NSException *e) {
-                NSLog(@"[Gonerino] Exception in block action: %@", e);
-            }
-        }];
-        
-        [self addAction:blockChannelAction];
+    %orig;
+    
+    static void *blockActionKey = &blockActionKey;
+    if (objc_getAssociatedObject(self, blockActionKey)) {
+        return;
     }
     
-    %orig;
+    __weak typeof(self) weakSelf = self;
+    UIImage *blockIcon = [self createBlockIconWithOriginalAction:nil];
+    
+    YTActionSheetAction *blockChannelAction = [%c(YTActionSheetAction) actionWithTitle:@"Block Channel"
+                                                                          iconImage:blockIcon
+                                                                              style:0
+                                                                           handler:^(YTActionSheetAction *action) {
+        __strong typeof(self) strongSelf = weakSelf;
+        @try {
+            UIView *sourceView = [strongSelf valueForKey:@"sourceView"];
+            id node = [sourceView valueForKey:@"asyncdisplaykit_node"];
+            
+            NSString *debugDescription = [node debugDescription];
+            NSRegularExpression *regex = [NSRegularExpression regularExpressionWithPattern:@"cellNode = <YTVideoWithContextNode: (0x[0-9a-f]+)>" options:0 error:nil];
+            NSTextCheckingResult *match = [regex firstMatchInString:debugDescription options:0 range:NSMakeRange(0, debugDescription.length)];
+            
+            if (match) {
+                NSString *address = [debugDescription substringWithRange:[match rangeAtIndex:1]];
+                void *videoNodePtr;
+                sscanf([address UTF8String], "%p", &videoNodePtr);
+                id videoNode = (__bridge id)videoNodePtr;
+                
+                if ([videoNode isKindOfClass:NSClassFromString(@"YTVideoWithContextNode")]) {
+                    [self extractChannelNameFromNode:videoNode completion:^(NSString *channelName) {
+                        if (channelName) {
+                            [[ChannelManager sharedInstance] addBlockedChannel:channelName];
+                            UIViewController *viewController = (UIViewController *)strongSelf;
+                            [[%c(YTToastResponderEvent) eventWithMessage:[NSString stringWithFormat:@"Blocked %@", channelName] 
+                                                        firstResponder:viewController] send];
+                        }
+                    }];
+                }
+            }
+        } @catch (NSException *e) {
+            NSLog(@"[Gonerino] Exception in block action: %@", e);
+        }
+    }];
+    
+    objc_setAssociatedObject(self, blockActionKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    
+    [self addAction:blockChannelAction];
 }
 
 %new
