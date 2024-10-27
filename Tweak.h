@@ -73,20 +73,35 @@ NS_ASSUME_NONNULL_BEGIN
 
 @interface YTDefaultSheetController : NSObject
 - (void)addAction:(YTActionSheetAction *)action;
-- (void)dismiss; // YouTube's actual dismiss method
+- (void)dismiss;
 - (id)valueForKey:(NSString *)key;
-
-- (UIImage *)createBlockIconWithOriginalAction:
-    (YTActionSheetAction *)originalAction;
-
+- (UIImage *)createBlockIconWithOriginalAction:(YTActionSheetAction *)originalAction;
+- (UIViewController *)findViewControllerForView:(UIView *)view;
+- (void)extractChannelNameFromNode:(id)node completion:(void (^)(NSString *channelName))completion;
 @end
 
 @interface YTActionSheetAction : NSObject
-+ (instancetype)actionWithTitle:(NSString *)title
-                      iconImage:(UIImage *)iconImage
-                          style:(NSInteger)style
-                        handler:(void (^)(void))handler;
-- (id)valueForKey:(NSString *)key;
+@property (nonatomic, copy) NSString *title;
+@property (nonatomic, copy) void (^handler)(id);
+@property (nonatomic, strong) UIImage *iconImage;
+@property (nonatomic) BOOL shouldDismissOnAction;
+
++ (instancetype)actionWithTitle:(NSString *)title 
+                     iconImage:(UIImage *)iconImage 
+                        style:(NSInteger)style 
+                      handler:(void (^)(id))handler;
+
++ (instancetype)actionWithTitle:(NSString *)title 
+                     iconImage:(UIImage *)iconImage 
+                      handler:(void (^)(id))handler;
+@end
+
+@interface YTActionSheetController : UIViewController
+- (void)presentFromView:(UIView *)view;
+- (NSArray<YTActionSheetAction *> *)actions;
+- (void)addAction:(YTActionSheetAction *)action;
+- (void)dismiss;
+- (UIViewController *)findViewControllerForView:(UIView *)view;
 @end
 
 @interface YTToastResponderEvent : NSObject
