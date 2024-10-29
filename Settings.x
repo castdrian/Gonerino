@@ -8,7 +8,7 @@
 #import "ChannelManager.h"
 #define LOC(x) [tweakBundle localizedStringForKey:x value:nil table:nil]
 
-static const NSInteger GonerinoSection = 200;
+static const NSInteger GonerinoSection = 2002;
 
 @interface YTToastResponderEvent : NSObject
 + (instancetype _Nonnull)eventWithMessage:(NSString * _Nonnull)message 
