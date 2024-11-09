@@ -20,7 +20,7 @@ This tweak requires [YouGroupSettings](https://github.com/arichornloverALT/YouGr
 | **YouTube Version** | 19.42.1+ | ✅ |
 | **Injection Methods** | ElleKit (Dopamine) | ✅ |
 | | TrollFools (TrollStore) | ✅ |
-| | Sideloaded IPA | ✅ |
+| | Sideloaded IPA (CydiaSubstrate) | ✅ |
 
 ## Contributors
 
