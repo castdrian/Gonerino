@@ -8,7 +8,7 @@ TWEAK_NAME = Gonerino
 
 Gonerino_FILES = Tweak.x Settings.x ChannelManager.m
 Gonerino_FRAMEWORKS = UIKit Foundation
-Gonerino_CFLAGS = -fobjc-arc
+Gonerino_CFLAGS = -fobjc-arc -DPACKAGE_VERSION='@"$(THEOS_PACKAGE_BASE_VERSION)"'
 
 include $(THEOS_MAKE_PATH)/tweak.mk
 
