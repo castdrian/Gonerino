@@ -55,4 +55,9 @@
   [[NSUserDefaults standardUserDefaults] synchronize];
 }
 
+- (void)setBlockedChannels:(NSArray<NSString *> *)channels {
+    self.blockedChannelSet = [NSMutableSet setWithArray:channels];
+    [self saveBlockedChannels];
+}
+
 @end

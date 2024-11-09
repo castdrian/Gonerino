@@ -61,6 +61,8 @@ static const NSInteger GonerinoSection = 2002;
     YTSettingsViewController *delegate = [self valueForKey:@"_settingsViewControllerDelegate"];
     NSMutableArray *sectionItems = [NSMutableArray array];
 
+    SECTION_HEADER(@"GONERINO SETTINGS");
+
     NSUInteger channelCount = [[ChannelManager sharedInstance] blockedChannels].count;
     YTSettingsSectionItem *manageChannels = [%c(YTSettingsSectionItem) itemWithTitle:@"Manage Channels"
         titleDescription:[NSString stringWithFormat:@"%lu blocked channel%@", 
@@ -107,53 +109,6 @@ static const NSInteger GonerinoSection = 2002;
                         handler:nil]];
                     
                     [settingsVC presentViewController:alertController animated:YES completion:nil];
-                    return YES;
-                }
-            ]];
-            
-            [rows addObject:[%c(YTSettingsSectionItem) itemWithTitle:@"Import Channels"
-                titleDescription:@"Import channels from clipboard"
-                accessibilityIdentifier:nil
-                detailTextBlock:nil
-                selectBlock:^BOOL (YTSettingsCell *cell, NSUInteger arg1) {
-                    YTSettingsViewController *settingsVC = [self valueForKey:@"_settingsViewControllerDelegate"];
-                    NSString *clipboardContent = [UIPasteboard generalPasteboard].string;
-                    NSArray *channelNames = [clipboardContent componentsSeparatedByCharactersInSet:[NSCharacterSet newlineCharacterSet]];
-                    
-                    for (NSString *channelName in channelNames) {
-                        if (channelName.length > 0) {
-                            [[ChannelManager sharedInstance] addBlockedChannel:channelName];
-                        }
-                    }
-
-                    [self reloadGonerinoSection];
-                    
-                    UIImpactFeedbackGenerator *generator = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleMedium];
-                    [generator prepare];
-                    [generator impactOccurred];
-                    
-                    [[%c(YTToastResponderEvent) eventWithMessage:[NSString stringWithFormat:@"Imported %lu channels", (unsigned long)channelNames.count] 
-                        firstResponder:settingsVC] send];
-                    return YES;
-                }
-            ]];
-            
-            [rows addObject:[%c(YTSettingsSectionItem) itemWithTitle:@"Export Channels"
-                titleDescription:@"Copy channels to clipboard"
-                accessibilityIdentifier:nil
-                detailTextBlock:nil
-                selectBlock:^BOOL (YTSettingsCell *cell, NSUInteger arg1) {
-                    YTSettingsViewController *settingsVC = [self valueForKey:@"_settingsViewControllerDelegate"];
-                    NSArray *blockedChannels = [[ChannelManager sharedInstance] blockedChannels];
-                    NSString *channelList = [blockedChannels componentsJoinedByString:@"\n"];
-                    [UIPasteboard generalPasteboard].string = channelList;
-                    
-                    UIImpactFeedbackGenerator *generator = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleMedium];
-                    [generator prepare];
-                    [generator impactOccurred];
-                    
-                    [[%c(YTToastResponderEvent) eventWithMessage:@"Copied channels to clipboard" 
-                        firstResponder:settingsVC] send];
                     return YES;
                 }
             ]];
@@ -221,6 +176,46 @@ static const NSInteger GonerinoSection = 2002;
         }];
     [sectionItems addObject:manageChannels];
 
+    SECTION_HEADER(@"MANAGE SETTINGS");
+    
+    YTSettingsSectionItem *exportSettings = [%c(YTSettingsSectionItem) itemWithTitle:@"Export Settings"
+        titleDescription:@"Export settings to a plist file"
+        accessibilityIdentifier:nil
+        detailTextBlock:nil
+        selectBlock:^BOOL (YTSettingsCell *cell, NSUInteger arg1) {
+            YTSettingsViewController *settingsVC = [self valueForKey:@"_settingsViewControllerDelegate"];
+            
+            NSMutableDictionary *settings = [NSMutableDictionary dictionary];
+            settings[@"blockedChannels"] = [[ChannelManager sharedInstance] blockedChannels];
+            
+            NSURL *tempFileURL = [NSURL fileURLWithPath:[NSTemporaryDirectory() stringByAppendingPathComponent:@"gonerino_settings.plist"]];
+            [settings writeToURL:tempFileURL atomically:YES];
+            
+            UIDocumentPickerViewController *picker = [[UIDocumentPickerViewController alloc] 
+                initWithURL:tempFileURL 
+                inMode:UIDocumentPickerModeMoveToService];
+            picker.delegate = (id<UIDocumentPickerDelegate>)self;
+            [settingsVC presentViewController:picker animated:YES completion:nil];
+            return YES;
+        }];
+    [sectionItems addObject:exportSettings];
+
+    YTSettingsSectionItem *importSettings = [%c(YTSettingsSectionItem) itemWithTitle:@"Import Settings"
+        titleDescription:@"Import settings from a plist file"
+        accessibilityIdentifier:nil
+        detailTextBlock:nil
+        selectBlock:^BOOL (YTSettingsCell *cell, NSUInteger arg1) {
+            YTSettingsViewController *settingsVC = [self valueForKey:@"_settingsViewControllerDelegate"];
+            
+            UIDocumentPickerViewController *picker = [[UIDocumentPickerViewController alloc] 
+                initWithDocumentTypes:@[@"com.apple.property-list"] 
+                inMode:UIDocumentPickerModeImport];
+            picker.delegate = (id<UIDocumentPickerDelegate>)self;
+            [settingsVC presentViewController:picker animated:YES completion:nil];
+            return YES;
+        }];
+    [sectionItems addObject:importSettings];
+
     SECTION_HEADER(@"ABOUT");
 
     [sectionItems addObject:[%c(YTSettingsSectionItem) itemWithTitle:@"GitHub"
@@ -285,6 +280,31 @@ static const NSInteger GonerinoSection = 2002;
             }
         }
     });
+}
+
+%new
+- (void)documentPicker:(UIDocumentPickerViewController *)controller didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
+    if (urls.count == 0) return;
+    
+    YTSettingsViewController *settingsVC = [self valueForKey:@"_settingsViewControllerDelegate"];
+    NSURL *url = urls.firstObject;
+    
+    if (controller.documentPickerMode == UIDocumentPickerModeImport) {
+        NSDictionary *settings = [NSDictionary dictionaryWithContentsOfURL:url];
+        if (settings) {
+            NSArray *channels = settings[@"blockedChannels"];
+            if (channels) {
+                [[ChannelManager sharedInstance] setBlockedChannels:[NSMutableArray arrayWithArray:channels]];
+            }
+            
+            [self reloadGonerinoSection];
+            [[%c(YTToastResponderEvent) eventWithMessage:@"Settings imported successfully" 
+                firstResponder:settingsVC] send];
+        }
+    } else {
+        [[%c(YTToastResponderEvent) eventWithMessage:@"Settings exported successfully" 
+            firstResponder:settingsVC] send];
+    }
 }
 
 %end
