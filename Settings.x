@@ -176,8 +176,8 @@ static const NSInteger GonerinoSection = 2002;
         }];
     [sectionItems addObject:manageChannels];
 
-    YTSettingsSectionItem *blockPeopleWatched = [%c(YTSettingsSectionItem) switchItemWithTitle:@"Block 'People also watched this video' suggestions"
-        titleDescription:nil
+    YTSettingsSectionItem *blockPeopleWatched = [%c(YTSettingsSectionItem) switchItemWithTitle:@"Block 'People also watched this video'"
+        titleDescription:@"Remove 'People also watched this video' suggestions"
         accessibilityIdentifier:nil
         switchOn:[[NSUserDefaults standardUserDefaults] boolForKey:@"GonerinoPeopleWatched"]
         switchBlock:^BOOL (YTSettingsCell *cell, BOOL enabled) {
@@ -187,8 +187,8 @@ static const NSInteger GonerinoSection = 2002;
         settingItemId:0];
     [sectionItems addObject:blockPeopleWatched];
 
-    YTSettingsSectionItem *blockMightLike = [%c(YTSettingsSectionItem) switchItemWithTitle:@"Block 'You might also like this' suggestions"
-        titleDescription:nil
+    YTSettingsSectionItem *blockMightLike = [%c(YTSettingsSectionItem) switchItemWithTitle:@"Block 'You might also like this'"
+        titleDescription:@"Remove 'You might also like this video' suggestions"
         accessibilityIdentifier:nil
         switchOn:[[NSUserDefaults standardUserDefaults] boolForKey:@"GonerinoMightLike"]
         switchBlock:^BOOL (YTSettingsCell *cell, BOOL enabled) {
@@ -209,6 +209,8 @@ static const NSInteger GonerinoSection = 2002;
             
             NSMutableDictionary *settings = [NSMutableDictionary dictionary];
             settings[@"blockedChannels"] = [[ChannelManager sharedInstance] blockedChannels];
+            settings[@"blockPeopleWatched"] = @([[NSUserDefaults standardUserDefaults] boolForKey:@"GonerinoPeopleWatched"]);
+            settings[@"blockMightLike"] = @([[NSUserDefaults standardUserDefaults] boolForKey:@"GonerinoMightLike"]);
             
             NSURL *tempFileURL = [NSURL fileURLWithPath:[NSTemporaryDirectory() stringByAppendingPathComponent:@"gonerino_settings.plist"]];
             [settings writeToURL:tempFileURL atomically:YES];
