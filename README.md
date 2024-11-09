@@ -2,6 +2,12 @@
 
 A YouTube tweak that allows you to block specific channels and automatically remove their videos from your feed.
 
+## Features
+
+- Block channels directly from video context menu
+- Automatically removes blocked channels' videos from your feed
+- Block "People also watched this video" and "You might also like this" suggestions
+
 ## Dependencies
 
 This tweak requires [YouGroupSettings](https://github.com/arichornloverALT/YouGroupSettings) to display its settings section in the YouTube app settings.
@@ -16,8 +22,6 @@ This tweak requires [YouGroupSettings](https://github.com/arichornloverALT/YouGr
 | | TrollFools (TrollStore) | ✅ |
 | | Sideloaded IPA | ✅ |
 
-## Features
+## Contributors
 
-- Block channels directly from video context menu
-- Automatically removes blocked channels' videos from your feed
-- Block "People also watched this video" and "You might also like this" suggestions
+[![Contributors](https://contrib.rocks/image?repo=castdrian/Gonerino)](https://github.com/castdrian/Gonerino/graphs/contributors)
