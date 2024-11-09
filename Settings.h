@@ -29,6 +29,7 @@ static const NSInteger GonerinoSection = 2002;
 - (void)updateChannelManagementSection:(nonnull YTSettingsViewController *)viewController;
 - (nullable UITableView *)findTableViewInView:(nonnull UIView *)view;
 - (void)reloadGonerinoSection;
+- (NSArray *)createChannelManagementRows;
 @end
 
 @interface YTNavigationController : UINavigationController

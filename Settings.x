@@ -148,7 +148,7 @@
     [sectionItems addObject:blockPeopleWatched];
 
     YTSettingsSectionItem *blockMightLike = [%c(YTSettingsSectionItem) switchItemWithTitle:@"Block 'You might also like this'"
-        titleDescription:@"Remove 'You might also like this video' suggestions"
+        titleDescription:@"Remove 'You might also like this' suggestions"
         accessibilityIdentifier:nil
         switchOn:[[NSUserDefaults standardUserDefaults] boolForKey:@"GonerinoMightLike"]
         switchBlock:^BOOL (YTSettingsCell *cell, BOOL enabled) {
