@@ -20,3 +20,4 @@ This tweak requires [YouGroupSettings](https://github.com/arichornloverALT/YouGr
 
 - Block channels directly from video context menu
 - Automatically removes blocked channels' videos from your feed
+- Block "People also watched this video" and "You might also like this" suggestions

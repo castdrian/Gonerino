@@ -69,6 +69,21 @@
             }
         }
     }
+
+    if ([node isKindOfClass:NSClassFromString(@"ASTextNode")]) {
+        NSAttributedString *attributedText = [(ASTextNode *)node attributedText];
+        NSString *text = [attributedText string];
+        
+        if ([[NSUserDefaults standardUserDefaults] boolForKey:@"GonerinoPeopleWatched"] &&
+            [text isEqualToString:@"People also watched this video"]) {
+            return YES;
+        }
+        
+        if ([[NSUserDefaults standardUserDefaults] boolForKey:@"GonerinoMightLike"] &&
+            [text isEqualToString:@"You might also like this"]) {
+            return YES;
+        }
+    }
     return NO;
 }
 

@@ -176,6 +176,28 @@ static const NSInteger GonerinoSection = 2002;
         }];
     [sectionItems addObject:manageChannels];
 
+    YTSettingsSectionItem *blockPeopleWatched = [%c(YTSettingsSectionItem) switchItemWithTitle:@"Block 'People also watched this video' suggestions"
+        titleDescription:nil
+        accessibilityIdentifier:nil
+        switchOn:[[NSUserDefaults standardUserDefaults] boolForKey:@"GonerinoPeopleWatched"]
+        switchBlock:^BOOL (YTSettingsCell *cell, BOOL enabled) {
+            [[NSUserDefaults standardUserDefaults] setBool:enabled forKey:@"GonerinoPeopleWatched"];
+            return YES;
+        }
+        settingItemId:0];
+    [sectionItems addObject:blockPeopleWatched];
+
+    YTSettingsSectionItem *blockMightLike = [%c(YTSettingsSectionItem) switchItemWithTitle:@"Block 'You might also like this' suggestions"
+        titleDescription:nil
+        accessibilityIdentifier:nil
+        switchOn:[[NSUserDefaults standardUserDefaults] boolForKey:@"GonerinoMightLike"]
+        switchBlock:^BOOL (YTSettingsCell *cell, BOOL enabled) {
+            [[NSUserDefaults standardUserDefaults] setBool:enabled forKey:@"GonerinoMightLike"];
+            return YES;
+        }
+        settingItemId:0];
+    [sectionItems addObject:blockMightLike];
+
     SECTION_HEADER(@"MANAGE SETTINGS");
     
     YTSettingsSectionItem *exportSettings = [%c(YTSettingsSectionItem) itemWithTitle:@"Export Settings"
@@ -297,11 +319,27 @@ static const NSInteger GonerinoSection = 2002;
                 [[ChannelManager sharedInstance] setBlockedChannels:[NSMutableArray arrayWithArray:channels]];
             }
             
+            NSNumber *peopleWatched = settings[@"blockPeopleWatched"];
+            if (peopleWatched) {
+                [[NSUserDefaults standardUserDefaults] setBool:[peopleWatched boolValue] forKey:@"GonerinoPeopleWatched"];
+            }
+            
+            NSNumber *mightLike = settings[@"blockMightLike"];
+            if (mightLike) {
+                [[NSUserDefaults standardUserDefaults] setBool:[mightLike boolValue] forKey:@"GonerinoMightLike"];
+            }
+            
             [self reloadGonerinoSection];
             [[%c(YTToastResponderEvent) eventWithMessage:@"Settings imported successfully" 
                 firstResponder:settingsVC] send];
         }
     } else {
+        NSMutableDictionary *settings = [NSMutableDictionary dictionary];
+        settings[@"blockedChannels"] = [[ChannelManager sharedInstance] blockedChannels];
+        settings[@"blockPeopleWatched"] = @([[NSUserDefaults standardUserDefaults] boolForKey:@"GonerinoPeopleWatched"]);
+        settings[@"blockMightLike"] = @([[NSUserDefaults standardUserDefaults] boolForKey:@"GonerinoMightLike"]);
+        
+        [settings writeToURL:url atomically:YES];
         [[%c(YTToastResponderEvent) eventWithMessage:@"Settings exported successfully" 
             firstResponder:settingsVC] send];
     }
