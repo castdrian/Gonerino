@@ -1,44 +1,4 @@
-#import <version.h>
-#import <rootless.h>
-#import <YouTubeHeader/YTAlertView.h>
-#import <YouTubeHeader/YTHotConfig.h>
-#import <YouTubeHeader/YTSettingsViewController.h>
-#import <YouTubeHeader/YTSettingsSectionItem.h>
-#import <YouTubeHeader/YTSettingsSectionItemManager.h>
-#import <YouTubeHeader/YTSettingsPickerViewController.h>
-#import <YouTubeHeader/YTAppSettingsSectionItemActionController.h>
-#import <YouTubeHeader/YTUIUtils.h>
-#import "ChannelManager.h"
-
-#define SECTION_HEADER(s) [sectionItems addObject:[%c(YTSettingsSectionItem) itemWithTitle:@"\t" titleDescription:[s uppercaseString] accessibilityIdentifier:nil detailTextBlock:nil selectBlock:^BOOL (YTSettingsCell *cell, NSUInteger sectionItemIndex) { return NO; }]]
-
-static const NSInteger GonerinoSection = 2002;
-
-#define TWEAK_VERSION PACKAGE_VERSION
-
-@interface YTToastResponderEvent : NSObject
-+ (instancetype _Nonnull)eventWithMessage:(NSString * _Nonnull)message 
-                          firstResponder:(id _Nonnull)responder;
-- (void)send;
-@end
-
-@interface YTSettingsSectionItemManager (Gonerino)
-- (void)updateGonerinoSectionWithEntry:(id)entry;
-- (void)updateChannelManagementSection:(YTSettingsViewController *)viewController;
-- (UITableView *)findTableViewInView:(UIView *)view;
-- (void)reloadGonerinoSection;
-@end
-
-@interface YTNavigationController : UINavigationController
-@end
-
-@interface YTSettingsViewController ()
-@property(nonatomic, strong, readonly) YTNavigationController *navigationController;
-@end
-
-@interface YTSettingsViewController (Gonerino)
-- (void)setSectionItems:(NSArray *)items forCategory:(NSInteger)category title:(NSString *)title titleDescription:(NSString *)titleDescription headerHidden:(BOOL)headerHidden;
-@end
+#import "Settings.h"
 
 %hook YTAppSettingsPresentationData
 

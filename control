@@ -1,6 +1,6 @@
 Package: dev.adrian.gonerino
 Name: Gonerino
-Version: 0.3.1
+Version: 0.4.0
 Architecture: iphoneos-arm
 Description: Remove videos uploaded by specific channels
 Maintainer: Adrian Castro
