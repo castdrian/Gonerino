@@ -9,7 +9,6 @@ TWEAK_NAME = Gonerino
 Gonerino_FILES = Tweak.x Settings.x ChannelManager.m
 Gonerino_FRAMEWORKS = UIKit Foundation UniformTypeIdentifiers
 Gonerino_CFLAGS = -fobjc-arc -Wno-deprecated-declarations -Wno-error=unused-variable -DPACKAGE_VERSION='@"$(THEOS_PACKAGE_BASE_VERSION)"'
-Gonerino_LOGOS_DEFAULT_GENERATOR = internal
 
 include $(THEOS_MAKE_PATH)/tweak.mk
 
