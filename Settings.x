@@ -1,5 +1,4 @@
 #import "Settings.h"
-#import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 
 %hook YTAppSettingsPresentationData
 
@@ -177,7 +176,8 @@
             [settings writeToURL:tempFileURL atomically:YES];
             
             UIDocumentPickerViewController *picker = [[UIDocumentPickerViewController alloc] 
-                initForExportingURLs:@[tempFileURL]];
+                initWithURL:tempFileURL 
+                inMode:UIDocumentPickerModeMoveToService];
             picker.delegate = (id<UIDocumentPickerDelegate>)self;
             [settingsVC presentViewController:picker animated:YES completion:nil];
             return YES;
@@ -192,7 +192,8 @@
             YTSettingsViewController *settingsVC = [self valueForKey:@"_settingsViewControllerDelegate"];
             
             UIDocumentPickerViewController *picker = [[UIDocumentPickerViewController alloc] 
-                initForOpeningContentTypes:@[UTTypePropertyList]];
+                initWithDocumentTypes:@[@"com.apple.property-list"] 
+                inMode:UIDocumentPickerModeImport];
             picker.delegate = (id<UIDocumentPickerDelegate>)self;
             [settingsVC presentViewController:picker animated:YES completion:nil];
             return YES;
@@ -272,10 +273,8 @@
     YTSettingsViewController *settingsVC = [self valueForKey:@"_settingsViewControllerDelegate"];
     NSURL *url = urls.firstObject;
     
-    if ([url startAccessingSecurityScopedResource]) {
+    if (controller.documentPickerMode == UIDocumentPickerModeImport) {
         NSDictionary *settings = [NSDictionary dictionaryWithContentsOfURL:url];
-        [url stopAccessingSecurityScopedResource];
-        
         if (settings) {
             NSArray *channels = settings[@"blockedChannels"];
             if (channels) {
