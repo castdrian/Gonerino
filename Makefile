@@ -1,4 +1,4 @@
-TARGET := iphone:clang:latest:13.0
+TARGET := iphone:clang:15.6:14.0
 ARCHS = arm64
 INSTALL_TARGET_PROCESSES = YouTube
 
@@ -7,7 +7,7 @@ include $(THEOS)/makefiles/common.mk
 TWEAK_NAME = Gonerino
 
 Gonerino_FILES = Tweak.x Settings.x ChannelManager.m
-Gonerino_FRAMEWORKS = UIKit Foundation
+Gonerino_FRAMEWORKS = UIKit Foundation UniformTypeIdentifiers
 Gonerino_CFLAGS = -fobjc-arc -DPACKAGE_VERSION='@"$(THEOS_PACKAGE_BASE_VERSION)"'
 
 include $(THEOS_MAKE_PATH)/tweak.mk
