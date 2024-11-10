@@ -1,5 +1,4 @@
 #import "Settings.h"
-#import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 
 %hook YTAppSettingsPresentationData
 
@@ -176,8 +175,11 @@
             NSURL *tempFileURL = [NSURL fileURLWithPath:[NSTemporaryDirectory() stringByAppendingPathComponent:@"gonerino_settings.plist"]];
             [settings writeToURL:tempFileURL atomically:YES];
             
+            isImportOperation = NO;
+            
             UIDocumentPickerViewController *picker = [[UIDocumentPickerViewController alloc] 
                 initForExportingURLs:@[tempFileURL]];
+            objc_setAssociatedObject(picker, "gonerino_delegate", self, OBJC_ASSOCIATION_ASSIGN);
             picker.delegate = (id<UIDocumentPickerDelegate>)self;
             [settingsVC presentViewController:picker animated:YES completion:nil];
             return YES;
@@ -191,8 +193,11 @@
         selectBlock:^BOOL (YTSettingsCell *cell, NSUInteger arg1) {
             YTSettingsViewController *settingsVC = [self valueForKey:@"_settingsViewControllerDelegate"];
             
+            isImportOperation = YES;
+            
             UIDocumentPickerViewController *picker = [[UIDocumentPickerViewController alloc] 
-                initForOpeningContentTypes:@[UTTypePropertyList]];
+                initForOpeningContentTypes:@[[UTType typeWithIdentifier:@"com.apple.property-list"]]];
+            objc_setAssociatedObject(picker, "gonerino_delegate", self, OBJC_ASSOCIATION_ASSIGN);
             picker.delegate = (id<UIDocumentPickerDelegate>)self;
             [settingsVC presentViewController:picker animated:YES completion:nil];
             return YES;
@@ -267,35 +272,57 @@
 
 %new
 - (void)documentPicker:(UIDocumentPickerViewController *)controller didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
+    if (objc_getAssociatedObject(controller, "gonerino_delegate") != self) return;
+    
     if (urls.count == 0) return;
     
     YTSettingsViewController *settingsVC = [self valueForKey:@"_settingsViewControllerDelegate"];
     NSURL *url = urls.firstObject;
     
-    if ([url startAccessingSecurityScopedResource]) {
-        NSDictionary *settings = [NSDictionary dictionaryWithContentsOfURL:url];
+    if (isImportOperation) {
+        [url startAccessingSecurityScopedResource];
+        
+        NSError *error = nil;
+        NSData *data = [NSData dataWithContentsOfURL:url options:0 error:&error];
+        
         [url stopAccessingSecurityScopedResource];
         
-        if (settings) {
-            NSArray *channels = settings[@"blockedChannels"];
-            if (channels) {
-                [[ChannelManager sharedInstance] setBlockedChannels:[NSMutableArray arrayWithArray:channels]];
-            }
-            
-            NSNumber *peopleWatched = settings[@"blockPeopleWatched"];
-            if (peopleWatched) {
-                [[NSUserDefaults standardUserDefaults] setBool:[peopleWatched boolValue] forKey:@"GonerinoPeopleWatched"];
-            }
-            
-            NSNumber *mightLike = settings[@"blockMightLike"];
-            if (mightLike) {
-                [[NSUserDefaults standardUserDefaults] setBool:[mightLike boolValue] forKey:@"GonerinoMightLike"];
-            }
-            
-            [self reloadGonerinoSection];
-            [[%c(YTToastResponderEvent) eventWithMessage:@"Settings imported successfully" 
+        if (!data || error) {
+            [[%c(YTToastResponderEvent) eventWithMessage:@"Failed to read settings file" 
                 firstResponder:settingsVC] send];
+            return;
         }
+        
+        NSDictionary *settings = [NSPropertyListSerialization propertyListWithData:data 
+            options:NSPropertyListImmutable 
+            format:NULL 
+            error:&error];
+            
+        if (!settings || error) {
+            [[%c(YTToastResponderEvent) eventWithMessage:@"Invalid settings file format" 
+                firstResponder:settingsVC] send];
+            return;
+        }
+        
+        NSArray *channels = settings[@"blockedChannels"];
+        if (channels) {
+            [[ChannelManager sharedInstance] setBlockedChannels:[NSMutableArray arrayWithArray:channels]];
+        }
+        
+        NSNumber *peopleWatched = settings[@"blockPeopleWatched"];
+        if (peopleWatched) {
+            [[NSUserDefaults standardUserDefaults] setBool:[peopleWatched boolValue] forKey:@"GonerinoPeopleWatched"];
+        }
+        
+        NSNumber *mightLike = settings[@"blockMightLike"];
+        if (mightLike) {
+            [[NSUserDefaults standardUserDefaults] setBool:[mightLike boolValue] forKey:@"GonerinoMightLike"];
+        }
+        
+        [[NSUserDefaults standardUserDefaults] synchronize];
+        [self reloadGonerinoSection];
+        [[%c(YTToastResponderEvent) eventWithMessage:@"Settings imported successfully" 
+            firstResponder:settingsVC] send];
     } else {
         NSMutableDictionary *settings = [NSMutableDictionary dictionary];
         settings[@"blockedChannels"] = [[ChannelManager sharedInstance] blockedChannels];
@@ -306,6 +333,15 @@
         [[%c(YTToastResponderEvent) eventWithMessage:@"Settings exported successfully" 
             firstResponder:settingsVC] send];
     }
+}
+
+%new
+- (void)documentPickerWasCancelled:(UIDocumentPickerViewController *)controller {
+    if (objc_getAssociatedObject(controller, "gonerino_delegate") != self) return;
+    
+    YTSettingsViewController *settingsVC = [self valueForKey:@"_settingsViewControllerDelegate"];
+    NSString *message = isImportOperation ? @"Import cancelled" : @"Export cancelled";
+    [[%c(YTToastResponderEvent) eventWithMessage:message firstResponder:settingsVC] send];
 }
 
 %end
