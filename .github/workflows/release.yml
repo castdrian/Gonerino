@@ -58,8 +58,13 @@ jobs:
         with:
           github-token: ${{ secrets.REPO_ACCESS_TOKEN }}
           script: |
-            const assets = ${{ fromJSON(steps.create_release.outputs.assets) }};
+            const assets = JSON.parse('${{ steps.create_release.outputs.assets }}');
             const debAsset = assets.find(asset => asset.name === '${{ env.DEB_FILE_NAME }}');
+            
+            if (!debAsset) {
+              core.setFailed('Could not find DEB asset in release');
+              return;
+            }
             
             await github.rest.repos.createDispatchEvent({
               owner: 'castdrian',
