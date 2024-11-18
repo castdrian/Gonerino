@@ -51,3 +51,18 @@ jobs:
           token: ${{ env.GITHUB_TOKEN }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update Repository
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.REPO_ACCESS_TOKEN }}
+          script: |
+            await github.rest.repos.createDispatchEvent({
+              owner: 'castdrian',
+              repo: 'apt-repo',
+              event_type: 'package-update',
+              client_payload: {
+                package_url: '${{ steps.create_release.outputs.assets[1].browser_download_url }}',
+                package_name: '${{ env.DEB_FILE_NAME }}'
+              }
+            });
