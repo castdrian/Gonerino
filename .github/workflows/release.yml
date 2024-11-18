@@ -39,6 +39,7 @@ jobs:
           echo "ROOTLESS_DEB_FILE_NAME=$ROOTLESS_DEB_FILE_NAME" >> $GITHUB_ENV
 
       - name: Create GitHub Release
+        id: create_release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ env.VERSION }}
@@ -57,14 +58,20 @@ jobs:
         with:
           github-token: ${{ secrets.REPO_ACCESS_TOKEN }}
           script: |
-            const release = await github.rest.repos.getLatestRelease({
+            const release = await github.rest.repos.getRelease({
               owner: context.repo.owner,
-              repo: context.repo.name
+              repo: context.repo.name,
+              release_id: ${{ steps.create_release.outputs.id }}
             });
             
             const debAsset = release.data.assets.find(
               asset => asset.name === '${{ env.DEB_FILE_NAME }}'
             );
+
+            if (!debAsset) {
+              core.setFailed('Could not find DEB asset in release');
+              return;
+            }
 
             await github.rest.repos.createDispatchEvent({
               owner: 'castdrian',
