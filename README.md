@@ -18,7 +18,7 @@ This tweak requires [YouGroupSettings](https://github.com/arichornloverALT/YouGr
 |----------|---------------|---------|
 | **iOS Version** | 15.8.3+ | ✅ |
 | **YouTube Version** | 19.42.1+ | ✅ |
-| **Injection Methods** | ElleKit (Dopamine) | ✅ |
+| **Injection Methods** | ElleKit (palera1n) (Dopamine) | ✅ |
 | | TrollFools (TrollStore) | ✅ |
 | | Sideloaded IPA (MobileSubstrate) | ✅ |
 
