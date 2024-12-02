@@ -8,10 +8,6 @@ A YouTube tweak that allows you to block specific channels and automatically rem
 - Automatically removes blocked channels' videos from your feed
 - Block "People also watched this video" and "You might also like this" suggestions
 
-## Dependencies
-
-This tweak requires [YouGroupSettings](https://github.com/arichornloverALT/YouGroupSettings) to display its settings section in the YouTube app settings.
-
 ## Compatibility
 
 | Category | Version/Method | Status |
