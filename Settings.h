@@ -1,4 +1,5 @@
 #import "ChannelManager.h"
+#import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 #import <YouTubeHeader/YTAlertView.h>
 #import <YouTubeHeader/YTAppSettingsSectionItemActionController.h>
 #import <YouTubeHeader/YTHotConfig.h>
@@ -10,7 +11,6 @@
 #import <YouTubeHeader/YTUIUtils.h>
 #import <rootless.h>
 #import <version.h>
-#import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 
 NS_ASSUME_NONNULL_BEGIN
 

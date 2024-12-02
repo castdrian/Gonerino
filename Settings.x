@@ -1,4 +1,18 @@
 #import "Settings.h"
+#import <YouTubeHeader/YTSettingsGroupData.h>
+#import <YouTubeHeader/YTIIcon.h>
+
+%hook YTSettingsGroupData
+
+- (NSArray <NSNumber *> *)orderedCategories {
+    if (self.type != 1)
+        return %orig;
+    NSMutableArray *mutableCategories = %orig.mutableCopy;
+    [mutableCategories insertObject:@(GonerinoSection) atIndex:0];
+    return mutableCategories.copy;
+}
+
+%end
 
 %hook YTAppSettingsPresentationData
 
@@ -225,7 +239,9 @@
         }]];
 
     if ([delegate respondsToSelector:@selector(setSectionItems:forCategory:title:icon:titleDescription:headerHidden:)]) {
-        [delegate setSectionItems:sectionItems forCategory:GonerinoSection title:@"Gonerino" icon:nil titleDescription:nil headerHidden:NO];
+        YTIIcon *icon = [%c(YTIIcon) new];
+        icon.iconType = YT_FILTER;
+        [delegate setSectionItems:sectionItems forCategory:GonerinoSection title:@"Gonerino" icon:icon titleDescription:nil headerHidden:NO];
     } else {
         [delegate setSectionItems:sectionItems forCategory:GonerinoSection title:@"Gonerino" titleDescription:nil headerHidden:NO];
     }
@@ -342,6 +358,17 @@
     YTSettingsViewController *settingsVC = [self valueForKey:@"_settingsViewControllerDelegate"];
     NSString *message = isImportOperation ? @"Import cancelled" : @"Export cancelled";
     [[%c(YTToastResponderEvent) eventWithMessage:message firstResponder:settingsVC] send];
+}
+
+%end
+
+%hook YTSettingsViewController
+
+- (void)loadWithModel:(id)model {
+    %orig;
+    if ([self respondsToSelector:@selector(updateSectionForCategory:withEntry:)]) {
+        [(YTSettingsSectionItemManager *)[self valueForKey:@"_sectionItemManager"] updateGonerinoSectionWithEntry:nil];
+    }
 }
 
 %end
