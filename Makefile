@@ -8,7 +8,7 @@ TWEAK_NAME = Gonerino
 
 Gonerino_FILES = $(wildcard *.x) $(wildcard *.m)
 Gonerino_FRAMEWORKS = UIKit Foundation UniformTypeIdentifiers MobileCoreServices
-Gonerino_CFLAGS = -fobjc-arc -DPACKAGE_VERSION='@"$(THEOS_PACKAGE_BASE_VERSION)"'
+Gonerino_CFLAGS = -fobjc-arc -DPACKAGE_VERSION='@"$(shell grep '^Version:' control | cut -d' ' -f2)"'
 
 include $(THEOS_MAKE_PATH)/tweak.mk
 
