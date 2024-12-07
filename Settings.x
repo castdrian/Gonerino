@@ -371,64 +371,73 @@
 
 %new
 - (void)documentPicker:(UIDocumentPickerViewController *)controller didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
+    if (objc_getAssociatedObject(controller, "gonerino_delegate") != self) return;
+    
+    if (urls.count == 0) return;
+    
     YTSettingsViewController *settingsVC = [self valueForKey:@"_settingsViewControllerDelegate"];
-    if (urls.count == 0) {
-        return;
-    }
-    
     NSURL *url = urls.firstObject;
-    [url startAccessingSecurityScopedResource];
     
-    NSError *error = nil;
-    NSData *data = [NSData dataWithContentsOfURL:url options:0 error:&error];
-    
-    [url stopAccessingSecurityScopedResource];
-    
-    if (!data || error) {
-        [[%c(YTToastResponderEvent) eventWithMessage:@"Failed to read settings file" 
-            firstResponder:settingsVC] send];
-        return;
-    }
-    
-    NSDictionary *settings = [NSPropertyListSerialization propertyListWithData:data 
-        options:NSPropertyListImmutable 
-        format:NULL 
-        error:&error];
+    if (isImportOperation) {
+        [url startAccessingSecurityScopedResource];
         
-    if (!settings || error) {
-        [[%c(YTToastResponderEvent) eventWithMessage:@"Invalid settings file format" 
-            firstResponder:settingsVC] send];
-        return;
-    }
-    
-    NSArray *channels = settings[@"blockedChannels"];
-    if (channels) {
-        [[ChannelManager sharedInstance] setBlockedChannels:[NSMutableArray arrayWithArray:channels]];
-    }
+        NSError *error = nil;
+        NSData *data = [NSData dataWithContentsOfURL:url options:0 error:&error];
+        
+        [url stopAccessingSecurityScopedResource];
+        
+        if (!data || error) {
+            [[%c(YTToastResponderEvent) eventWithMessage:@"Failed to read settings file" 
+                firstResponder:settingsVC] send];
+            return;
+        }
+        
+        NSDictionary *settings = [NSPropertyListSerialization propertyListWithData:data 
+            options:NSPropertyListImmutable 
+            format:NULL 
+            error:&error];
+            
+        if (!settings || error) {
+            [[%c(YTToastResponderEvent) eventWithMessage:@"Invalid settings file format" 
+                firstResponder:settingsVC] send];
+            return;
+        }
+        
+        NSArray *channels = settings[@"blockedChannels"];
+        if (channels) {
+            [[ChannelManager sharedInstance] setBlockedChannels:[NSMutableArray arrayWithArray:channels]];
+        }
 
-    NSArray *videos = settings[@"blockedVideos"];
-    if (videos) {
-        [[VideoManager sharedInstance] setBlockedVideos:videos];
+        NSArray *videos = settings[@"blockedVideos"];
+        if (videos) {
+            [[VideoManager sharedInstance] setBlockedVideos:videos];
+        }
+        
+        NSNumber *peopleWatched = settings[@"blockPeopleWatched"];
+        if (peopleWatched) {
+            [[NSUserDefaults standardUserDefaults] setBool:[peopleWatched boolValue] forKey:@"GonerinoPeopleWatched"];
+        }
+        
+        NSNumber *mightLike = settings[@"blockMightLike"];
+        if (mightLike) {
+            [[NSUserDefaults standardUserDefaults] setBool:[mightLike boolValue] forKey:@"GonerinoMightLike"];
+        }
+        
+        [[NSUserDefaults standardUserDefaults] synchronize];
+        [self reloadGonerinoSection];
+        [[%c(YTToastResponderEvent) eventWithMessage:@"Settings imported successfully" 
+            firstResponder:settingsVC] send];
+    } else {
+        NSMutableDictionary *settings = [NSMutableDictionary dictionary];
+        settings[@"blockedChannels"] = [[ChannelManager sharedInstance] blockedChannels];
+        settings[@"blockedVideos"] = [[VideoManager sharedInstance] blockedVideos];
+        settings[@"blockPeopleWatched"] = @([[NSUserDefaults standardUserDefaults] boolForKey:@"GonerinoPeopleWatched"]);
+        settings[@"blockMightLike"] = @([[NSUserDefaults standardUserDefaults] boolForKey:@"GonerinoMightLike"]);
+        
+        [settings writeToURL:url atomically:YES];
+        [[%c(YTToastResponderEvent) eventWithMessage:@"Settings exported successfully" 
+            firstResponder:settingsVC] send];
     }
-    
-    NSNumber *peopleWatched = settings[@"blockPeopleWatched"];
-    if (peopleWatched) {
-        [[NSUserDefaults standardUserDefaults] setBool:peopleWatched.boolValue forKey:@"GonerinoPeopleWatched"];
-    }
-    
-    NSNumber *mightLike = settings[@"blockMightLike"];
-    if (mightLike) {
-        [[NSUserDefaults standardUserDefaults] setBool:mightLike.boolValue forKey:@"GonerinoMightLike"];
-    }
-    
-    [self reloadGonerinoSection];
-    
-    UIImpactFeedbackGenerator *generator = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleMedium];
-    [generator prepare];
-    [generator impactOccurred];
-    
-    [[%c(YTToastResponderEvent) eventWithMessage:@"Settings imported successfully" 
-        firstResponder:settingsVC] send];
 }
 
 %new
