@@ -24,7 +24,7 @@ jobs:
           git clone https://github.com/PoomSmart/YouTubeHeader $THEOS/include/YouTubeHeader
 
       - name: Build packages
-        run: make package FINALPACKAGE=1 && make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=rootless
+        run: make package FINALPACKAGE=1
 
       - name: Extract Values
         run: |
@@ -33,8 +33,6 @@ jobs:
           PACKAGE=$(grep '^Package:' control | cut -d ' ' -f 2)
           VERSION=$(grep '^Version:' control | cut -d ' ' -f 2)
           echo "VERSION=$VERSION" >> $GITHUB_ENV
-          DEB_FILE_NAME="${PACKAGE}_${VERSION}_iphoneos-arm.deb"
-          echo "DEB_FILE_NAME=$DEB_FILE_NAME" >> $GITHUB_ENV
           ROOTLESS_DEB_FILE_NAME="${PACKAGE}_${VERSION}_iphoneos-arm64.deb"
           echo "ROOTLESS_DEB_FILE_NAME=$ROOTLESS_DEB_FILE_NAME" >> $GITHUB_ENV
 
@@ -45,7 +43,6 @@ jobs:
           tag_name: v${{ env.VERSION }}
           files: |
             .theos/obj/${{ env.NAME }}.dylib
-            packages/${{ env.DEB_FILE_NAME }}
             packages/${{ env.ROOTLESS_DEB_FILE_NAME }}
           generate_release_notes: true
           fail_on_unmatched_files: true
@@ -59,7 +56,7 @@ jobs:
           github-token: ${{ secrets.REPO_ACCESS_TOKEN }}
           script: |
             const assets = JSON.parse('${{ steps.create_release.outputs.assets }}');
-            const debAsset = assets.find(asset => asset.name === '${{ env.DEB_FILE_NAME }}');
+            const debAsset = assets.find(asset => asset.name === '${{ env.ROOTLESS_DEB_FILE_NAME }}');
             
             if (!debAsset) {
               core.setFailed('Could not find DEB asset in release');
@@ -72,6 +69,6 @@ jobs:
               event_type: 'package-update',
               client_payload: {
                 package_url: debAsset.browser_download_url,
-                package_name: '${{ env.DEB_FILE_NAME }}'
+                package_name: '${{ env.ROOTLESS_DEB_FILE_NAME }}'
               }
             });
