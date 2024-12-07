@@ -1,4 +1,5 @@
 #import "ChannelManager.h"
+#import "VideoManager.h"
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 #import <YouTubeHeader/YTAlertView.h>
 #import <YouTubeHeader/YTAppSettingsSectionItemActionController.h>

@@ -19,7 +19,7 @@
             _ASCollectionViewCell *asCell = (_ASCollectionViewCell *)cell;
             if ([asCell respondsToSelector:@selector(node)]) {
                 id node = [asCell node];
-                if ([self nodeContainsBlockedChannelName:node]) {
+                if ([self nodeContainsBlockedChannelName:node] || [self nodeContainsBlockedVideo:node]) {
                     NSIndexPath *indexPath = [self indexPathForCell:cell];
                     if (indexPath) {
                         [indexPathsToRemove addObject:indexPath];
@@ -34,6 +34,42 @@
             [self deleteItemsAtIndexPaths:indexPathsToRemove];
         } completion:nil];
     }
+}
+
+%new
+- (BOOL)nodeContainsBlockedVideo:(id)node {
+    if ([node respondsToSelector:@selector(accessibilityLabel)]) {
+        NSString *accessibilityLabel = [node accessibilityLabel];
+        if (accessibilityLabel) {
+            NSArray *components = [accessibilityLabel componentsSeparatedByString:@" - "];
+            if (components.count >= 4) {
+                NSInteger goToChannelIndex = -1;
+                for (NSInteger i = 0; i < components.count; i++) {
+                    if ([components[i] isEqualToString:@"Go to channel"]) {
+                        goToChannelIndex = i;
+                        break;
+                    }
+                }
+                
+                if (goToChannelIndex > 1) {
+                    NSArray *titleComponents = [components subarrayWithRange:NSMakeRange(0, goToChannelIndex - 1)];
+                    NSString *videoTitle = [titleComponents componentsJoinedByString:@" - "];
+                    return [[VideoManager sharedInstance] isVideoBlocked:videoTitle];
+                }
+            }
+        }
+    }
+
+    if ([node respondsToSelector:@selector(subnodes)]) {
+        NSArray *subnodes = [node subnodes];
+        for (id subnode in subnodes) {
+            if ([self nodeContainsBlockedVideo:subnode]) {
+                return YES;
+            }
+        }
+    }
+
+    return NO;
 }
 
 %new
@@ -129,6 +165,42 @@
     }
 }
 
+%new
+- (NSString *)extractVideoTitleFromNode:(id)node {
+    if ([node respondsToSelector:@selector(accessibilityLabel)]) {
+        NSString *accessibilityLabel = [node accessibilityLabel];
+        if (accessibilityLabel) {
+            NSArray *components = [accessibilityLabel componentsSeparatedByString:@" - "];
+            if (components.count >= 4) {
+                NSInteger goToChannelIndex = -1;
+                for (NSInteger i = 0; i < components.count; i++) {
+                    if ([components[i] isEqualToString:@"Go to channel"]) {
+                        goToChannelIndex = i;
+                        break;
+                    }
+                }
+                
+                if (goToChannelIndex > 1) {
+                    NSArray *titleComponents = [components subarrayWithRange:NSMakeRange(0, goToChannelIndex - 1)];
+                    return [titleComponents componentsJoinedByString:@" - "];
+                }
+            }
+        }
+    }
+    
+    if ([node respondsToSelector:@selector(subnodes)]) {
+        NSArray *subnodes = [node subnodes];
+        for (id subnode in subnodes) {
+            NSString *title = [self extractVideoTitleFromNode:subnode];
+            if (title) {
+                return title;
+            }
+        }
+    }
+    
+    return nil;
+}
+
 - (void)addAction:(YTActionSheetAction *)action {
     %orig;
     
@@ -193,9 +265,45 @@
             NSLog(@"[Gonerino] Exception in block action: %@", e);
         }
     }];
+
+    YTActionSheetAction *blockVideoAction = [%c(YTActionSheetAction) actionWithTitle:@"Block Video"
+                                                                        iconImage:blockIcon
+                                                                            style:0
+                                                                         handler:^(YTActionSheetAction *action) {
+        __strong typeof(self) strongSelf = weakSelf;
+        @try {
+            UIView *sourceView = [strongSelf valueForKey:@"sourceView"];
+            id node = [sourceView valueForKey:@"asyncdisplaykit_node"];
+            
+            NSString *debugDescription = [node debugDescription];
+            NSRegularExpression *regex = [NSRegularExpression regularExpressionWithPattern:@"cellNode = <YTVideoWithContextNode: (0x[0-9a-f]+)>" options:0 error:nil];
+            NSTextCheckingResult *match = [regex firstMatchInString:debugDescription options:0 range:NSMakeRange(0, debugDescription.length)];
+            
+            if (match) {
+                NSString *address = [debugDescription substringWithRange:[match rangeAtIndex:1]];
+                void *videoNodePtr;
+                sscanf([address UTF8String], "%p", &videoNodePtr);
+                id videoNode = (__bridge id)videoNodePtr;
+                
+                if ([videoNode isKindOfClass:NSClassFromString(@"YTVideoWithContextNode")]) {
+                    NSString *videoTitle = [strongSelf extractVideoTitleFromNode:videoNode];
+                    if (videoTitle) {
+                        [[VideoManager sharedInstance] addBlockedVideo:videoTitle];
+                        UIViewController *viewController = (UIViewController *)strongSelf;
+                        [[%c(YTToastResponderEvent) eventWithMessage:[NSString stringWithFormat:@"Blocked video: %@", videoTitle] 
+                                                    firstResponder:viewController] send];
+                        [strongSelf dismiss];
+                    }
+                }
+            }
+        } @catch (NSException *e) {
+            NSLog(@"[Gonerino] Exception in block action: %@", e);
+        }
+    }];
     
     objc_setAssociatedObject(self, blockActionKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     [self addAction:blockChannelAction];
+    [self addAction:blockVideoAction];
 }
 
 %new

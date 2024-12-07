@@ -1,4 +1,6 @@
 #import "ChannelManager.h"
+#import "VideoManager.h"
+
 #import <Foundation/Foundation.h>
 #import <UIKit/UIKit.h>
 #import <objc/runtime.h>
@@ -12,6 +14,7 @@
 @class YTDefaultSheetController;
 @class YTActionSheetAction;
 @class YTToastResponderEvent;
+@class YTSettingsCell;
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -29,6 +32,8 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)removeOffendingCells;
 
 - (BOOL)nodeContainsBlockedChannelName:(id)node;
+
+- (BOOL)nodeContainsBlockedVideo:(id)node;
 
 @end
 
@@ -75,25 +80,28 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)addAction:(YTActionSheetAction *)action;
 - (void)dismiss;
 - (id)valueForKey:(NSString *)key;
-- (UIImage *)createBlockIconWithOriginalAction:(nullable YTActionSheetAction *)originalAction;
+- (UIImage *)createBlockIconWithOriginalAction:
+    (nullable YTActionSheetAction *)originalAction;
 - (UIViewController *)findViewControllerForView:(UIView *)view;
-- (void)extractChannelNameFromNode:(id)node completion:(void (^)(NSString *channelName))completion;
+- (void)extractChannelNameFromNode:(id)node
+                        completion:(void (^)(NSString *channelName))completion;
+- (nullable NSString *)extractVideoTitleFromNode:(id)node;
 @end
 
 @interface YTActionSheetAction : NSObject
-@property (nonatomic, copy) NSString *title;
-@property (nonatomic, copy) void (^handler)(id);
-@property (nonatomic, strong) UIImage *iconImage;
-@property (nonatomic) BOOL shouldDismissOnAction;
+@property(nonatomic, copy) NSString *title;
+@property(nonatomic, copy) void (^handler)(id);
+@property(nonatomic, strong) UIImage *iconImage;
+@property(nonatomic) BOOL shouldDismissOnAction;
 
-+ (instancetype)actionWithTitle:(NSString *)title 
-                     iconImage:(UIImage *)iconImage 
-                        style:(NSInteger)style 
-                      handler:(void (^)(id))handler;
++ (instancetype)actionWithTitle:(NSString *)title
+                      iconImage:(UIImage *)iconImage
+                          style:(NSInteger)style
+                        handler:(void (^)(id))handler;
 
-+ (instancetype)actionWithTitle:(NSString *)title 
-                     iconImage:(UIImage *)iconImage 
-                      handler:(void (^)(id))handler;
++ (instancetype)actionWithTitle:(NSString *)title
+                      iconImage:(UIImage *)iconImage
+                        handler:(void (^)(id))handler;
 @end
 
 @interface YTActionSheetController : UIViewController
@@ -103,11 +111,20 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)dismiss;
 - (UIViewController *)findViewControllerForView:(UIView *)view;
 @end
-
 @interface YTToastResponderEvent : NSObject
 + (instancetype)eventWithMessage:(NSString *)message
                   firstResponder:(UIViewController *)responder;
 - (void)send;
+@end
+
+@interface YTSettingsSectionItem : NSObject
++ (instancetype)itemWithTitle:(NSString *)title
+             titleDescription:(nullable NSString *)titleDescription
+      accessibilityIdentifier:(nullable NSString *)accessibilityIdentifier
+              detailTextBlock:(nullable NSString * (^)(void))detailTextBlock
+                  selectBlock:(BOOL (^)(YTSettingsCell *,
+                                        NSUInteger))selectBlock
+                settingItemId:(NSUInteger)settingItemId;
 @end
 
 NS_ASSUME_NONNULL_END
