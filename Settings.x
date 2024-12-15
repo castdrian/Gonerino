@@ -276,7 +276,6 @@
             
             UIDocumentPickerViewController *picker = [[UIDocumentPickerViewController alloc] 
                 initForExportingURLs:@[tempFileURL]];
-            objc_setAssociatedObject(picker, "gonerino_delegate", self, OBJC_ASSOCIATION_ASSIGN);
             picker.delegate = (id<UIDocumentPickerDelegate>)self;
             [settingsVC presentViewController:picker animated:YES completion:nil];
             return YES;
@@ -294,7 +293,6 @@
             
             UIDocumentPickerViewController *picker = [[UIDocumentPickerViewController alloc] 
                 initForOpeningContentTypes:@[[UTType typeWithIdentifier:@"com.apple.property-list"]]];
-            objc_setAssociatedObject(picker, "gonerino_delegate", self, OBJC_ASSOCIATION_ASSIGN);
             picker.delegate = (id<UIDocumentPickerDelegate>)self;
             [settingsVC presentViewController:picker animated:YES completion:nil];
             return YES;
@@ -370,9 +368,7 @@
 }
 
 %new
-- (void)documentPicker:(UIDocumentPickerViewController *)controller didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
-    if (objc_getAssociatedObject(controller, "gonerino_delegate") != self) return;
-    
+- (void)documentPicker:(UIDocumentPickerViewController *)controller didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {    
     if (urls.count == 0) return;
     
     YTSettingsViewController *settingsVC = [self valueForKey:@"_settingsViewControllerDelegate"];
@@ -441,9 +437,7 @@
 }
 
 %new
-- (void)documentPickerWasCancelled:(UIDocumentPickerViewController *)controller {
-    if (objc_getAssociatedObject(controller, "gonerino_delegate") != self) return;
-    
+- (void)documentPickerWasCancelled:(UIDocumentPickerViewController *)controller {    
     YTSettingsViewController *settingsVC = [self valueForKey:@"_settingsViewControllerDelegate"];
     NSString *message = isImportOperation ? @"Import cancelled" : @"Export cancelled";
     [[%c(YTToastResponderEvent) eventWithMessage:message firstResponder:settingsVC] send];
