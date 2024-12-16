@@ -1,5 +1,6 @@
 #import "ChannelManager.h"
 #import "VideoManager.h"
+#import "WordManager.h"
 
 #import <Foundation/Foundation.h>
 #import <UIKit/UIKit.h>

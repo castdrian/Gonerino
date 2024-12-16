@@ -80,6 +80,10 @@
     if ([node respondsToSelector:@selector(accessibilityLabel)]) {
         NSString *accessibilityLabel = [node accessibilityLabel];
         if (accessibilityLabel) {
+            if ([[WordManager sharedInstance] isWordBlocked:accessibilityLabel]) {
+                return YES;
+            }
+
             NSArray *components = [accessibilityLabel componentsSeparatedByString:@" - "];
             if (components.count >= 4) {
                 NSInteger goToChannelIndex = -1;
@@ -116,6 +120,11 @@
     if ([node isKindOfClass:NSClassFromString(@"ASTextNode")]) {
         NSAttributedString *attributedText = [(ASTextNode *)node attributedText];
         NSString *text                     = [attributedText string];
+        
+        if ([[WordManager sharedInstance] isWordBlocked:text]) {
+            return YES;
+        }
+        
         for (NSString *channelName in [[ChannelManager sharedInstance] blockedChannels]) {
             if ([text containsString:channelName]) {
                 return YES;

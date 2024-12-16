@@ -1,10 +1,14 @@
 #import "ChannelManager.h"
 #import "VideoManager.h"
+#import "WordManager.h"
+
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 #import <YouTubeHeader/YTAlertView.h>
 #import <YouTubeHeader/YTAppSettingsSectionItemActionController.h>
 #import <YouTubeHeader/YTHotConfig.h>
+#import <YouTubeHeader/YTIIcon.h>
 #import <YouTubeHeader/YTSearchableSettingsViewController.h>
+#import <YouTubeHeader/YTSettingsGroupData.h>
 #import <YouTubeHeader/YTSettingsPickerViewController.h>
 #import <YouTubeHeader/YTSettingsSectionItem.h>
 #import <YouTubeHeader/YTSettingsSectionItemManager.h>
@@ -18,7 +22,7 @@ NS_ASSUME_NONNULL_BEGIN
 #define SECTION_HEADER(s)                                                                                              \
     [sectionItems addObject:[objc_getClass("YTSettingsSectionItem")                                                    \
                                           itemWithTitle:@"\t"                                                          \
-                                       titleDescription:s                                                            \
+                                       titleDescription:s                                                              \
                                 accessibilityIdentifier:nil                                                            \
                                         detailTextBlock:nil                                                            \
                                             selectBlock:^BOOL(YTSettingsCell *cell, NSUInteger sectionItemIndex) {     \
