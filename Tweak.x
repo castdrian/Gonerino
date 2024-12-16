@@ -81,6 +81,7 @@
         NSString *accessibilityLabel = [node accessibilityLabel];
         if (accessibilityLabel) {
             if ([[WordManager sharedInstance] isWordBlocked:accessibilityLabel]) {
+                NSLog(@"[Gonerino] Removed video with blocked word in title: %@", accessibilityLabel);
                 return YES;
             }
 
@@ -97,7 +98,10 @@
                 if (goToChannelIndex > 1) {
                     NSArray *titleComponents = [components subarrayWithRange:NSMakeRange(0, goToChannelIndex - 1)];
                     NSString *videoTitle     = [titleComponents componentsJoinedByString:@" - "];
-                    return [[VideoManager sharedInstance] isVideoBlocked:videoTitle];
+                    if ([[VideoManager sharedInstance] isVideoBlocked:videoTitle]) {
+                        NSLog(@"[Gonerino] Removed blocked video: %@", videoTitle);
+                        return YES;
+                    }
                 }
             }
         }
@@ -122,11 +126,13 @@
         NSString *text                     = [attributedText string];
         
         if ([[WordManager sharedInstance] isWordBlocked:text]) {
+            NSLog(@"[Gonerino] Removed content with blocked word: %@", text);
             return YES;
         }
         
         for (NSString *channelName in [[ChannelManager sharedInstance] blockedChannels]) {
             if ([text containsString:channelName]) {
+                NSLog(@"[Gonerino] Removed content from blocked channel: %@", channelName);
                 return YES;
             }
         }
@@ -135,12 +141,14 @@
     if ([node respondsToSelector:@selector(channelName)]) {
         NSString *nodeChannelName = [node channelName];
         if ([[ChannelManager sharedInstance] isChannelBlocked:nodeChannelName]) {
+            NSLog(@"[Gonerino] Removed content from blocked channel: %@", nodeChannelName);
             return YES;
         }
     }
     if ([node respondsToSelector:@selector(ownerName)]) {
         NSString *nodeOwnerName = [node ownerName];
         if ([[ChannelManager sharedInstance] isChannelBlocked:nodeOwnerName]) {
+            NSLog(@"[Gonerino] Removed content from blocked channel: %@", nodeOwnerName);
             return YES;
         }
     }
@@ -160,11 +168,13 @@
 
         if ([[NSUserDefaults standardUserDefaults] boolForKey:@"GonerinoPeopleWatched"] &&
             [text isEqualToString:@"People also watched this video"]) {
+            NSLog(@"[Gonerino] Removed 'People also watched' section");
             return YES;
         }
 
         if ([[NSUserDefaults standardUserDefaults] boolForKey:@"GonerinoMightLike"] &&
             [text isEqualToString:@"You might also like this"]) {
+            NSLog(@"[Gonerino] Removed 'You might also like' section");
             return YES;
         }
     }
