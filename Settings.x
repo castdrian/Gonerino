@@ -223,7 +223,7 @@
 
                         [rows addObject:[%c(YTSettingsSectionItem)
                                                       itemWithTitle:@"\t"
-                                                   titleDescription:@"BLOCKED VIDEOS"
+                                                   titleDescription:@"Blocked videos"
                                             accessibilityIdentifier:nil
                                                     detailTextBlock:nil
                                                         selectBlock:^BOOL(YTSettingsCell *cell, NSUInteger arg1) {
@@ -305,11 +305,10 @@
                     }];
     [sectionItems addObject:manageVideos];
 
-    NSUInteger wordCount = [[WordManager sharedInstance] blockedWords].count;
+    NSUInteger wordCount               = [[WordManager sharedInstance] blockedWords].count;
     YTSettingsSectionItem *manageWords = [%c(YTSettingsSectionItem)
                   itemWithTitle:@"Manage Words"
-               titleDescription:[NSString stringWithFormat:@"%lu blocked word%@",
-                                                           (unsigned long)wordCount,
+               titleDescription:[NSString stringWithFormat:@"%lu blocked word%@", (unsigned long)wordCount,
                                                            wordCount == 1 ? @"" : @"s"]
         accessibilityIdentifier:nil
                 detailTextBlock:nil
@@ -323,22 +322,16 @@
                                            titleDescription:@"Block a new word or phrase"
                                     accessibilityIdentifier:nil
                                             detailTextBlock:nil
-                                                selectBlock:^BOOL(YTSettingsCell *cell,
-                                                                  NSUInteger arg1) {
-                                                    YTSettingsViewController *settingsVC = [self
-                                                        valueForKey:
-                                                            @"_settingsViewControllerDelegate"];
-                                                    UIAlertController *alertController =
-                                                        [UIAlertController
-                                                            alertControllerWithTitle:@"Add Word"
-                                                                             message:
-                                                                                 @"Enter a word or phrase to block"
-                                                                      preferredStyle:
-                                                                          UIAlertControllerStyleAlert];
+                                                selectBlock:^BOOL(YTSettingsCell *cell, NSUInteger arg1) {
+                                                    YTSettingsViewController *settingsVC =
+                                                        [self valueForKey:@"_settingsViewControllerDelegate"];
+                                                    UIAlertController *alertController = [UIAlertController
+                                                        alertControllerWithTitle:@"Add Word"
+                                                                         message:@"Enter a word or phrase to block"
+                                                                  preferredStyle:UIAlertControllerStyleAlert];
 
                                                     [alertController
-                                                        addTextFieldWithConfigurationHandler:^(
-                                                            UITextField *textField) {
+                                                        addTextFieldWithConfigurationHandler:^(UITextField *textField) {
                                                             textField.placeholder = @"Word or phrase";
                                                         }];
 
@@ -346,142 +339,107 @@
                                                         addAction:
                                                             [UIAlertAction
                                                                 actionWithTitle:@"Add"
-                                                                          style:
-                                                                              UIAlertActionStyleDefault
-                                                                        handler:^(
-                                                                            UIAlertAction *action) {
-                                                                            NSString *word =
-                                                                                alertController
-                                                                                    .textFields
-                                                                                    .firstObject
-                                                                                    .text;
+                                                                          style:UIAlertActionStyleDefault
+                                                                        handler:^(UIAlertAction *action) {
+                                                                            NSString *word = alertController.textFields
+                                                                                                 .firstObject.text;
                                                                             if (word.length > 0) {
-                                                                                [[WordManager
-                                                                                    sharedInstance]
-                                                                                    addBlockedWord:
-                                                                                        word];
-                                                                                [self
-                                                                                    reloadGonerinoSection];
+                                                                                [[WordManager sharedInstance]
+                                                                                    addBlockedWord:word];
+                                                                                [self reloadGonerinoSection];
 
-                                                                                UIImpactFeedbackGenerator
-                                                                                    *generator = [[UIImpactFeedbackGenerator
-                                                                                        alloc]
+                                                                                UIImpactFeedbackGenerator *generator =
+                                                                                    [[UIImpactFeedbackGenerator alloc]
                                                                                         initWithStyle:
                                                                                             UIImpactFeedbackStyleMedium];
                                                                                 [generator prepare];
-                                                                                [generator
-                                                                                    impactOccurred];
+                                                                                [generator impactOccurred];
 
                                                                                 [[%c(YTToastResponderEvent)
                                                                                     eventWithMessage:
-                                                                                        [NSString
-                                                                                            stringWithFormat:
-                                                                                                @"Added %@",
-                                                                                                word]
-                                                                                      firstResponder:
-                                                                                          settingsVC]
-                                                                                    send];
+                                                                                        [NSString stringWithFormat:
+                                                                                                      @"Added %@", word]
+                                                                                      firstResponder:settingsVC] send];
                                                                             }
                                                                         }]];
 
                                                     [alertController
-                                                        addAction:
-                                                            [UIAlertAction
-                                                                actionWithTitle:@"Cancel"
-                                                                          style:
-                                                                              UIAlertActionStyleCancel
-                                                                        handler:nil]];
+                                                        addAction:[UIAlertAction
+                                                                      actionWithTitle:@"Cancel"
+                                                                                style:UIAlertActionStyleCancel
+                                                                              handler:nil]];
 
-                                                    [settingsVC
-                                                        presentViewController:alertController
-                                                                     animated:YES
-                                                                   completion:nil];
+                                                    [settingsVC presentViewController:alertController
+                                                                             animated:YES
+                                                                           completion:nil];
                                                     return YES;
                                                 }]];
 
                         for (NSString *word in [[WordManager sharedInstance] blockedWords]) {
-                            [rows addObject:[%c(YTSettingsSectionItem)
+                            [rows
+                                addObject:
+                                    [%c(YTSettingsSectionItem)
                                                   itemWithTitle:word
                                                titleDescription:nil
                                         accessibilityIdentifier:nil
                                                 detailTextBlock:nil
-                                                    selectBlock:^BOOL(YTSettingsCell *cell,
-                                                                      NSUInteger arg1) {
-                                                        YTSettingsViewController *settingsVC = [self
-                                                            valueForKey:
-                                                                @"_settingsViewControllerDelegate"];
-                                                        UIAlertController *alertController =
-                                                            [UIAlertController
-                                                                alertControllerWithTitle:
-                                                                    @"Delete Word"
-                                                                             message:
-                                                                                 [NSString
-                                                                                     stringWithFormat:
-                                                                                         @"Are you sure you want to delete '%@'?",
-                                                                                         word]
-                                                                      preferredStyle:
-                                                                          UIAlertControllerStyleAlert];
+                                                    selectBlock:^BOOL(YTSettingsCell *cell, NSUInteger arg1) {
+                                                        YTSettingsViewController *settingsVC =
+                                                            [self valueForKey:@"_settingsViewControllerDelegate"];
+                                                        UIAlertController *alertController = [UIAlertController
+                                                            alertControllerWithTitle:@"Delete Word"
+                                                                             message:[NSString
+                                                                                         stringWithFormat:
+                                                                                             @"Are you sure you want "
+                                                                                             @"to delete '%@'?",
+                                                                                             word]
+                                                                      preferredStyle:UIAlertControllerStyleAlert];
 
                                                         [alertController
                                                             addAction:
                                                                 [UIAlertAction
                                                                     actionWithTitle:@"Delete"
-                                                                              style:
-                                                                                  UIAlertActionStyleDestructive
-                                                                            handler:^(
-                                                                                UIAlertAction *action) {
-                                                                                [[WordManager
-                                                                                    sharedInstance]
-                                                                                    removeBlockedWord:
-                                                                                        word];
-                                                                                [self
-                                                                                    reloadGonerinoSection];
+                                                                              style:UIAlertActionStyleDestructive
+                                                                            handler:^(UIAlertAction *action) {
+                                                                                [[WordManager sharedInstance]
+                                                                                    removeBlockedWord:word];
+                                                                                [self reloadGonerinoSection];
 
-                                                                                UIImpactFeedbackGenerator
-                                                                                    *generator = [[UIImpactFeedbackGenerator
-                                                                                        alloc]
+                                                                                UIImpactFeedbackGenerator *generator =
+                                                                                    [[UIImpactFeedbackGenerator alloc]
                                                                                         initWithStyle:
                                                                                             UIImpactFeedbackStyleMedium];
                                                                                 [generator prepare];
-                                                                                [generator
-                                                                                    impactOccurred];
+                                                                                [generator impactOccurred];
 
                                                                                 [[%c(YTToastResponderEvent)
                                                                                     eventWithMessage:
                                                                                         [NSString
                                                                                             stringWithFormat:
-                                                                                                @"Deleted %@",
-                                                                                                word]
-                                                                                      firstResponder:
-                                                                                          settingsVC]
-                                                                                    send];
+                                                                                                @"Deleted %@", word]
+                                                                                      firstResponder:settingsVC] send];
                                                                             }]];
 
                                                         [alertController
-                                                            addAction:
-                                                                [UIAlertAction
-                                                                    actionWithTitle:@"Cancel"
-                                                                              style:
-                                                                                  UIAlertActionStyleCancel
-                                                                            handler:nil]];
+                                                            addAction:[UIAlertAction
+                                                                          actionWithTitle:@"Cancel"
+                                                                                    style:UIAlertActionStyleCancel
+                                                                                  handler:nil]];
 
-                                                        [settingsVC
-                                                            presentViewController:alertController
-                                                                         animated:YES
-                                                                       completion:nil];
+                                                        [settingsVC presentViewController:alertController
+                                                                                 animated:YES
+                                                                               completion:nil];
                                                         return YES;
                                                     }]];
                         }
 
-                        YTSettingsViewController *settingsVC =
-                            [self valueForKey:@"_settingsViewControllerDelegate"];
-                        YTSettingsPickerViewController *picker =
-                            [[%c(YTSettingsPickerViewController) alloc]
-                                  initWithNavTitle:@"Manage Words"
-                                pickerSectionTitle:nil
-                                              rows:rows
-                                 selectedItemIndex:NSNotFound
-                                   parentResponder:[self parentResponder]];
+                        YTSettingsViewController *settingsVC   = [self valueForKey:@"_settingsViewControllerDelegate"];
+                        YTSettingsPickerViewController *picker = [[%c(YTSettingsPickerViewController) alloc]
+                              initWithNavTitle:@"Manage Words"
+                            pickerSectionTitle:nil
+                                          rows:rows
+                             selectedItemIndex:NSNotFound
+                               parentResponder:[self parentResponder]];
 
                         if ([settingsVC respondsToSelector:@selector(navigationController)]) {
                             UINavigationController *nav = settingsVC.navigationController;
@@ -523,18 +481,16 @@
         accessibilityIdentifier:nil
                 detailTextBlock:nil
                     selectBlock:^BOOL(YTSettingsCell *cell, NSUInteger arg1) {
-                        YTSettingsViewController *settingsVC =
-                            [self valueForKey:@"_settingsViewControllerDelegate"];
+                        YTSettingsViewController *settingsVC = [self valueForKey:@"_settingsViewControllerDelegate"];
 
                         NSMutableDictionary *settings = [NSMutableDictionary dictionary];
-                        settings[@"blockedChannels"] =
-                            [[ChannelManager sharedInstance] blockedChannels];
-                        settings[@"blockedVideos"] = [[VideoManager sharedInstance] blockedVideos];
-                        settings[@"blockedWords"] = [[WordManager sharedInstance] blockedWords];
-                        settings[@"blockPeopleWatched"] = @([[NSUserDefaults standardUserDefaults]
-                            boolForKey:@"GonerinoPeopleWatched"]);
-                        settings[@"blockMightLike"]     = @([[NSUserDefaults standardUserDefaults]
-                            boolForKey:@"GonerinoMightLike"]);
+                        settings[@"blockedChannels"]  = [[ChannelManager sharedInstance] blockedChannels];
+                        settings[@"blockedVideos"]    = [[VideoManager sharedInstance] blockedVideos];
+                        settings[@"blockedWords"]     = [[WordManager sharedInstance] blockedWords];
+                        settings[@"blockPeopleWatched"] =
+                            @([[NSUserDefaults standardUserDefaults] boolForKey:@"GonerinoPeopleWatched"]);
+                        settings[@"blockMightLike"] =
+                            @([[NSUserDefaults standardUserDefaults] boolForKey:@"GonerinoMightLike"]);
 
                         NSURL *tempFileURL =
                             [NSURL fileURLWithPath:[NSTemporaryDirectory()
@@ -716,11 +672,10 @@
         NSMutableDictionary *settings = [NSMutableDictionary dictionary];
         settings[@"blockedChannels"]  = [[ChannelManager sharedInstance] blockedChannels];
         settings[@"blockedVideos"]    = [[VideoManager sharedInstance] blockedVideos];
-        settings[@"blockedWords"] = [[WordManager sharedInstance] blockedWords];
+        settings[@"blockedWords"]     = [[WordManager sharedInstance] blockedWords];
         settings[@"blockPeopleWatched"] =
             @([[NSUserDefaults standardUserDefaults] boolForKey:@"GonerinoPeopleWatched"]);
-        settings[@"blockMightLike"] =
-            @([[NSUserDefaults standardUserDefaults] boolForKey:@"GonerinoMightLike"]);
+        settings[@"blockMightLike"] = @([[NSUserDefaults standardUserDefaults] boolForKey:@"GonerinoMightLike"]);
 
         [settings writeToURL:url atomically:YES];
         [[%c(YTToastResponderEvent) eventWithMessage:@"Settings exported successfully"
