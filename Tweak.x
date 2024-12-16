@@ -130,9 +130,15 @@
             return YES;
         }
         
-        if ([[ChannelManager sharedInstance] isChannelBlocked:text]) {
-            NSLog(@"[Gonerino] Removed content from blocked channel: %@", text);
-            return YES;
+        if ([text containsString:@" · "]) {
+            NSArray *components = [text componentsSeparatedByString:@" · "];
+            if (components.count >= 1) {
+                NSString *potentialChannelName = components[0];
+                if ([[ChannelManager sharedInstance] isChannelBlocked:potentialChannelName]) {
+                    NSLog(@"[Gonerino] Removed content from blocked channel: %@", potentialChannelName);
+                    return YES;
+                }
+            }
         }
     }
 
