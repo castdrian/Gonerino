@@ -123,18 +123,16 @@
 - (BOOL)nodeContainsBlockedChannelName:(id)node {
     if ([node isKindOfClass:NSClassFromString(@"ASTextNode")]) {
         NSAttributedString *attributedText = [(ASTextNode *)node attributedText];
-        NSString *text                     = [attributedText string];
+        NSString *text = [attributedText string];
         
         if ([[WordManager sharedInstance] isWordBlocked:text]) {
             NSLog(@"[Gonerino] Removed content with blocked word: %@", text);
             return YES;
         }
         
-        for (NSString *channelName in [[ChannelManager sharedInstance] blockedChannels]) {
-            if ([text containsString:channelName]) {
-                NSLog(@"[Gonerino] Removed content from blocked channel: %@", channelName);
-                return YES;
-            }
+        if ([[ChannelManager sharedInstance] isChannelBlocked:text]) {
+            NSLog(@"[Gonerino] Removed content from blocked channel: %@", text);
+            return YES;
         }
     }
 
