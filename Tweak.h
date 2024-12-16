@@ -66,8 +66,7 @@ NS_ASSUME_NONNULL_BEGIN
 @end
 
 @interface YTWatchController : NSObject
-@property(nonatomic, strong, readonly)
-    YTSingleVideoController *singleVideoController;
+@property(nonatomic, strong, readonly) YTSingleVideoController *singleVideoController;
 - (YTSingleVideoController *)valueForKey:(NSString *)key;
 @end
 
@@ -80,11 +79,9 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)addAction:(YTActionSheetAction *)action;
 - (void)dismiss;
 - (id)valueForKey:(NSString *)key;
-- (UIImage *)createBlockIconWithOriginalAction:
-    (nullable YTActionSheetAction *)originalAction;
+- (UIImage *)createBlockIconWithOriginalAction:(nullable YTActionSheetAction *)originalAction;
 - (UIViewController *)findViewControllerForView:(UIView *)view;
-- (void)extractChannelNameFromNode:(id)node
-                        completion:(void (^)(NSString *channelName))completion;
+- (void)extractChannelNameFromNode:(id)node completion:(void (^)(NSString *channelName))completion;
 - (nullable NSString *)extractVideoTitleFromNode:(id)node;
 @end
 
@@ -112,8 +109,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (UIViewController *)findViewControllerForView:(UIView *)view;
 @end
 @interface YTToastResponderEvent : NSObject
-+ (instancetype)eventWithMessage:(NSString *)message
-                  firstResponder:(UIViewController *)responder;
++ (instancetype)eventWithMessage:(NSString *)message firstResponder:(UIViewController *)responder;
 - (void)send;
 @end
 
@@ -122,8 +118,7 @@ NS_ASSUME_NONNULL_BEGIN
              titleDescription:(nullable NSString *)titleDescription
       accessibilityIdentifier:(nullable NSString *)accessibilityIdentifier
               detailTextBlock:(nullable NSString * (^)(void))detailTextBlock
-                  selectBlock:(BOOL (^)(YTSettingsCell *,
-                                        NSUInteger))selectBlock
+                  selectBlock:(BOOL (^)(YTSettingsCell *, NSUInteger))selectBlock
                 settingItemId:(NSUInteger)settingItemId;
 @end
 

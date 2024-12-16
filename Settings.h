@@ -15,17 +15,15 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
-#define SECTION_HEADER(s)                                                      \
-  [sectionItems addObject:[objc_getClass("YTSettingsSectionItem")              \
-                                        itemWithTitle:@"\t"                    \
-                                     titleDescription:[s uppercaseString]      \
-                              accessibilityIdentifier:nil                      \
-                                      detailTextBlock:nil                      \
-                                          selectBlock:^BOOL(                   \
-                                              YTSettingsCell *cell,            \
-                                              NSUInteger sectionItemIndex) {   \
-                                            return NO;                         \
-                                          }]]
+#define SECTION_HEADER(s)                                                                          \
+    [sectionItems                                                                                  \
+        addObject:[objc_getClass("YTSettingsSectionItem")                                          \
+                                itemWithTitle:@"\t"                                                \
+                             titleDescription:[s uppercaseString]                                  \
+                      accessibilityIdentifier:nil                                                  \
+                              detailTextBlock:nil                                                  \
+                                  selectBlock:^BOOL(YTSettingsCell *cell,                          \
+                                                    NSUInteger sectionItemIndex) { return NO; }]]
 
 static const NSInteger GonerinoSection = 2002;
 
@@ -34,8 +32,7 @@ static const NSInteger GonerinoSection = 2002;
 static BOOL isImportOperation = NO;
 
 @interface YTToastResponderEvent : NSObject
-+ (instancetype)eventWithMessage:(NSString *)message
-                  firstResponder:(id)responder;
++ (instancetype)eventWithMessage:(NSString *)message firstResponder:(id)responder;
 - (void)send;
 @end
 
@@ -43,8 +40,7 @@ static BOOL isImportOperation = NO;
 @end
 
 @interface YTSettingsViewController ()
-@property(nonatomic, strong, readonly, nullable)
-    YTNavigationController *navigationController;
+@property(nonatomic, strong, readonly, nullable) YTNavigationController *navigationController;
 @end
 
 @interface YTSettingsViewController (Gonerino)
@@ -57,8 +53,7 @@ static BOOL isImportOperation = NO;
 
 @interface YTSettingsSectionItemManager (Gonerino) <UIDocumentPickerDelegate>
 - (void)updateGonerinoSectionWithEntry:(nullable id)entry;
-- (void)updateChannelManagementSection:
-    (nonnull YTSettingsViewController *)viewController;
+- (void)updateChannelManagementSection:(nonnull YTSettingsViewController *)viewController;
 - (nullable UITableView *)findTableViewInView:(nonnull UIView *)view;
 - (void)reloadGonerinoSection;
 @end

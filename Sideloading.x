@@ -1,5 +1,5 @@
-#import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 #import <UIKit/UIKit.h>
+#import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 
 %group Sideloading
 
