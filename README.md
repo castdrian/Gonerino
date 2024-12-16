@@ -5,7 +5,9 @@ A YouTube tweak that allows you to block specific channels and automatically rem
 ## Features
 
 - Block channels directly from video context menu
-- Automatically removes blocked channels' videos from your feed
+- Block specific videos without blocking the entire channel
+- Block videos via keywords
+- Automatically removes blocked videos from the home and search feeds
 - Block "People also watched this video" and "You might also like this" suggestions
 
 ## Compatibility
