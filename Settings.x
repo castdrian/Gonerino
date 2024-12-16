@@ -35,7 +35,7 @@
     YTSettingsViewController *delegate = [self valueForKey:@"_settingsViewControllerDelegate"];
     NSMutableArray *sectionItems       = [NSMutableArray array];
 
-    SECTION_HEADER(@"GONERINO SETTINGS");
+    SECTION_HEADER(@"Gonerino Settings");
 
     NSUInteger channelCount               = [[ChannelManager sharedInstance] blockedChannels].count;
     YTSettingsSectionItem *manageChannels = [%c(YTSettingsSectionItem)
@@ -349,7 +349,7 @@
                   settingItemId:0];
     [sectionItems addObject:blockMightLike];
 
-    SECTION_HEADER(@"MANAGE SETTINGS");
+    SECTION_HEADER(@"Manage Settings");
 
     YTSettingsSectionItem *exportSettings = [%c(YTSettingsSectionItem)
                   itemWithTitle:@"Export Settings"
@@ -400,7 +400,7 @@
                     }];
     [sectionItems addObject:importSettings];
 
-    SECTION_HEADER(@"ABOUT");
+    SECTION_HEADER(@"About");
 
     [sectionItems
         addObject:[%c(YTSettingsSectionItem) itemWithTitle:@"GitHub"

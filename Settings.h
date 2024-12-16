@@ -18,7 +18,7 @@ NS_ASSUME_NONNULL_BEGIN
 #define SECTION_HEADER(s)                                                                                              \
     [sectionItems addObject:[objc_getClass("YTSettingsSectionItem")                                                    \
                                           itemWithTitle:@"\t"                                                          \
-                                       titleDescription:[s uppercaseString]                                            \
+                                       titleDescription:s                                                            \
                                 accessibilityIdentifier:nil                                                            \
                                         detailTextBlock:nil                                                            \
                                             selectBlock:^BOOL(YTSettingsCell *cell, NSUInteger sectionItemIndex) {     \
