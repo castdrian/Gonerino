@@ -17,6 +17,7 @@ A YouTube tweak that allows you to block specific channels and automatically rem
 | **Injection Methods** | ElleKit (palera1n) (Dopamine) | ✅ |
 | | TrollFools (TrollStore) | ✅ |
 | | Sideloaded IPA (MobileSubstrate) | ✅ |
+| | LiveContainer (TweakLoader) | ✅ |
 
 ## Contributors
 
