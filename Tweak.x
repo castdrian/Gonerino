@@ -4,8 +4,48 @@
 
 - (void)layoutSubviews {
     %orig;
-    dispatch_async(dispatch_get_main_queue(), ^{
-        [self removeOffendingCells];
+    
+    __weak typeof(self) weakSelf = self;
+    
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.1 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        __strong typeof(weakSelf) strongSelf = weakSelf;
+        if (!strongSelf) return;
+        
+        @try {
+            NSArray *visibleCells = [strongSelf visibleCells];
+            NSMutableArray *indexPathsToRemove = [NSMutableArray array];
+            
+            for (UICollectionViewCell *cell in visibleCells) {
+                if (![cell isKindOfClass:NSClassFromString(@"_ASCollectionViewCell")]) {
+                    continue;
+                }
+                
+                _ASCollectionViewCell *asCell = (_ASCollectionViewCell *)cell;
+                if (![asCell respondsToSelector:@selector(node)]) {
+                    continue;
+                }
+                
+                id node = [asCell node];
+                if (![node isKindOfClass:NSClassFromString(@"YTVideoWithContextNode")]) {
+                    continue;
+                }
+                
+                if ([strongSelf nodeContainsBlockedChannelName:node] || [strongSelf nodeContainsBlockedVideo:node]) {
+                    NSIndexPath *indexPath = [strongSelf indexPathForCell:cell];
+                    if (indexPath) {
+                        [indexPathsToRemove addObject:indexPath];
+                    }
+                }
+            }
+            
+            if (indexPathsToRemove.count > 0) {
+                [strongSelf performBatchUpdates:^{
+                    [strongSelf deleteItemsAtIndexPaths:indexPathsToRemove];
+                } completion:nil];
+            }
+        } @catch (NSException *exception) {
+            NSLog(@"[Gonerino] Exception in removeOffendingCells: %@", exception);
+        }
     });
 }
 
