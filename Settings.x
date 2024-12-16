@@ -40,8 +40,7 @@
     NSUInteger channelCount               = [[ChannelManager sharedInstance] blockedChannels].count;
     YTSettingsSectionItem *manageChannels = [%c(YTSettingsSectionItem)
                   itemWithTitle:@"Manage Channels"
-               titleDescription:[NSString stringWithFormat:@"%lu blocked channel%@",
-                                                           (unsigned long)channelCount,
+               titleDescription:[NSString stringWithFormat:@"%lu blocked channel%@", (unsigned long)channelCount,
                                                            channelCount == 1 ? @"" : @"s"]
         accessibilityIdentifier:nil
                 detailTextBlock:nil
@@ -55,24 +54,18 @@
                                            titleDescription:@"Block a new channel"
                                     accessibilityIdentifier:nil
                                             detailTextBlock:nil
-                                                selectBlock:^BOOL(YTSettingsCell *cell,
-                                                                  NSUInteger arg1) {
-                                                    YTSettingsViewController *settingsVC = [self
-                                                        valueForKey:
-                                                            @"_settingsViewControllerDelegate"];
-                                                    UIAlertController *alertController =
-                                                        [UIAlertController
-                                                            alertControllerWithTitle:@"Add Channel"
-                                                                             message:
-                                                                                 @"Enter the "
+                                                selectBlock:^BOOL(YTSettingsCell *cell, NSUInteger arg1) {
+                                                    YTSettingsViewController *settingsVC =
+                                                        [self valueForKey:@"_settingsViewControllerDelegate"];
+                                                    UIAlertController *alertController = [UIAlertController
+                                                        alertControllerWithTitle:@"Add Channel"
+                                                                         message:@"Enter the "
                                                                                  @"channel name to "
                                                                                  @"block"
-                                                                      preferredStyle:
-                                                                          UIAlertControllerStyleAlert];
+                                                                  preferredStyle:UIAlertControllerStyleAlert];
 
                                                     [alertController
-                                                        addTextFieldWithConfigurationHandler:^(
-                                                            UITextField *textField) {
+                                                        addTextFieldWithConfigurationHandler:^(UITextField *textField) {
                                                             textField.placeholder = @"Channel Name";
                                                         }];
 
@@ -80,76 +73,57 @@
                                                         addAction:
                                                             [UIAlertAction
                                                                 actionWithTitle:@"Add"
-                                                                          style:
-                                                                              UIAlertActionStyleDefault
-                                                                        handler:^(
-                                                                            UIAlertAction *action) {
+                                                                          style:UIAlertActionStyleDefault
+                                                                        handler:^(UIAlertAction *action) {
                                                                             NSString *channelName =
-                                                                                alertController
-                                                                                    .textFields
-                                                                                    .firstObject
+                                                                                alertController.textFields.firstObject
                                                                                     .text;
-                                                                            if (channelName.length >
-                                                                                0) {
-                                                                                [[ChannelManager
-                                                                                    sharedInstance]
-                                                                                    addBlockedChannel:
-                                                                                        channelName];
-                                                                                [self
-                                                                                    reloadGonerinoSection];
+                                                                            if (channelName.length > 0) {
+                                                                                [[ChannelManager sharedInstance]
+                                                                                    addBlockedChannel:channelName];
+                                                                                [self reloadGonerinoSection];
 
-                                                                                UIImpactFeedbackGenerator
-                                                                                    *generator = [[UIImpactFeedbackGenerator
-                                                                                        alloc]
+                                                                                UIImpactFeedbackGenerator *generator =
+                                                                                    [[UIImpactFeedbackGenerator alloc]
                                                                                         initWithStyle:
                                                                                             UIImpactFeedbackStyleMedium];
                                                                                 [generator prepare];
-                                                                                [generator
-                                                                                    impactOccurred];
+                                                                                [generator impactOccurred];
 
-                                                                                [[%c(
-                                                                                    YTToastResponderEvent)
+                                                                                [[%c(YTToastResponderEvent)
                                                                                     eventWithMessage:
-                                                                                        [NSString
-                                                                                            stringWithFormat:
-                                                                                                @"A"
-                                                                                                @"d"
-                                                                                                @"d"
-                                                                                                @"e"
-                                                                                                @"d"
-                                                                                                @" "
-                                                                                                @"%"
-                                                                                                @"@",
-                                                                                                channelName]
-                                                                                      firstResponder:
-                                                                                          settingsVC]
-                                                                                    send];
+                                                                                        [NSString stringWithFormat:
+                                                                                                      @"A"
+                                                                                                      @"d"
+                                                                                                      @"d"
+                                                                                                      @"e"
+                                                                                                      @"d"
+                                                                                                      @" "
+                                                                                                      @"%"
+                                                                                                      @"@",
+                                                                                                      channelName]
+                                                                                      firstResponder:settingsVC] send];
                                                                             }
                                                                         }]];
 
                                                     [alertController
-                                                        addAction:
-                                                            [UIAlertAction
-                                                                actionWithTitle:@"Cancel"
-                                                                          style:
-                                                                              UIAlertActionStyleCancel
-                                                                        handler:nil]];
+                                                        addAction:[UIAlertAction
+                                                                      actionWithTitle:@"Cancel"
+                                                                                style:UIAlertActionStyleCancel
+                                                                              handler:nil]];
 
-                                                    [settingsVC
-                                                        presentViewController:alertController
-                                                                     animated:YES
-                                                                   completion:nil];
+                                                    [settingsVC presentViewController:alertController
+                                                                             animated:YES
+                                                                           completion:nil];
                                                     return YES;
                                                 }]];
 
-                        NSArray *blockedChannels =
-                            [[ChannelManager sharedInstance] blockedChannels];
+                        NSArray *blockedChannels = [[ChannelManager sharedInstance] blockedChannels];
                         if (blockedChannels.count == 0) {
                             YTSettingsViewController *settingsVC =
                                 [self valueForKey:@"_settingsViewControllerDelegate"];
-                            [[%c(YTToastResponderEvent)
-                                eventWithMessage:@"No blocked channels"
-                                  firstResponder:settingsVC] send];
+                            [[%c(YTToastResponderEvent) eventWithMessage:@"No blocked channels"
+                                                                     firstResponder:settingsVC] send];
                             return YES;
                         }
 
@@ -158,8 +132,7 @@
                                                    titleDescription:@"BLOCKED CHANNELS"
                                             accessibilityIdentifier:nil
                                                     detailTextBlock:nil
-                                                        selectBlock:^BOOL(YTSettingsCell *cell,
-                                                                          NSUInteger arg1) {
+                                                        selectBlock:^BOOL(YTSettingsCell *cell, NSUInteger arg1) {
                                                             return NO;
                                                         }]];
 
@@ -171,97 +144,75 @@
                                                titleDescription:nil
                                         accessibilityIdentifier:nil
                                                 detailTextBlock:nil
-                                                    selectBlock:^BOOL(YTSettingsCell *cell,
-                                                                      NSUInteger arg1) {
-                                                        YTSettingsViewController *settingsVC = [self
-                                                            valueForKey:
-                                                                @"_settingsViewControllerDelegate"];
+                                                    selectBlock:^BOOL(YTSettingsCell *cell, NSUInteger arg1) {
+                                                        YTSettingsViewController *settingsVC =
+                                                            [self valueForKey:@"_settingsViewControllerDelegate"];
                                                         UIAlertController *alertController = [UIAlertController
-                                                            alertControllerWithTitle:
-                                                                @"Delete Channel"
-                                                                             message:
-                                                                                 [NSString
-                                                                                     stringWithFormat:
-                                                                                         @"Are you "
-                                                                                         @"sure "
-                                                                                         @"you "
-                                                                                         @"want to "
-                                                                                         @"delete "
-                                                                                         @"'%@'?",
-                                                                                         channelName]
-                                                                      preferredStyle:
-                                                                          UIAlertControllerStyleAlert];
+                                                            alertControllerWithTitle:@"Delete Channel"
+                                                                             message:[NSString
+                                                                                         stringWithFormat:@"Are you "
+                                                                                                          @"sure "
+                                                                                                          @"you "
+                                                                                                          @"want to "
+                                                                                                          @"delete "
+                                                                                                          @"'%@'?",
+                                                                                                          channelName]
+                                                                      preferredStyle:UIAlertControllerStyleAlert];
 
                                                         [alertController
                                                             addAction:
                                                                 [UIAlertAction
                                                                     actionWithTitle:@"Delete"
-                                                                              style:
-                                                                                  UIAlertActionStyleDestructive
-                                                                            handler:^(UIAlertAction
-                                                                                          *action) {
-                                                                                [[ChannelManager
-                                                                                    sharedInstance]
-                                                                                    removeBlockedChannel:
-                                                                                        channelName];
-                                                                                [self
-                                                                                    reloadGonerinoSection];
+                                                                              style:UIAlertActionStyleDestructive
+                                                                            handler:^(UIAlertAction *action) {
+                                                                                [[ChannelManager sharedInstance]
+                                                                                    removeBlockedChannel:channelName];
+                                                                                [self reloadGonerinoSection];
 
-                                                                                UIImpactFeedbackGenerator
-                                                                                    *generator = [[UIImpactFeedbackGenerator
-                                                                                        alloc]
+                                                                                UIImpactFeedbackGenerator *generator =
+                                                                                    [[UIImpactFeedbackGenerator alloc]
                                                                                         initWithStyle:
                                                                                             UIImpactFeedbackStyleMedium];
                                                                                 [generator prepare];
-                                                                                [generator
-                                                                                    impactOccurred];
+                                                                                [generator impactOccurred];
 
-                                                                                [[%c(
-                                                                                    YTToastResponderEvent)
+                                                                                [[%c(YTToastResponderEvent)
                                                                                     eventWithMessage:
-                                                                                        [NSString
-                                                                                            stringWithFormat:
-                                                                                                @"D"
-                                                                                                @"e"
-                                                                                                @"l"
-                                                                                                @"e"
-                                                                                                @"t"
-                                                                                                @"e"
-                                                                                                @"d"
-                                                                                                @" "
-                                                                                                @"%"
-                                                                                                @"@",
-                                                                                                channelName]
-                                                                                      firstResponder:
-                                                                                          settingsVC]
-                                                                                    send];
+                                                                                        [NSString stringWithFormat:
+                                                                                                      @"D"
+                                                                                                      @"e"
+                                                                                                      @"l"
+                                                                                                      @"e"
+                                                                                                      @"t"
+                                                                                                      @"e"
+                                                                                                      @"d"
+                                                                                                      @" "
+                                                                                                      @"%"
+                                                                                                      @"@",
+                                                                                                      channelName]
+                                                                                      firstResponder:settingsVC] send];
                                                                             }]];
 
                                                         [alertController
-                                                            addAction:
-                                                                [UIAlertAction
-                                                                    actionWithTitle:@"Cancel"
-                                                                              style:
-                                                                                  UIAlertActionStyleCancel
-                                                                            handler:nil]];
+                                                            addAction:[UIAlertAction
+                                                                          actionWithTitle:@"Cancel"
+                                                                                    style:UIAlertActionStyleCancel
+                                                                                  handler:nil]];
 
-                                                        [settingsVC
-                                                            presentViewController:alertController
-                                                                         animated:YES
-                                                                       completion:nil];
+                                                        [settingsVC presentViewController:alertController
+                                                                                 animated:YES
+                                                                               completion:nil];
                                                         return YES;
                                                     }]];
                         }
 
-                        YTSettingsViewController *settingsVC =
-                            [self valueForKey:@"_settingsViewControllerDelegate"];
-                        YTSettingsPickerViewController *picker =
-                            [[%c(YTSettingsPickerViewController) alloc]
-                                  initWithNavTitle:@"Manage Channels"
-                                pickerSectionTitle:nil
-                                              rows:rows
-                                 selectedItemIndex:NSNotFound
-                                   parentResponder:[self parentResponder]];
+                        YTSettingsViewController *settingsVC   = [self valueForKey:@"_settingsViewControllerDelegate"];
+                        YTSettingsPickerViewController *picker = [[%c(YTSettingsPickerViewController) alloc]
+                              initWithNavTitle:@"Manage Channels"
+                            pickerSectionTitle:nil
+                                          rows:rows
+                             selectedItemIndex:NSNotFound
+                               parentResponder:[self parentResponder]];
 
                         if ([settingsVC respondsToSelector:@selector(navigationController)]) {
                             UINavigationController *nav = settingsVC.navigationController;
@@ -271,170 +222,116 @@
                     }];
     [sectionItems addObject:manageChannels];
 
-    NSUInteger videoCount = [[VideoManager sharedInstance] blockedVideos].count;
-    YTSettingsSectionItem *manageVideos =
-        [%c(YTSettingsSectionItem) itemWithTitle:@"Manage Videos"
-                                           titleDescription:
-                                               [NSString
-                                                   stringWithFormat:@"%lu blocked video%@",
-                                                                    (unsigned long)videoCount,
-                                                                    videoCount == 1 ? @"" : @"s"]
-                                    accessibilityIdentifier:nil
-                                            detailTextBlock:nil
-                                                selectBlock:^BOOL(YTSettingsCell *cell,
-                                                                  NSUInteger arg1) {
-                                                    NSArray *blockedVideos =
-                                                        [[VideoManager sharedInstance]
-                                                            blockedVideos];
-                                                    if (blockedVideos.count == 0) {
-                                                        YTSettingsViewController *settingsVC = [self
-                                                            valueForKey:
-                                                                @"_settingsViewControllerDelegate"];
-                                                        [[%c(YTToastResponderEvent)
-                                                            eventWithMessage:@"No blocked videos"
-                                                              firstResponder:settingsVC] send];
+    NSUInteger videoCount               = [[VideoManager sharedInstance] blockedVideos].count;
+    YTSettingsSectionItem *manageVideos = [%c(YTSettingsSectionItem)
+                  itemWithTitle:@"Manage Videos"
+               titleDescription:[NSString stringWithFormat:@"%lu blocked video%@", (unsigned long)videoCount,
+                                                           videoCount == 1 ? @"" : @"s"]
+        accessibilityIdentifier:nil
+                detailTextBlock:nil
+                    selectBlock:^BOOL(YTSettingsCell *cell, NSUInteger arg1) {
+                        NSArray *blockedVideos = [[VideoManager sharedInstance] blockedVideos];
+                        if (blockedVideos.count == 0) {
+                            YTSettingsViewController *settingsVC =
+                                [self valueForKey:@"_settingsViewControllerDelegate"];
+                            [[%c(YTToastResponderEvent) eventWithMessage:@"No blocked videos"
+                                                                     firstResponder:settingsVC] send];
+                            return YES;
+                        }
+
+                        NSMutableArray *rows = [NSMutableArray array];
+
+                        [rows addObject:[%c(YTSettingsSectionItem)
+                                                      itemWithTitle:@"\t"
+                                                   titleDescription:@"BLOCKED VIDEOS"
+                                            accessibilityIdentifier:nil
+                                                    detailTextBlock:nil
+                                                        selectBlock:^BOOL(YTSettingsCell *cell, NSUInteger arg1) {
+                                                            return NO;
+                                                        }]];
+
+                        for (NSString *videoTitle in blockedVideos) {
+                            [rows
+                                addObject:
+                                    [%c(YTSettingsSectionItem)
+                                                  itemWithTitle:@""
+                                               titleDescription:videoTitle
+                                        accessibilityIdentifier:nil
+                                                detailTextBlock:nil
+                                                    selectBlock:^BOOL(YTSettingsCell *cell,
+                                                                      NSUInteger sectionItemIndex) {
+                                                        YTSettingsViewController *settingsVC =
+                                                            [self valueForKey:@"_settingsViewControllerDelegate"];
+                                                        UIAlertController *alertController = [UIAlertController
+                                                            alertControllerWithTitle:@"Delete Video"
+                                                                             message:[NSString
+                                                                                         stringWithFormat:
+                                                                                             @"Are you sure you want "
+                                                                                             @"to delete '%@'?",
+                                                                                             videoTitle]
+                                                                      preferredStyle:UIAlertControllerStyleAlert];
+
+                                                        [alertController
+                                                            addAction:
+                                                                [UIAlertAction
+                                                                    actionWithTitle:@"Delete"
+                                                                              style:UIAlertActionStyleDestructive
+                                                                            handler:^(UIAlertAction *action) {
+                                                                                [[VideoManager sharedInstance]
+                                                                                    removeBlockedVideo:videoTitle];
+                                                                                [self reloadGonerinoSection];
+
+                                                                                UIImpactFeedbackGenerator *generator =
+                                                                                    [[UIImpactFeedbackGenerator alloc]
+                                                                                        initWithStyle:
+                                                                                            UIImpactFeedbackStyleMedium];
+                                                                                [generator prepare];
+                                                                                [generator impactOccurred];
+
+                                                                                [[%c(YTToastResponderEvent)
+                                                                                    eventWithMessage:
+                                                                                        [NSString stringWithFormat:
+                                                                                                      @"Deleted %@",
+                                                                                                      videoTitle]
+                                                                                      firstResponder:settingsVC] send];
+                                                                            }]];
+
+                                                        [alertController
+                                                            addAction:[UIAlertAction
+                                                                          actionWithTitle:@"Cancel"
+                                                                                    style:UIAlertActionStyleCancel
+                                                                                  handler:nil]];
+
+                                                        [settingsVC presentViewController:alertController
+                                                                                 animated:YES
+                                                                               completion:nil];
                                                         return YES;
-                                                    }
+                                                    }]];
+                        }
 
-                                                    NSMutableArray *rows = [NSMutableArray array];
+                        YTSettingsViewController *settingsVC   = [self valueForKey:@"_settingsViewControllerDelegate"];
+                        YTSettingsPickerViewController *picker = [[%c(YTSettingsPickerViewController) alloc]
+                              initWithNavTitle:@"Manage Videos"
+                            pickerSectionTitle:nil
+                                          rows:rows
+                             selectedItemIndex:NSNotFound
+                               parentResponder:[self parentResponder]];
 
-                                                    [rows
-                                                        addObject:[%c(
-                                                                      YTSettingsSectionItem)
-                                                                                itemWithTitle:@"\t"
-                                                                             titleDescription:
-                                                                                 @"BLOCKED VIDEOS"
-                                                                      accessibilityIdentifier:nil
-                                                                              detailTextBlock:nil
-                                                                                  selectBlock:^BOOL(
-                                                                                      YTSettingsCell
-                                                                                          *cell,
-                                                                                      NSUInteger
-                                                                                          arg1) {
-                                                                                      return NO;
-                                                                                  }]];
-
-                                                    for (NSString *videoTitle in blockedVideos) {
-                                                        [rows addObject:[%c(YTSettingsSectionItem) itemWithTitle:
-                                                                                                                  @""
-                                                                                                           titleDescription:
-                                                                                                               videoTitle
-                                                                                                    accessibilityIdentifier:
-                                                                                                        nil
-                                                                                                            detailTextBlock:
-                                                                                                                nil
-                                                                                                                selectBlock:
-                                                                                                                    ^BOOL(
-                                                                                                                        YTSettingsCell *cell, NSUInteger
-                                                                                                                                                  sectionItemIndex) {
-                                                                                                                        YTSettingsViewController
-                                                                                                                            *settingsVC = [self
-                                                                                                                                valueForKey:
-                                                                                                                                    @"_settingsViewControllerDelegate"];
-                                                                                                                        UIAlertController *alertController = [UIAlertController
-                                                                                                                            alertControllerWithTitle:
-                                                                                                                                @"Delete Video"
-                                                                                                                                             message:
-                                                                                                                                                 [NSString
-                                                                                                                                                     stringWithFormat:
-                                                                                                                                                         @"Are you sure you want to delete '%@'?",
-                                                                                                                                                         videoTitle]
-                                                                                                                                      preferredStyle:
-                                                                                                                                          UIAlertControllerStyleAlert];
-
-                                                                                                                        [alertController
-                                                                                                                            addAction:
-                                                                                                                                [UIAlertAction
-                                                                                                                                    actionWithTitle:
-                                                                                                                                        @"Delete"
-                                                                                                                                              style:
-                                                                                                                                                  UIAlertActionStyleDestructive
-                                                                                                                                            handler:^(
-                                                                                                                                                UIAlertAction
-                                                                                                                                                    *action) {
-                                                                                                                                                [[VideoManager
-                                                                                                                                                    sharedInstance]
-                                                                                                                                                    removeBlockedVideo:
-                                                                                                                                                        videoTitle];
-                                                                                                                                                [self
-                                                                                                                                                    reloadGonerinoSection];
-
-                                                                                                                                                UIImpactFeedbackGenerator
-                                                                                                                                                    *generator = [[UIImpactFeedbackGenerator
-                                                                                                                                                        alloc]
-                                                                                                                                                        initWithStyle:
-                                                                                                                                                            UIImpactFeedbackStyleMedium];
-                                                                                                                                                [generator
-                                                                                                                                                    prepare];
-                                                                                                                                                [generator
-                                                                                                                                                    impactOccurred];
-
-                                                                                                                                                [[%c(
-                                                                                                                                                    YTToastResponderEvent)
-                                                                                                                                                    eventWithMessage:
-                                                                                                                                                        [NSString
-                                                                                                                                                            stringWithFormat:
-                                                                                                                                                                @"Deleted %@",
-                                                                                                                                                                videoTitle]
-                                                                                                                                                      firstResponder:
-                                                                                                                                                          settingsVC]
-                                                                                                                                                    send];
-                                                                                                                                            }]];
-
-                                                                                                                        [alertController
-                                                                                                                            addAction:
-                                                                                                                                [UIAlertAction
-                                                                                                                                    actionWithTitle:
-                                                                                                                                        @"Cancel"
-                                                                                                                                              style:
-                                                                                                                                                  UIAlertActionStyleCancel
-                                                                                                                                            handler:
-                                                                                                                                                nil]];
-
-                                                                                                                        [settingsVC
-                                                                                                                            presentViewController:
-                                                                                                                                alertController
-                                                                                                                                         animated:
-                                                                                                                                             YES
-                                                                                                                                       completion:
-                                                                                                                                           nil];
-                                                                                                                        return YES;
-                                                                                                                    }]];
-                                                    }
-
-                                                    YTSettingsViewController *settingsVC = [self
-                                                        valueForKey:
-                                                            @"_settingsViewControllerDelegate"];
-                                                    YTSettingsPickerViewController *picker =
-                                                        [[%c(
-                                                            YTSettingsPickerViewController) alloc]
-                                                              initWithNavTitle:@"Manage Videos"
-                                                            pickerSectionTitle:nil
-                                                                          rows:rows
-                                                             selectedItemIndex:NSNotFound
-                                                               parentResponder:
-                                                                   [self parentResponder]];
-
-                                                    if ([settingsVC respondsToSelector:@selector
-                                                                    (navigationController)]) {
-                                                        UINavigationController *nav =
-                                                            settingsVC.navigationController;
-                                                        [nav pushViewController:picker
-                                                                       animated:YES];
-                                                    }
-                                                    return YES;
-                                                }];
+                        if ([settingsVC respondsToSelector:@selector(navigationController)]) {
+                            UINavigationController *nav = settingsVC.navigationController;
+                            [nav pushViewController:picker animated:YES];
+                        }
+                        return YES;
+                    }];
     [sectionItems addObject:manageVideos];
 
     YTSettingsSectionItem *blockPeopleWatched = [%c(YTSettingsSectionItem)
             switchItemWithTitle:@"Block 'People also watched this video'"
                titleDescription:@"Remove 'People also watched this video' suggestions"
         accessibilityIdentifier:nil
-                       switchOn:[[NSUserDefaults standardUserDefaults]
-                                    boolForKey:@"GonerinoPeopleWatched"]
+                       switchOn:[[NSUserDefaults standardUserDefaults] boolForKey:@"GonerinoPeopleWatched"]
                     switchBlock:^BOOL(YTSettingsCell *cell, BOOL enabled) {
-                        [[NSUserDefaults standardUserDefaults] setBool:enabled
-                                                                forKey:@"GonerinoPeopleWatched"];
+                        [[NSUserDefaults standardUserDefaults] setBool:enabled forKey:@"GonerinoPeopleWatched"];
                         return YES;
                     }
                   settingItemId:0];
@@ -444,11 +341,9 @@
             switchItemWithTitle:@"Block 'You might also like this'"
                titleDescription:@"Remove 'You might also like this' suggestions"
         accessibilityIdentifier:nil
-                       switchOn:[[NSUserDefaults standardUserDefaults]
-                                    boolForKey:@"GonerinoMightLike"]
+                       switchOn:[[NSUserDefaults standardUserDefaults] boolForKey:@"GonerinoMightLike"]
                     switchBlock:^BOOL(YTSettingsCell *cell, BOOL enabled) {
-                        [[NSUserDefaults standardUserDefaults] setBool:enabled
-                                                                forKey:@"GonerinoMightLike"];
+                        [[NSUserDefaults standardUserDefaults] setBool:enabled forKey:@"GonerinoMightLike"];
                         return YES;
                     }
                   settingItemId:0];
@@ -462,29 +357,25 @@
         accessibilityIdentifier:nil
                 detailTextBlock:nil
                     selectBlock:^BOOL(YTSettingsCell *cell, NSUInteger arg1) {
-                        YTSettingsViewController *settingsVC =
-                            [self valueForKey:@"_settingsViewControllerDelegate"];
+                        YTSettingsViewController *settingsVC = [self valueForKey:@"_settingsViewControllerDelegate"];
 
                         NSMutableDictionary *settings = [NSMutableDictionary dictionary];
-                        settings[@"blockedChannels"] =
-                            [[ChannelManager sharedInstance] blockedChannels];
-                        settings[@"blockedVideos"] = [[VideoManager sharedInstance] blockedVideos];
-                        settings[@"blockPeopleWatched"] = @([[NSUserDefaults standardUserDefaults]
-                            boolForKey:@"GonerinoPeopleWatched"]);
-                        settings[@"blockMightLike"]     = @([[NSUserDefaults standardUserDefaults]
-                            boolForKey:@"GonerinoMightLike"]);
+                        settings[@"blockedChannels"]  = [[ChannelManager sharedInstance] blockedChannels];
+                        settings[@"blockedVideos"]    = [[VideoManager sharedInstance] blockedVideos];
+                        settings[@"blockPeopleWatched"] =
+                            @([[NSUserDefaults standardUserDefaults] boolForKey:@"GonerinoPeopleWatched"]);
+                        settings[@"blockMightLike"] =
+                            @([[NSUserDefaults standardUserDefaults] boolForKey:@"GonerinoMightLike"]);
 
-                        NSURL *tempFileURL = [NSURL
-                            fileURLWithPath:
-                                [NSTemporaryDirectory()
-                                    stringByAppendingPathComponent:@"gonerino_settings.plist"]];
+                        NSURL *tempFileURL =
+                            [NSURL fileURLWithPath:[NSTemporaryDirectory()
+                                                       stringByAppendingPathComponent:@"gonerino_settings.plist"]];
                         [settings writeToURL:tempFileURL atomically:YES];
 
                         isImportOperation = NO;
 
                         UIDocumentPickerViewController *picker =
-                            [[UIDocumentPickerViewController alloc]
-                                initForExportingURLs:@[ tempFileURL ]];
+                            [[UIDocumentPickerViewController alloc] initForExportingURLs:@[tempFileURL]];
                         picker.delegate = (id<UIDocumentPickerDelegate>)self;
                         [settingsVC presentViewController:picker animated:YES completion:nil];
                         return YES;
@@ -497,16 +388,13 @@
         accessibilityIdentifier:nil
                 detailTextBlock:nil
                     selectBlock:^BOOL(YTSettingsCell *cell, NSUInteger arg1) {
-                        YTSettingsViewController *settingsVC =
-                            [self valueForKey:@"_settingsViewControllerDelegate"];
+                        YTSettingsViewController *settingsVC = [self valueForKey:@"_settingsViewControllerDelegate"];
 
                         isImportOperation = YES;
 
-                        UIDocumentPickerViewController *picker =
-                            [[UIDocumentPickerViewController alloc] initForOpeningContentTypes:@[
-                                [UTType typeWithIdentifier:@"com.apple.property-list"]
-                            ]];
-                        picker.delegate = (id<UIDocumentPickerDelegate>)self;
+                        UIDocumentPickerViewController *picker = [[UIDocumentPickerViewController alloc]
+                            initForOpeningContentTypes:@[[UTType typeWithIdentifier:@"com.apple.property-list"]]];
+                        picker.delegate                        = (id<UIDocumentPickerDelegate>)self;
                         [settingsVC presentViewController:picker animated:YES completion:nil];
                         return YES;
                     }];
@@ -515,33 +403,28 @@
     SECTION_HEADER(@"ABOUT");
 
     [sectionItems
-        addObject:[%c(YTSettingsSectionItem)
-                                itemWithTitle:@"GitHub"
-                             titleDescription:@"View source code and report issues"
-                      accessibilityIdentifier:nil
-                              detailTextBlock:nil
-                                  selectBlock:^BOOL(YTSettingsCell *cell, NSUInteger arg1) {
-                                      return [%c(YTUIUtils)
-                                          openURL:[NSURL URLWithString:@"https://github.com/"
-                                                                       @"castdrian/Gonerino"]];
-                                  }]];
+        addObject:[%c(YTSettingsSectionItem) itemWithTitle:@"GitHub"
+                                                     titleDescription:@"View source code and report issues"
+                                              accessibilityIdentifier:nil
+                                                      detailTextBlock:nil
+                                                          selectBlock:^BOOL(YTSettingsCell *cell, NSUInteger arg1) {
+                                                              return [%c(YTUIUtils)
+                                                                  openURL:[NSURL URLWithString:@"https://github.com/"
+                                                                                               @"castdrian/Gonerino"]];
+                                                          }]];
 
     [sectionItems
         addObject:[%c(YTSettingsSectionItem) itemWithTitle:@"Version"
                       titleDescription:nil
                       accessibilityIdentifier:nil
-                      detailTextBlock:^NSString *() {
-                          return [NSString stringWithFormat:@"v%@", TWEAK_VERSION];
-                      }
+                      detailTextBlock:^NSString *() { return [NSString stringWithFormat:@"v%@", TWEAK_VERSION]; }
                       selectBlock:^BOOL(YTSettingsCell *cell, NSUInteger arg1) {
                           return [%c(YTUIUtils)
-                              openURL:[NSURL
-                                          URLWithString:
-                                              @"https://github.com/castdrian/Gonerino/releases"]];
+                              openURL:[NSURL URLWithString:@"https://github.com/castdrian/Gonerino/releases"]];
                       }]];
 
-    if ([delegate respondsToSelector:@selector
-                  (setSectionItems:forCategory:title:icon:titleDescription:headerHidden:)]) {
+    if ([delegate respondsToSelector:@selector(setSectionItems:
+                                                   forCategory:title:icon:titleDescription:headerHidden:)]) {
         YTIIcon *icon = [%c(YTIIcon) new];
         icon.iconType = YT_FILTER;
         [delegate setSectionItems:sectionItems
@@ -591,8 +474,7 @@
             if (tableView) {
                 [tableView beginUpdates];
                 NSIndexSet *sectionSet = [NSIndexSet indexSetWithIndex:GonerinoSection];
-                [tableView reloadSections:sectionSet
-                         withRowAnimation:UITableViewRowAnimationAutomatic];
+                [tableView reloadSections:sectionSet withRowAnimation:UITableViewRowAnimationAutomatic];
                 [tableView endUpdates];
             }
         }
@@ -600,8 +482,7 @@
 }
 
 %new
-- (void)documentPicker:(UIDocumentPickerViewController *)controller
-    didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
+- (void)documentPicker:(UIDocumentPickerViewController *)controller didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
     if (urls.count == 0)
         return;
 
@@ -622,11 +503,10 @@
             return;
         }
 
-        NSDictionary *settings =
-            [NSPropertyListSerialization propertyListWithData:data
-                                                      options:NSPropertyListImmutable
-                                                       format:NULL
-                                                        error:&error];
+        NSDictionary *settings = [NSPropertyListSerialization propertyListWithData:data
+                                                                           options:NSPropertyListImmutable
+                                                                            format:NULL
+                                                                             error:&error];
 
         if (!settings || error) {
             [[%c(YTToastResponderEvent) eventWithMessage:@"Invalid settings file format"
@@ -636,8 +516,7 @@
 
         NSArray *channels = settings[@"blockedChannels"];
         if (channels) {
-            [[ChannelManager sharedInstance]
-                setBlockedChannels:[NSMutableArray arrayWithArray:channels]];
+            [[ChannelManager sharedInstance] setBlockedChannels:[NSMutableArray arrayWithArray:channels]];
         }
 
         NSArray *videos = settings[@"blockedVideos"];
@@ -647,14 +526,12 @@
 
         NSNumber *peopleWatched = settings[@"blockPeopleWatched"];
         if (peopleWatched) {
-            [[NSUserDefaults standardUserDefaults] setBool:[peopleWatched boolValue]
-                                                    forKey:@"GonerinoPeopleWatched"];
+            [[NSUserDefaults standardUserDefaults] setBool:[peopleWatched boolValue] forKey:@"GonerinoPeopleWatched"];
         }
 
         NSNumber *mightLike = settings[@"blockMightLike"];
         if (mightLike) {
-            [[NSUserDefaults standardUserDefaults] setBool:[mightLike boolValue]
-                                                    forKey:@"GonerinoMightLike"];
+            [[NSUserDefaults standardUserDefaults] setBool:[mightLike boolValue] forKey:@"GonerinoMightLike"];
         }
 
         [[NSUserDefaults standardUserDefaults] synchronize];
@@ -667,8 +544,7 @@
         settings[@"blockedVideos"]    = [[VideoManager sharedInstance] blockedVideos];
         settings[@"blockPeopleWatched"] =
             @([[NSUserDefaults standardUserDefaults] boolForKey:@"GonerinoPeopleWatched"]);
-        settings[@"blockMightLike"] =
-            @([[NSUserDefaults standardUserDefaults] boolForKey:@"GonerinoMightLike"]);
+        settings[@"blockMightLike"] = @([[NSUserDefaults standardUserDefaults] boolForKey:@"GonerinoMightLike"]);
 
         [settings writeToURL:url atomically:YES];
         [[%c(YTToastResponderEvent) eventWithMessage:@"Settings exported successfully"
@@ -679,9 +555,8 @@
 %new
 - (void)documentPickerWasCancelled:(UIDocumentPickerViewController *)controller {
     YTSettingsViewController *settingsVC = [self valueForKey:@"_settingsViewControllerDelegate"];
-    NSString *message = isImportOperation ? @"Import cancelled" : @"Export cancelled";
-    [[%c(YTToastResponderEvent) eventWithMessage:message
-                                             firstResponder:settingsVC] send];
+    NSString *message                    = isImportOperation ? @"Import cancelled" : @"Export cancelled";
+    [[%c(YTToastResponderEvent) eventWithMessage:message firstResponder:settingsVC] send];
 }
 
 %end
@@ -691,8 +566,7 @@
 - (void)loadWithModel:(id)model {
     %orig;
     if ([self respondsToSelector:@selector(updateSectionForCategory:withEntry:)]) {
-        [(YTSettingsSectionItemManager *)[self valueForKey:@"_sectionItemManager"]
-            updateGonerinoSectionWithEntry:nil];
+        [(YTSettingsSectionItemManager *)[self valueForKey:@"_sectionItemManager"] updateGonerinoSectionWithEntry:nil];
     }
 }
 

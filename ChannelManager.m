@@ -16,9 +16,9 @@
 - (instancetype)init {
     self = [super init];
     if (self) {
-        _blockedChannelSet = [[[NSUserDefaults standardUserDefaults]
-                                 arrayForKey:@"GonerinoBlockedChannels"] mutableCopy]
-                                 ?: [NSMutableSet set];
+        _blockedChannelSet =
+            [[[NSUserDefaults standardUserDefaults] arrayForKey:@"GonerinoBlockedChannels"] mutableCopy]
+                ?: [NSMutableSet set];
     }
     return self;
 }

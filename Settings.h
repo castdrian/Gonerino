@@ -15,15 +15,15 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
-#define SECTION_HEADER(s)                                                                          \
-    [sectionItems                                                                                  \
-        addObject:[objc_getClass("YTSettingsSectionItem")                                          \
-                                itemWithTitle:@"\t"                                                \
-                             titleDescription:[s uppercaseString]                                  \
-                      accessibilityIdentifier:nil                                                  \
-                              detailTextBlock:nil                                                  \
-                                  selectBlock:^BOOL(YTSettingsCell *cell,                          \
-                                                    NSUInteger sectionItemIndex) { return NO; }]]
+#define SECTION_HEADER(s)                                                                                              \
+    [sectionItems addObject:[objc_getClass("YTSettingsSectionItem")                                                    \
+                                          itemWithTitle:@"\t"                                                          \
+                                       titleDescription:[s uppercaseString]                                            \
+                                accessibilityIdentifier:nil                                                            \
+                                        detailTextBlock:nil                                                            \
+                                            selectBlock:^BOOL(YTSettingsCell *cell, NSUInteger sectionItemIndex) {     \
+                                                return NO;                                                             \
+                                            }]]
 
 static const NSInteger GonerinoSection = 2002;
 
@@ -51,7 +51,7 @@ static BOOL isImportOperation = NO;
            headerHidden:(BOOL)headerHidden;
 @end
 
-@interface YTSettingsSectionItemManager (Gonerino) <UIDocumentPickerDelegate>
+@interface YTSettingsSectionItemManager (Gonerino)<UIDocumentPickerDelegate>
 - (void)updateGonerinoSectionWithEntry:(nullable id)entry;
 - (void)updateChannelManagementSection:(nonnull YTSettingsViewController *)viewController;
 - (nullable UITableView *)findTableViewInView:(nonnull UIView *)view;

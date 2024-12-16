@@ -12,7 +12,7 @@
         shouldMultiselect = YES;
     }
 
-    NSArray<UTType *> *contentTypesNew = @[ UTTypeItem, UTTypeFolder ];
+    NSArray<UTType *> *contentTypesNew = @[UTTypeItem, UTTypeFolder];
 
     UIDocumentPickerViewController *ans = %orig(contentTypesNew, YES);
     if (shouldMultiselect) {
@@ -37,7 +37,7 @@
 %hook UIDocumentBrowserViewController
 
 - (instancetype)initForOpeningContentTypes:(NSArray<UTType *> *)contentTypes {
-    NSArray<UTType *> *contentTypesNew = @[ UTTypeItem, UTTypeFolder ];
+    NSArray<UTType *> *contentTypesNew = @[UTTypeItem, UTTypeFolder];
     return %orig(contentTypesNew);
 }
 
@@ -55,8 +55,8 @@
 %end
 
 %ctor {
-    BOOL isAppStoreApp = [[NSFileManager defaultManager]
-        fileExistsAtPath:[[NSBundle mainBundle] appStoreReceiptURL].path];
+    BOOL isAppStoreApp =
+        [[NSFileManager defaultManager] fileExistsAtPath:[[NSBundle mainBundle] appStoreReceiptURL].path];
     if (!isAppStoreApp) {
         %init(Sideloading);
     }

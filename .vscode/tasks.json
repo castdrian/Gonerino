@@ -7,7 +7,7 @@
 			"command": "zsh",
 			"args": [
 				"-c",
-				"rm -rf packages && make clean && make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=rootless && cp ./packages/*arm64.deb ~/Library/Mobile\\ Documents/com~apple~CloudDocs/"
+				"rm -rf packages && make clean && make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=rootless && cp ./packages/*arm64.deb ~/Library/Mobile\\ Documents/com~apple~CloudDocs/ && cp ./.theos/obj/Gonerino.dylib ~/Library/Mobile\\ Documents/com~apple~CloudDocs/"
 			],
 			"problemMatcher": {
 				"owner": "cpp",

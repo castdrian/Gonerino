@@ -96,9 +96,7 @@ NS_ASSUME_NONNULL_BEGIN
                           style:(NSInteger)style
                         handler:(void (^)(id))handler;
 
-+ (instancetype)actionWithTitle:(NSString *)title
-                      iconImage:(UIImage *)iconImage
-                        handler:(void (^)(id))handler;
++ (instancetype)actionWithTitle:(NSString *)title iconImage:(UIImage *)iconImage handler:(void (^)(id))handler;
 @end
 
 @interface YTActionSheetController : UIViewController

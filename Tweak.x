@@ -7,52 +7,47 @@
 
     __weak typeof(self) weakSelf = self;
 
-    dispatch_after(
-        dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.1 * NSEC_PER_SEC)), dispatch_get_main_queue(),
-        ^{
-            __strong typeof(weakSelf) strongSelf = weakSelf;
-            if (!strongSelf)
-                return;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.1 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        __strong typeof(weakSelf) strongSelf = weakSelf;
+        if (!strongSelf)
+            return;
 
-            @try {
-                NSArray *visibleCells              = [strongSelf visibleCells];
-                NSMutableArray *indexPathsToRemove = [NSMutableArray array];
+        @try {
+            NSArray *visibleCells              = [strongSelf visibleCells];
+            NSMutableArray *indexPathsToRemove = [NSMutableArray array];
 
-                for (UICollectionViewCell *cell in visibleCells) {
-                    if (![cell isKindOfClass:NSClassFromString(@"_ASCollectionViewCell")]) {
-                        continue;
-                    }
-
-                    _ASCollectionViewCell *asCell = (_ASCollectionViewCell *)cell;
-                    if (![asCell respondsToSelector:@selector(node)]) {
-                        continue;
-                    }
-
-                    id node = [asCell node];
-                    if (![node isKindOfClass:NSClassFromString(@"YTVideoWithContextNode")]) {
-                        continue;
-                    }
-
-                    if ([strongSelf nodeContainsBlockedChannelName:node] ||
-                        [strongSelf nodeContainsBlockedVideo:node]) {
-                        NSIndexPath *indexPath = [strongSelf indexPathForCell:cell];
-                        if (indexPath) {
-                            [indexPathsToRemove addObject:indexPath];
-                        }
-                    }
+            for (UICollectionViewCell *cell in visibleCells) {
+                if (![cell isKindOfClass:NSClassFromString(@"_ASCollectionViewCell")]) {
+                    continue;
                 }
 
-                if (indexPathsToRemove.count > 0) {
-                    [strongSelf
-                        performBatchUpdates:^{
-                            [strongSelf deleteItemsAtIndexPaths:indexPathsToRemove];
-                        }
-                                 completion:nil];
+                _ASCollectionViewCell *asCell = (_ASCollectionViewCell *)cell;
+                if (![asCell respondsToSelector:@selector(node)]) {
+                    continue;
                 }
-            } @catch (NSException *exception) {
-                NSLog(@"[Gonerino] Exception in removeOffendingCells: %@", exception);
+
+                id node = [asCell node];
+                if (![node isKindOfClass:NSClassFromString(@"YTVideoWithContextNode")]) {
+                    continue;
+                }
+
+                if ([strongSelf nodeContainsBlockedChannelName:node] || [strongSelf nodeContainsBlockedVideo:node]) {
+                    NSIndexPath *indexPath = [strongSelf indexPathForCell:cell];
+                    if (indexPath) {
+                        [indexPathsToRemove addObject:indexPath];
+                    }
+                }
             }
-        });
+
+            if (indexPathsToRemove.count > 0) {
+                [strongSelf
+                    performBatchUpdates:^{ [strongSelf deleteItemsAtIndexPaths:indexPathsToRemove]; }
+                             completion:nil];
+            }
+        } @catch (NSException *exception) {
+            NSLog(@"[Gonerino] Exception in removeOffendingCells: %@", exception);
+        }
+    });
 }
 
 %new
@@ -65,8 +60,7 @@
             _ASCollectionViewCell *asCell = (_ASCollectionViewCell *)cell;
             if ([asCell respondsToSelector:@selector(node)]) {
                 id node = [asCell node];
-                if ([self nodeContainsBlockedChannelName:node] ||
-                    [self nodeContainsBlockedVideo:node]) {
+                if ([self nodeContainsBlockedChannelName:node] || [self nodeContainsBlockedVideo:node]) {
                     NSIndexPath *indexPath = [self indexPathForCell:cell];
                     if (indexPath) {
                         [indexPathsToRemove addObject:indexPath];
@@ -77,9 +71,7 @@
     }
 
     if (indexPathsToRemove.count > 0) {
-        [self
-            performBatchUpdates:^{ [self deleteItemsAtIndexPaths:indexPathsToRemove]; }
-                     completion:nil];
+        [self performBatchUpdates:^{ [self deleteItemsAtIndexPaths:indexPathsToRemove]; } completion:nil];
     }
 }
 
@@ -99,9 +91,8 @@
                 }
 
                 if (goToChannelIndex > 1) {
-                    NSArray *titleComponents =
-                        [components subarrayWithRange:NSMakeRange(0, goToChannelIndex - 1)];
-                    NSString *videoTitle = [titleComponents componentsJoinedByString:@" - "];
+                    NSArray *titleComponents = [components subarrayWithRange:NSMakeRange(0, goToChannelIndex - 1)];
+                    NSString *videoTitle     = [titleComponents componentsJoinedByString:@" - "];
                     return [[VideoManager sharedInstance] isVideoBlocked:videoTitle];
                 }
             }
@@ -230,8 +221,7 @@
                 }
 
                 if (goToChannelIndex > 1) {
-                    NSArray *titleComponents =
-                        [components subarrayWithRange:NSMakeRange(0, goToChannelIndex - 1)];
+                    NSArray *titleComponents = [components subarrayWithRange:NSMakeRange(0, goToChannelIndex - 1)];
                     return [titleComponents componentsJoinedByString:@" - "];
                 }
             }
@@ -267,21 +257,19 @@
         return;
     }
 
-    NSRegularExpression *regex = [NSRegularExpression
-        regularExpressionWithPattern:@"cellNode = <YTVideoWithContextNode: (0x[0-9a-f]+)>"
-                             options:0
-                               error:nil];
-    NSTextCheckingResult *match =
-        [regex firstMatchInString:debugDescription
-                          options:0
-                            range:NSMakeRange(0, debugDescription.length)];
+    NSRegularExpression *regex =
+        [NSRegularExpression regularExpressionWithPattern:@"cellNode = <YTVideoWithContextNode: (0x[0-9a-f]+)>"
+                                                  options:0
+                                                    error:nil];
+    NSTextCheckingResult *match = [regex firstMatchInString:debugDescription
+                                                    options:0
+                                                      range:NSMakeRange(0, debugDescription.length)];
 
     if (!match) {
         return;
     }
 
-    if (![action.title isEqualToString:@"Share"] &&
-        ![action.title isEqualToString:@"Don't recommend channel"]) {
+    if (![action.title isEqualToString:@"Share"] && ![action.title isEqualToString:@"Don't recommend channel"]) {
         return;
     }
 
@@ -300,8 +288,7 @@
 
                         NSString *debugDescription = [node debugDescription];
                         NSRegularExpression *regex = [NSRegularExpression
-                            regularExpressionWithPattern:
-                                @"cellNode = <YTVideoWithContextNode: (0x[0-9a-f]+)>"
+                            regularExpressionWithPattern:@"cellNode = <YTVideoWithContextNode: (0x[0-9a-f]+)>"
                                                  options:0
                                                    error:nil];
                         NSTextCheckingResult *match =
@@ -310,14 +297,12 @@
                                                 range:NSMakeRange(0, debugDescription.length)];
 
                         if (match) {
-                            NSString *address =
-                                [debugDescription substringWithRange:[match rangeAtIndex:1]];
+                            NSString *address = [debugDescription substringWithRange:[match rangeAtIndex:1]];
                             void *videoNodePtr;
                             sscanf([address UTF8String], "%p", &videoNodePtr);
                             id videoNode = (__bridge id)videoNodePtr;
 
-                            if ([videoNode
-                                    isKindOfClass:NSClassFromString(@"YTVideoWithContextNode")]) {
+                            if ([videoNode isKindOfClass:NSClassFromString(@"YTVideoWithContextNode")]) {
                                 [self extractChannelNameFromNode:videoNode
                                                       completion:^(NSString *channelName) {
                                                           if (channelName) {
@@ -326,12 +311,10 @@
                                                               UIViewController *viewController =
                                                                   (UIViewController *)strongSelf;
                                                               [[%c(YTToastResponderEvent)
-                                                                  eventWithMessage:
-                                                                      [NSString stringWithFormat:
-                                                                                    @"Blocked %@",
-                                                                                    channelName]
-                                                                    firstResponder:viewController]
-                                                                  send];
+                                                                  eventWithMessage:[NSString
+                                                                                       stringWithFormat:@"Blocked %@",
+                                                                                                        channelName]
+                                                                    firstResponder:viewController] send];
                                                           }
                                                       }];
                             }
@@ -353,8 +336,7 @@
 
                         NSString *debugDescription = [node debugDescription];
                         NSRegularExpression *regex = [NSRegularExpression
-                            regularExpressionWithPattern:
-                                @"cellNode = <YTVideoWithContextNode: (0x[0-9a-f]+)>"
+                            regularExpressionWithPattern:@"cellNode = <YTVideoWithContextNode: (0x[0-9a-f]+)>"
                                                  options:0
                                                    error:nil];
                         NSTextCheckingResult *match =
@@ -363,24 +345,18 @@
                                                 range:NSMakeRange(0, debugDescription.length)];
 
                         if (match) {
-                            NSString *address =
-                                [debugDescription substringWithRange:[match rangeAtIndex:1]];
+                            NSString *address = [debugDescription substringWithRange:[match rangeAtIndex:1]];
                             void *videoNodePtr;
                             sscanf([address UTF8String], "%p", &videoNodePtr);
                             id videoNode = (__bridge id)videoNodePtr;
 
-                            if ([videoNode
-                                    isKindOfClass:NSClassFromString(@"YTVideoWithContextNode")]) {
-                                NSString *videoTitle =
-                                    [strongSelf extractVideoTitleFromNode:videoNode];
+                            if ([videoNode isKindOfClass:NSClassFromString(@"YTVideoWithContextNode")]) {
+                                NSString *videoTitle = [strongSelf extractVideoTitleFromNode:videoNode];
                                 if (videoTitle) {
                                     [[VideoManager sharedInstance] addBlockedVideo:videoTitle];
-                                    UIViewController *viewController =
-                                        (UIViewController *)strongSelf;
+                                    UIViewController *viewController = (UIViewController *)strongSelf;
                                     [[%c(YTToastResponderEvent)
-                                        eventWithMessage:[NSString
-                                                             stringWithFormat:@"Blocked video: %@",
-                                                                              videoTitle]
+                                        eventWithMessage:[NSString stringWithFormat:@"Blocked video: %@", videoTitle]
                                           firstResponder:viewController] send];
                                     [strongSelf dismiss];
                                 }
@@ -425,9 +401,9 @@
             return nil;
         }
 
-        UIBezierPath *circlePath = [UIBezierPath
-            bezierPathWithOvalInRect:CGRectMake(2, 2, targetSize.width - 4, targetSize.height - 4)];
-        circlePath.lineWidth     = 1.5;
+        UIBezierPath *circlePath =
+            [UIBezierPath bezierPathWithOvalInRect:CGRectMake(2, 2, targetSize.width - 4, targetSize.height - 4)];
+        circlePath.lineWidth = 1.5;
 
         UIBezierPath *linePath = [UIBezierPath bezierPath];
         [linePath moveToPoint:CGPointMake(6, 6)];

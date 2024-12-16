@@ -16,8 +16,7 @@
 - (instancetype)init {
     self = [super init];
     if (self) {
-        _blockedVideoArray = [[[NSUserDefaults standardUserDefaults]
-                                 arrayForKey:@"GonerinoBlockedVideos"] mutableCopy]
+        _blockedVideoArray = [[[NSUserDefaults standardUserDefaults] arrayForKey:@"GonerinoBlockedVideos"] mutableCopy]
                                  ?: [NSMutableArray array];
     }
     return self;
@@ -44,8 +43,7 @@
 }
 
 - (void)saveBlockedVideos {
-    [[NSUserDefaults standardUserDefaults] setObject:self.blockedVideoArray
-                                              forKey:@"GonerinoBlockedVideos"];
+    [[NSUserDefaults standardUserDefaults] setObject:self.blockedVideoArray forKey:@"GonerinoBlockedVideos"];
     [[NSUserDefaults standardUserDefaults] synchronize];
 }
 
