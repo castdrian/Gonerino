@@ -87,32 +87,24 @@
         return;
     }
 
-    UIView *sourceView         = [self valueForKey:@"sourceView"];
-    id node                    = [sourceView valueForKey:@"asyncdisplaykit_node"];
-    NSString *debugDescription = [node debugDescription];
-
-    if (![debugDescription containsString:@"YTVideoWithContextNode"]) {
+    UIView *sourceView = [self valueForKey:@"sourceView"];
+    id node = [sourceView valueForKey:@"asyncdisplaykit_node"];
+    
+    if (!node || ![node debugDescription] || ![[node debugDescription] containsString:@"YTVideoWithContextNode"]) {
         return;
     }
-
-    NSRegularExpression *regex =
-        [NSRegularExpression regularExpressionWithPattern:@"cellNode = <YTVideoWithContextNode: (0x[0-9a-f]+)>"
-                                                  options:0
-                                                    error:nil];
-    NSTextCheckingResult *match = [regex firstMatchInString:debugDescription
-                                                    options:0
-                                                      range:NSMakeRange(0, debugDescription.length)];
-
-    if (!match) {
+    
+    NSInteger currentActionsCount = 3;
+    if ([self respondsToSelector:@selector(actions)]) {
+        currentActionsCount = [[self actions] count];
+    }
+    
+    if (currentActionsCount < 3) {
         return;
     }
-
-    if (![action.title isEqualToString:@"Share"] && ![action.title isEqualToString:@"Don't recommend channel"]) {
-        return;
-    }
-
+    
     __weak typeof(self) weakSelf = self;
-    CGSize iconSize              = CGSizeMake(24, 24);
+    CGSize iconSize = CGSizeMake(24, 24);
     if (action) {
         UIImage *originalIcon = [action valueForKey:@"_iconImage"];
         if (originalIcon) {

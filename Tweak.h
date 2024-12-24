@@ -81,6 +81,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (UIViewController *)findViewControllerForView:(UIView *)view;
 - (void)extractChannelNameFromNode:(id)node completion:(void (^)(NSString *channelName))completion;
 - (nullable NSString *)extractVideoTitleFromNode:(id)node;
+- (NSArray<YTActionSheetAction *> *)actions;  // Added this line
 @end
 
 @interface YTActionSheetAction : NSObject
