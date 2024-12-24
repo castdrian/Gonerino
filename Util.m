@@ -50,7 +50,9 @@
 
                         if (match && match.numberOfRanges > 1) {
                             NSString *value = [description substringWithRange:[match rangeAtIndex:1]];
-                            value           = [value stringByReplacingOccurrencesOfString:@"\\\"" withString:@"\""];
+
+                            value = [value stringByReplacingOccurrencesOfString:@"\\\"" withString:@"\""];
+                            value = [value stringByReplacingOccurrencesOfString:@"\\'" withString:@"'"];
 
                             if ([pattern hasPrefix:@"video_id:"]) {
                                 videoId = value;

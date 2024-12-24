@@ -76,11 +76,7 @@
 }
 
 %new
-- (BOOL)nodeContainsBlockedVideo:(id)node {
-    if (![node isKindOfClass:NSClassFromString(@"YTVideoWithContextNode")])
-        return NO;
-        
-    // Search through subnodes for YTInlinePlaybackPlayerNode
+- (BOOL)nodeContainsBlockedVideo:(id)node {        
     if ([node respondsToSelector:@selector(subnodes)]) {
         for (id subnode in [node subnodes]) {
             if ([subnode isKindOfClass:NSClassFromString(@"YTInlinePlaybackPlayerNode")]) {
@@ -259,7 +255,9 @@
                                             [[%c(YTToastResponderEvent)
                                                 eventWithMessage:[NSString stringWithFormat:@"Blocked video: %@", videoTitle]
                                                   firstResponder:viewController] send];
-                                            [strongSelf dismiss];
+                                            if ([strongSelf respondsToSelector:@selector(dismiss)]) {
+                                                [strongSelf dismiss];
+                                            }
                                         }
                                     }];
                                     break;
