@@ -81,6 +81,23 @@
 + (BOOL)nodeContainsBlockedVideo:(id)node {
     __block BOOL isBlocked = NO;
 
+    if ([node isKindOfClass:NSClassFromString(@"ASTextNode")]) {
+        NSAttributedString *attributedText = [(ASTextNode *)node attributedText];
+        NSString *text = [attributedText string];
+
+        if ([[NSUserDefaults standardUserDefaults] boolForKey:@"GonerinoPeopleWatched"] &&
+            [text isEqualToString:@"People also watched this video"]) {
+            NSLog(@"[Gonerino] Blocking 'People also watched' section");
+            return YES;
+        }
+
+        if ([[NSUserDefaults standardUserDefaults] boolForKey:@"GonerinoMightLike"] &&
+            [text isEqualToString:@"You might also like this"]) {
+            NSLog(@"[Gonerino] Blocking 'You might also like' section");
+            return YES;
+        }
+    }
+
     if ([node isKindOfClass:NSClassFromString(@"YTInlinePlaybackPlayerNode")]) {
         [self
             extractVideoInfoFromNode:node
