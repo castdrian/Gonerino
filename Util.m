@@ -87,7 +87,7 @@
                           completion:^(NSString *videoId, NSString *videoTitle, NSString *ownerName) {
                               if ([[VideoManager sharedInstance] isVideoBlocked:videoId]) {
                                   isBlocked = YES;
-                                  NSLog(@"[Gonerino] Blocking video: ID %@ matched", videoId);
+                                  NSLog(@"[Gonerino] Blocking video with id: %@", videoId);
                               }
                               if ([[ChannelManager sharedInstance] isChannelBlocked:ownerName]) {
                                   isBlocked = YES;
