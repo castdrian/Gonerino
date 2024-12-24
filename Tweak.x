@@ -112,11 +112,17 @@
     }
 
     __weak typeof(self) weakSelf = self;
-    UIImage *blockIcon           = [self createBlockIconWithOriginalAction:action];
+    CGSize iconSize = CGSizeMake(24, 24);
+    if (action) {  // Changed from originalAction to action
+        UIImage *originalIcon = [action valueForKey:@"_iconImage"];
+        if (originalIcon) {
+            iconSize = originalIcon.size;
+        }
+    }
 
     YTActionSheetAction *blockChannelAction = [%c(YTActionSheetAction)
         actionWithTitle:@"Block Channel"
-              iconImage:blockIcon
+              iconImage:[Util createBlockChannelIconWithSize:iconSize]
                   style:0
                 handler:^(YTActionSheetAction *action) {
                     __strong typeof(self) strongSelf = weakSelf;
@@ -153,7 +159,7 @@
 
     YTActionSheetAction *blockVideoAction = [%c(YTActionSheetAction)
         actionWithTitle:@"Block Video"
-              iconImage:blockIcon
+              iconImage:[Util createBlockVideoIconWithSize:iconSize]
                   style:0
                 handler:^(YTActionSheetAction *action) {
                     __strong typeof(self) strongSelf = weakSelf;

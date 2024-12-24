@@ -119,4 +119,76 @@
     return NO;
 }
 
++ (UIImage *)createBlockChannelIconWithSize:(CGSize)size {
+    @try {
+        UIGraphicsBeginImageContextWithOptions(size, NO, [UIScreen mainScreen].scale);
+        if (!UIGraphicsGetCurrentContext()) {
+            NSLog(@"[Gonerino] Failed to create graphics context");
+            return nil;
+        }
+
+        [[UIColor whiteColor] setStroke];
+        
+        CGFloat headRadius = size.width * 0.2;
+        UIBezierPath *headPath = [UIBezierPath bezierPathWithOvalInRect:
+            CGRectMake(size.width/2 - headRadius, 
+                      size.height * 0.2, 
+                      headRadius * 2, 
+                      headRadius * 2)];
+        headPath.lineWidth = 1.5;
+        [headPath stroke];
+        
+        UIBezierPath *bodyPath = [UIBezierPath bezierPath];
+        [bodyPath moveToPoint:CGPointMake(size.width/2, size.height * 0.2 + headRadius * 2)];
+        [bodyPath addLineToPoint:CGPointMake(size.width/2, size.height * 0.8)];
+        bodyPath.lineWidth = 1.5;
+        [bodyPath stroke];
+
+        UIImage *icon = UIGraphicsGetImageFromCurrentImageContext();
+        UIGraphicsEndImageContext();
+
+        return [icon imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
+    } @catch (NSException *exception) {
+        NSLog(@"[Gonerino] Exception in createBlockChannelIcon: %@", exception);
+        return nil;
+    }
+}
+
++ (UIImage *)createBlockVideoIconWithSize:(CGSize)size {
+    @try {
+        UIGraphicsBeginImageContextWithOptions(size, NO, [UIScreen mainScreen].scale);
+        if (!UIGraphicsGetCurrentContext()) {
+            NSLog(@"[Gonerino] Failed to create graphics context");
+            return nil;
+        }
+
+        [[UIColor whiteColor] setStroke];
+        
+        UIBezierPath *rectPath = [UIBezierPath bezierPathWithRoundedRect:
+            CGRectMake(size.width * 0.15, 
+                      size.height * 0.25, 
+                      size.width * 0.7, 
+                      size.height * 0.5)
+            cornerRadius:3.0];
+        rectPath.lineWidth = 1.5;
+        [rectPath stroke];
+        
+        UIBezierPath *trianglePath = [UIBezierPath bezierPath];
+        [trianglePath moveToPoint:CGPointMake(size.width * 0.4, size.height * 0.35)];
+        [trianglePath addLineToPoint:CGPointMake(size.width * 0.6, size.height * 0.5)];
+        [trianglePath addLineToPoint:CGPointMake(size.width * 0.4, size.height * 0.65)];
+        [trianglePath closePath];
+        trianglePath.lineWidth = 1.5;
+        [trianglePath stroke];
+        
+        UIImage *icon = UIGraphicsGetImageFromCurrentImageContext();
+        UIGraphicsEndImageContext();
+
+        return [icon imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
+    } @catch (NSException *exception) {
+        NSLog(@"[Gonerino] Exception in createBlockVideoIcon: %@", exception);
+        return nil;
+    }
+}
+
 @end

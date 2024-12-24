@@ -14,6 +14,9 @@ NS_ASSUME_NONNULL_BEGIN
 
 + (BOOL)nodeContainsBlockedVideo:(id)node;
 
++ (UIImage *)createBlockChannelIconWithSize:(CGSize)size;
++ (UIImage *)createBlockVideoIconWithSize:(CGSize)size;
+
 @end
 
 NS_ASSUME_NONNULL_END
