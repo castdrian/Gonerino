@@ -88,23 +88,23 @@
     }
 
     UIView *sourceView = [self valueForKey:@"sourceView"];
-    id node = [sourceView valueForKey:@"asyncdisplaykit_node"];
-    
+    id node            = [sourceView valueForKey:@"asyncdisplaykit_node"];
+
     if (!node || ![node debugDescription] || ![[node debugDescription] containsString:@"YTVideoWithContextNode"]) {
         return;
     }
-    
+
     NSInteger currentActionsCount = 3;
     if ([self respondsToSelector:@selector(actions)]) {
         currentActionsCount = [[self actions] count];
     }
-    
+
     if (currentActionsCount < 3) {
         return;
     }
-    
+
     __weak typeof(self) weakSelf = self;
-    CGSize iconSize = CGSizeMake(24, 24);
+    CGSize iconSize              = CGSizeMake(24, 24);
     if (action) {
         UIImage *originalIcon = [action valueForKey:@"_iconImage"];
         if (originalIcon) {

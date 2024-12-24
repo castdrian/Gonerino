@@ -16,9 +16,8 @@
 - (instancetype)init {
     self = [super init];
     if (self) {
-        _blockedWordSet = [[[NSUserDefaults standardUserDefaults]
-                             arrayForKey:@"GonerinoBlockedWords"] mutableCopy]
-                             ?: [NSMutableSet set];
+        _blockedWordSet = [[[NSUserDefaults standardUserDefaults] arrayForKey:@"GonerinoBlockedWords"] mutableCopy]
+                              ?: [NSMutableSet set];
     }
     return self;
 }
@@ -51,8 +50,7 @@
 }
 
 - (void)saveBlockedWords {
-    [[NSUserDefaults standardUserDefaults] setObject:[self.blockedWordSet allObjects]
-                                          forKey:@"GonerinoBlockedWords"];
+    [[NSUserDefaults standardUserDefaults] setObject:[self.blockedWordSet allObjects] forKey:@"GonerinoBlockedWords"];
     [[NSUserDefaults standardUserDefaults] synchronize];
 }
 
