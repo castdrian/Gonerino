@@ -613,32 +613,56 @@
         return;
 
     YTSettingsViewController *settingsVC = [self valueForKey:@"_settingsViewControllerDelegate"];
-    NSURL *url                           = urls.firstObject;
+    NSURL *url = urls.firstObject;
 
     if (isImportOperation) {
         [url startAccessingSecurityScopedResource];
 
         NSError *error = nil;
-        NSData *data   = [NSData dataWithContentsOfURL:url options:0 error:&error];
+        NSData *data = [NSData dataWithContentsOfURL:url options:0 error:&error];
 
         [url stopAccessingSecurityScopedResource];
 
         if (!data || error) {
             [[%c(YTToastResponderEvent) eventWithMessage:@"Failed to read settings file"
-                                                     firstResponder:settingsVC] send];
+                                         firstResponder:settingsVC] send];
             return;
         }
 
         NSDictionary *settings = [NSPropertyListSerialization propertyListWithData:data
-                                                                           options:NSPropertyListImmutable
-                                                                            format:NULL
-                                                                             error:&error];
+                                                                         options:NSPropertyListImmutable
+                                                                           format:NULL
+                                                                            error:&error];
 
         if (!settings || error) {
             [[%c(YTToastResponderEvent) eventWithMessage:@"Invalid settings file format"
-                                                     firstResponder:settingsVC] send];
+                                         firstResponder:settingsVC] send];
             return;
         }
+
+        void (^continueImport)(void) = ^{
+            NSArray *words = settings[@"blockedWords"];
+            if (words) {
+                [[WordManager sharedInstance] setBlockedWords:words];
+            }
+
+            NSNumber *peopleWatched = settings[@"blockPeopleWatched"];
+            if (peopleWatched) {
+                [[NSUserDefaults standardUserDefaults] setBool:[peopleWatched boolValue]
+                                                      forKey:@"GonerinoPeopleWatched"];
+            }
+
+            NSNumber *mightLike = settings[@"blockMightLike"];
+            if (mightLike) {
+                [[NSUserDefaults standardUserDefaults] setBool:[mightLike boolValue]
+                                                      forKey:@"GonerinoMightLike"];
+            }
+
+            [[NSUserDefaults standardUserDefaults] synchronize];
+            [self reloadGonerinoSection];
+            [[%c(YTToastResponderEvent) eventWithMessage:@"Settings imported successfully"
+                                         firstResponder:settingsVC] send];
+        };
 
         NSArray *channels = settings[@"blockedChannels"];
         if (channels) {
@@ -653,7 +677,8 @@
                     if (![videoEntry isKindOfClass:[NSDictionary class]] ||
                         ![videoEntry[@"id"] isKindOfClass:[NSString class]] ||
                         ![videoEntry[@"title"] isKindOfClass:[NSString class]] ||
-                        ![videoEntry[@"channel"] isKindOfClass:[NSString class]] || [videoEntry count] != 3) {
+                        ![videoEntry[@"channel"] isKindOfClass:[NSString class]] ||
+                        [videoEntry count] != 3) {
                         isValidFormat = NO;
                         break;
                     }
@@ -661,37 +686,30 @@
 
                 if (isValidFormat) {
                     [[VideoManager sharedInstance] setBlockedVideos:videos];
+                    continueImport();
                 } else {
                     [[%c(YTToastResponderEvent)
-                        eventWithMessage:@"format invalid, blocked videos will not be imported"
-                          firstResponder:settingsVC] send];
+                        eventWithMessage:@"Format outdated, blocked videos will not be imported"
+                        firstResponder:settingsVC] send];
+                    
+                    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)),
+                        dispatch_get_main_queue(), ^{
+                            continueImport();
+                        });
                 }
             } else {
                 [[%c(YTToastResponderEvent)
-                    eventWithMessage:@"format invalid, blocked videos will not be imported"
-                      firstResponder:settingsVC] send];
+                    eventWithMessage:@"Format outdated, blocked videos will not be imported"
+                    firstResponder:settingsVC] send];
+                
+                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)),
+                    dispatch_get_main_queue(), ^{
+                        continueImport();
+                    });
             }
+        } else {
+            continueImport();
         }
-
-        NSArray *words = settings[@"blockedWords"];
-        if (words) {
-            [[WordManager sharedInstance] setBlockedWords:words];
-        }
-
-        NSNumber *peopleWatched = settings[@"blockPeopleWatched"];
-        if (peopleWatched) {
-            [[NSUserDefaults standardUserDefaults] setBool:[peopleWatched boolValue] forKey:@"GonerinoPeopleWatched"];
-        }
-
-        NSNumber *mightLike = settings[@"blockMightLike"];
-        if (mightLike) {
-            [[NSUserDefaults standardUserDefaults] setBool:[mightLike boolValue] forKey:@"GonerinoMightLike"];
-        }
-
-        [[NSUserDefaults standardUserDefaults] synchronize];
-        [self reloadGonerinoSection];
-        [[%c(YTToastResponderEvent) eventWithMessage:@"Settings imported successfully"
-                                                 firstResponder:settingsVC] send];
     } else {
         NSMutableDictionary *settings = [NSMutableDictionary dictionary];
         settings[@"blockedChannels"]  = [[ChannelManager sharedInstance] blockedChannels];

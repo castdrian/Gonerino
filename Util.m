@@ -85,9 +85,6 @@
         [self
             extractVideoInfoFromNode:node
                           completion:^(NSString *videoId, NSString *videoTitle, NSString *ownerName) {
-                              NSLog(@"[Gonerino] Found video info - ID: %@, Title: %@, Owner: %@", videoId ?: @"nil",
-                                    videoTitle ?: @"nil", ownerName ?: @"nil");
-
                               if ([[VideoManager sharedInstance] isVideoBlocked:videoId]) {
                                   isBlocked = YES;
                                   NSLog(@"[Gonerino] Blocking video: ID %@ matched", videoId);
