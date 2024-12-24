@@ -77,45 +77,29 @@
 
 %new
 - (BOOL)nodeContainsBlockedVideo:(id)node {
-    if ([node respondsToSelector:@selector(accessibilityLabel)]) {
-        NSString *accessibilityLabel = [node accessibilityLabel];
-        if (accessibilityLabel) {
-            if ([[WordManager sharedInstance] isWordBlocked:accessibilityLabel]) {
-                NSLog(@"[Gonerino] Removed video with blocked word in title: %@", accessibilityLabel);
-                return YES;
-            }
-
-            NSArray *components = [accessibilityLabel componentsSeparatedByString:@" - "];
-            if (components.count >= 4) {
-                NSInteger goToChannelIndex = -1;
-                for (NSInteger i = 0; i < components.count; i++) {
-                    if ([components[i] isEqualToString:@"Go to channel"]) {
-                        goToChannelIndex = i;
-                        break;
-                    }
-                }
-
-                if (goToChannelIndex > 1) {
-                    NSArray *titleComponents = [components subarrayWithRange:NSMakeRange(0, goToChannelIndex - 1)];
-                    NSString *videoTitle     = [titleComponents componentsJoinedByString:@" - "];
-                    if ([[VideoManager sharedInstance] isVideoBlocked:videoTitle]) {
-                        NSLog(@"[Gonerino] Removed blocked video: %@", videoTitle);
-                        return YES;
-                    }
-                }
-            }
-        }
-    }
-
+    if (![node isKindOfClass:NSClassFromString(@"YTVideoWithContextNode")])
+        return NO;
+        
+    // Search through subnodes for YTInlinePlaybackPlayerNode
     if ([node respondsToSelector:@selector(subnodes)]) {
-        NSArray *subnodes = [node subnodes];
-        for (id subnode in subnodes) {
-            if ([self nodeContainsBlockedVideo:subnode]) {
-                return YES;
+        for (id subnode in [node subnodes]) {
+            if ([subnode isKindOfClass:NSClassFromString(@"YTInlinePlaybackPlayerNode")]) {
+                __block BOOL shouldBlock = NO;
+                [Util extractVideoInfoFromNode:subnode
+                                  completion:^(NSString *videoId, NSString *videoTitle, NSString *ownerName) {
+                                      if (videoId || videoTitle || ownerName) {
+                                          NSLog(@"[Gonerino] Found video info - ID: %@, Title: %@, Owner: %@", 
+                                                videoId ?: @"nil", videoTitle ?: @"nil", ownerName ?: @"nil");
+                                          if ([[VideoManager sharedInstance] isVideoBlocked:videoTitle]) {
+                                              shouldBlock = YES;
+                                          }
+                                      }
+                                  }];
+                return shouldBlock;
             }
         }
     }
-
+    
     return NO;
 }
 
@@ -123,13 +107,13 @@
 - (BOOL)nodeContainsBlockedChannelName:(id)node {
     if ([node isKindOfClass:NSClassFromString(@"ASTextNode")]) {
         NSAttributedString *attributedText = [(ASTextNode *)node attributedText];
-        NSString *text = [attributedText string];
-        
+        NSString *text                     = [attributedText string];
+
         if ([[WordManager sharedInstance] isWordBlocked:text]) {
             NSLog(@"[Gonerino] Removed content with blocked word: %@", text);
             return YES;
         }
-        
+
         if ([text containsString:@" · "]) {
             NSArray *components = [text componentsSeparatedByString:@" · "];
             if (components.count >= 1) {
@@ -187,91 +171,7 @@
 
 %end
 
-@interface NSObject (Properties)
-- (NSString *)title;
-- (NSString *)text;
-- (NSAttributedString *)attributedText;
-- (NSString *)name;
-- (NSString *)channelName;
-- (NSString *)ownerName;
-- (id)videoDetails;
-- (id)metadata;
-@end
-
 %hook YTDefaultSheetController
-
-%new
-- (void)extractChannelNameFromNode:(id)node completion:(void (^)(NSString *channelName))completion {
-    if (!completion)
-        return;
-
-    if ([node isKindOfClass:NSClassFromString(@"ELMTextNode")]) {
-        if ([node respondsToSelector:@selector(attributedText)]) {
-            NSAttributedString *attributedText = [node attributedText];
-            NSString *text                     = [attributedText string];
-            if (text && [text containsString:@" · "]) {
-                NSArray *components = [text componentsSeparatedByString:@" · "];
-                if (components.count >= 1) {
-                    NSString *firstComponent = components[0];
-                    NSRegularExpression *timeRegex = [NSRegularExpression 
-                        regularExpressionWithPattern:@"^\\d{1,2}:\\d{2}$"
-                        options:0 
-                        error:nil];
-                    
-                    NSRange range = NSMakeRange(0, firstComponent.length);
-                    if ([timeRegex numberOfMatchesInString:firstComponent options:0 range:range] == 0) {
-                        completion(firstComponent);
-                        return;
-                    }
-                }
-            }
-        }
-    }
-
-    if ([node respondsToSelector:@selector(subnodes)]) {
-        NSArray *subnodes = [node subnodes];
-        for (id subnode in subnodes) {
-            void (^completionCopy)(NSString *) = [completion copy];
-            [self extractChannelNameFromNode:subnode completion:completionCopy];
-        }
-    }
-}
-
-%new
-- (NSString *)extractVideoTitleFromNode:(id)node {
-    if ([node respondsToSelector:@selector(accessibilityLabel)]) {
-        NSString *accessibilityLabel = [node accessibilityLabel];
-        if (accessibilityLabel) {
-            NSArray *components = [accessibilityLabel componentsSeparatedByString:@" - "];
-            if (components.count >= 4) {
-                NSInteger goToChannelIndex = -1;
-                for (NSInteger i = 0; i < components.count; i++) {
-                    if ([components[i] isEqualToString:@"Go to channel"]) {
-                        goToChannelIndex = i;
-                        break;
-                    }
-                }
-
-                if (goToChannelIndex > 1) {
-                    NSArray *titleComponents = [components subarrayWithRange:NSMakeRange(0, goToChannelIndex - 1)];
-                    return [titleComponents componentsJoinedByString:@" - "];
-                }
-            }
-        }
-    }
-
-    if ([node respondsToSelector:@selector(subnodes)]) {
-        NSArray *subnodes = [node subnodes];
-        for (id subnode in subnodes) {
-            NSString *title = [self extractVideoTitleFromNode:subnode];
-            if (title) {
-                return title;
-            }
-        }
-    }
-
-    return nil;
-}
 
 - (void)addAction:(YTActionSheetAction *)action {
     %orig;
@@ -316,39 +216,22 @@
                     __strong typeof(self) strongSelf = weakSelf;
                     @try {
                         UIView *sourceView = [strongSelf valueForKey:@"sourceView"];
-                        id node            = [sourceView valueForKey:@"asyncdisplaykit_node"];
-
-                        NSString *debugDescription = [node debugDescription];
-                        NSRegularExpression *regex = [NSRegularExpression
-                            regularExpressionWithPattern:@"cellNode = <YTVideoWithContextNode: (0x[0-9a-f]+)>"
-                                                 options:0
-                                                   error:nil];
-                        NSTextCheckingResult *match =
-                            [regex firstMatchInString:debugDescription
-                                              options:0
-                                                range:NSMakeRange(0, debugDescription.length)];
-
-                        if (match) {
-                            NSString *address = [debugDescription substringWithRange:[match rangeAtIndex:1]];
-                            void *videoNodePtr;
-                            sscanf([address UTF8String], "%p", &videoNodePtr);
-                            id videoNode = (__bridge id)videoNodePtr;
-
-                            if ([videoNode isKindOfClass:NSClassFromString(@"YTVideoWithContextNode")]) {
-                                [self extractChannelNameFromNode:videoNode
-                                                      completion:^(NSString *channelName) {
-                                                          if (channelName) {
-                                                              [[ChannelManager sharedInstance]
-                                                                  addBlockedChannel:channelName];
-                                                              UIViewController *viewController =
-                                                                  (UIViewController *)strongSelf;
-                                                              [[%c(YTToastResponderEvent)
-                                                                  eventWithMessage:[NSString
-                                                                                       stringWithFormat:@"Blocked %@",
-                                                                                                        channelName]
-                                                                    firstResponder:viewController] send];
-                                                          }
-                                                      }];
+                        id node = [sourceView valueForKey:@"asyncdisplaykit_node"];
+                        
+                        if ([node respondsToSelector:@selector(subnodes)]) {
+                            for (id subnode in [node subnodes]) {
+                                if ([subnode isKindOfClass:NSClassFromString(@"YTInlinePlaybackPlayerNode")]) {
+                                    [Util extractVideoInfoFromNode:subnode completion:^(NSString *videoId, NSString *videoTitle, NSString *ownerName) {
+                                        if (ownerName) {
+                                            [[ChannelManager sharedInstance] addBlockedChannel:ownerName];
+                                            UIViewController *viewController = (UIViewController *)strongSelf;
+                                            [[%c(YTToastResponderEvent)
+                                                eventWithMessage:[NSString stringWithFormat:@"Blocked %@", ownerName]
+                                                  firstResponder:viewController] send];
+                                        }
+                                    }];
+                                    break;
+                                }
                             }
                         }
                     } @catch (NSException *e) {
@@ -364,33 +247,22 @@
                     __strong typeof(self) strongSelf = weakSelf;
                     @try {
                         UIView *sourceView = [strongSelf valueForKey:@"sourceView"];
-                        id node            = [sourceView valueForKey:@"asyncdisplaykit_node"];
-
-                        NSString *debugDescription = [node debugDescription];
-                        NSRegularExpression *regex = [NSRegularExpression
-                            regularExpressionWithPattern:@"cellNode = <YTVideoWithContextNode: (0x[0-9a-f]+)>"
-                                                 options:0
-                                                   error:nil];
-                        NSTextCheckingResult *match =
-                            [regex firstMatchInString:debugDescription
-                                              options:0
-                                                range:NSMakeRange(0, debugDescription.length)];
-
-                        if (match) {
-                            NSString *address = [debugDescription substringWithRange:[match rangeAtIndex:1]];
-                            void *videoNodePtr;
-                            sscanf([address UTF8String], "%p", &videoNodePtr);
-                            id videoNode = (__bridge id)videoNodePtr;
-
-                            if ([videoNode isKindOfClass:NSClassFromString(@"YTVideoWithContextNode")]) {
-                                NSString *videoTitle = [strongSelf extractVideoTitleFromNode:videoNode];
-                                if (videoTitle) {
-                                    [[VideoManager sharedInstance] addBlockedVideo:videoTitle];
-                                    UIViewController *viewController = (UIViewController *)strongSelf;
-                                    [[%c(YTToastResponderEvent)
-                                        eventWithMessage:[NSString stringWithFormat:@"Blocked video: %@", videoTitle]
-                                          firstResponder:viewController] send];
-                                    [strongSelf dismiss];
+                        id node = [sourceView valueForKey:@"asyncdisplaykit_node"];
+                        
+                        if ([node respondsToSelector:@selector(subnodes)]) {
+                            for (id subnode in [node subnodes]) {
+                                if ([subnode isKindOfClass:NSClassFromString(@"YTInlinePlaybackPlayerNode")]) {
+                                    [Util extractVideoInfoFromNode:subnode completion:^(NSString *videoId, NSString *videoTitle, NSString *ownerName) {
+                                        if (videoTitle) {
+                                            [[VideoManager sharedInstance] addBlockedVideo:videoTitle];
+                                            UIViewController *viewController = (UIViewController *)strongSelf;
+                                            [[%c(YTToastResponderEvent)
+                                                eventWithMessage:[NSString stringWithFormat:@"Blocked video: %@", videoTitle]
+                                                  firstResponder:viewController] send];
+                                            [strongSelf dismiss];
+                                        }
+                                    }];
+                                    break;
                                 }
                             }
                         }
