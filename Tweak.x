@@ -112,8 +112,8 @@
     }
 
     __weak typeof(self) weakSelf = self;
-    CGSize iconSize = CGSizeMake(24, 24);
-    if (action) {  // Changed from originalAction to action
+    CGSize iconSize              = CGSizeMake(24, 24);
+    if (action) {
         UIImage *originalIcon = [action valueForKey:@"_iconImage"];
         if (originalIcon) {
             iconSize = originalIcon.size;
@@ -121,7 +121,7 @@
     }
 
     YTActionSheetAction *blockChannelAction = [%c(YTActionSheetAction)
-        actionWithTitle:@"Block Channel"
+        actionWithTitle:@"Block channel"
               iconImage:[Util createBlockChannelIconWithSize:iconSize]
                   style:0
                 handler:^(YTActionSheetAction *action) {
@@ -158,7 +158,7 @@
                 }];
 
     YTActionSheetAction *blockVideoAction = [%c(YTActionSheetAction)
-        actionWithTitle:@"Block Video"
+        actionWithTitle:@"Block video"
               iconImage:[Util createBlockVideoIconWithSize:iconSize]
                   style:0
                 handler:^(YTActionSheetAction *action) {
@@ -214,47 +214,6 @@
         responder = [responder nextResponder];
     }
     return nil;
-}
-
-%new
-- (UIImage *)createBlockIconWithOriginalAction:(YTActionSheetAction *)originalAction {
-    @try {
-        CGSize targetSize = CGSizeMake(24, 24);
-        if (originalAction) {
-            UIImage *originalIcon = [originalAction valueForKey:@"_iconImage"];
-            if (originalIcon) {
-                targetSize = originalIcon.size;
-            }
-        }
-
-        UIGraphicsBeginImageContextWithOptions(targetSize, NO, [UIScreen mainScreen].scale);
-        if (!UIGraphicsGetCurrentContext()) {
-            NSLog(@"[Gonerino] Failed to create graphics context");
-            return nil;
-        }
-
-        UIBezierPath *circlePath =
-            [UIBezierPath bezierPathWithOvalInRect:CGRectMake(2, 2, targetSize.width - 4, targetSize.height - 4)];
-        circlePath.lineWidth = 1.5;
-
-        UIBezierPath *linePath = [UIBezierPath bezierPath];
-        [linePath moveToPoint:CGPointMake(6, 6)];
-        [linePath addLineToPoint:CGPointMake(targetSize.width - 6, targetSize.height - 6)];
-        linePath.lineWidth = 1.5;
-
-        [[UIColor whiteColor] setStroke];
-        [circlePath stroke];
-        [linePath stroke];
-
-        UIImage *blockIcon = UIGraphicsGetImageFromCurrentImageContext();
-        UIGraphicsEndImageContext();
-
-        return [blockIcon imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
-
-    } @catch (NSException *exception) {
-        NSLog(@"[Gonerino] Exception in createBlockIconWithOriginalAction: %@", exception);
-        return nil;
-    }
 }
 
 %end

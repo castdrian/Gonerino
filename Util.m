@@ -122,27 +122,57 @@
 + (UIImage *)createBlockChannelIconWithSize:(CGSize)size {
     @try {
         UIGraphicsBeginImageContextWithOptions(size, NO, [UIScreen mainScreen].scale);
-        if (!UIGraphicsGetCurrentContext()) {
+        CGContextRef context = UIGraphicsGetCurrentContext();
+        if (!context) {
             NSLog(@"[Gonerino] Failed to create graphics context");
             return nil;
         }
 
+        CGContextSetShouldAntialias(context, YES);
+        CGContextSetAllowsAntialiasing(context, YES);
+        CGContextSetShouldSmoothFonts(context, NO);
+
         [[UIColor whiteColor] setStroke];
-        
-        CGFloat headRadius = size.width * 0.2;
-        UIBezierPath *headPath = [UIBezierPath bezierPathWithOvalInRect:
-            CGRectMake(size.width/2 - headRadius, 
-                      size.height * 0.2, 
-                      headRadius * 2, 
-                      headRadius * 2)];
-        headPath.lineWidth = 1.5;
-        [headPath stroke];
-        
-        UIBezierPath *bodyPath = [UIBezierPath bezierPath];
-        [bodyPath moveToPoint:CGPointMake(size.width/2, size.height * 0.2 + headRadius * 2)];
-        [bodyPath addLineToPoint:CGPointMake(size.width/2, size.height * 0.8)];
-        bodyPath.lineWidth = 1.5;
+
+        CGFloat noSymbolRadius   = size.width * 0.45;
+        CGPoint center           = CGPointMake(size.width / 2, size.height / 2);
+        UIBezierPath *circlePath = [UIBezierPath bezierPathWithArcCenter:center
+                                                                  radius:noSymbolRadius
+                                                              startAngle:0
+                                                                endAngle:2 * M_PI
+                                                               clockwise:YES];
+
+        CGFloat bodyRadius     = size.width * 0.3;
+        CGPoint bodyCenter     = CGPointMake(size.width / 2, size.height * 0.85);
+        UIBezierPath *bodyPath = [UIBezierPath bezierPathWithArcCenter:bodyCenter
+                                                                radius:bodyRadius
+                                                            startAngle:M_PI
+                                                              endAngle:2 * M_PI
+                                                             clockwise:YES];
+
+        CGFloat headRadius     = size.width * 0.15;
+        CGPoint headCenter     = CGPointMake(size.width / 2, size.height * 0.35);
+        UIBezierPath *headPath = [UIBezierPath bezierPathWithArcCenter:headCenter
+                                                                radius:headRadius
+                                                            startAngle:0
+                                                              endAngle:2 * M_PI
+                                                             clockwise:YES];
+
+        UIBezierPath *linePath = [UIBezierPath bezierPath];
+        CGFloat offset         = noSymbolRadius * 0.7071;
+        [linePath moveToPoint:CGPointMake(center.x - offset, center.y - offset)];
+        [linePath addLineToPoint:CGPointMake(center.x + offset, center.y + offset)];
+
+        CGFloat lineWidth    = 1.5;
+        circlePath.lineWidth = lineWidth;
+        headPath.lineWidth   = lineWidth;
+        bodyPath.lineWidth   = lineWidth;
+        linePath.lineWidth   = lineWidth;
+
+        [circlePath stroke];
         [bodyPath stroke];
+        [headPath stroke];
+        [linePath stroke];
 
         UIImage *icon = UIGraphicsGetImageFromCurrentImageContext();
         UIGraphicsEndImageContext();
@@ -157,30 +187,59 @@
 + (UIImage *)createBlockVideoIconWithSize:(CGSize)size {
     @try {
         UIGraphicsBeginImageContextWithOptions(size, NO, [UIScreen mainScreen].scale);
-        if (!UIGraphicsGetCurrentContext()) {
+        CGContextRef context = UIGraphicsGetCurrentContext();
+        if (!context) {
             NSLog(@"[Gonerino] Failed to create graphics context");
             return nil;
         }
 
+        CGContextSetShouldAntialias(context, YES);
+        CGContextSetAllowsAntialiasing(context, YES);
+        CGContextSetShouldSmoothFonts(context, NO);
+
         [[UIColor whiteColor] setStroke];
-        
-        UIBezierPath *rectPath = [UIBezierPath bezierPathWithRoundedRect:
-            CGRectMake(size.width * 0.15, 
-                      size.height * 0.25, 
-                      size.width * 0.7, 
-                      size.height * 0.5)
-            cornerRadius:3.0];
-        rectPath.lineWidth = 1.5;
-        [rectPath stroke];
-        
+        [[UIColor whiteColor] setFill];
+
+        CGPoint center = CGPointMake(size.width / 2, size.height / 2);
+
+        UIBezierPath *rectPath = [UIBezierPath bezierPathWithRoundedRect:CGRectMake(size.width * 0.2, size.height * 0.3,
+                                                                                    size.width * 0.6, size.height * 0.4)
+                                                            cornerRadius:3.0];
+
         UIBezierPath *trianglePath = [UIBezierPath bezierPath];
-        [trianglePath moveToPoint:CGPointMake(size.width * 0.4, size.height * 0.35)];
-        [trianglePath addLineToPoint:CGPointMake(size.width * 0.6, size.height * 0.5)];
-        [trianglePath addLineToPoint:CGPointMake(size.width * 0.4, size.height * 0.65)];
+        CGFloat triangleSize       = size.width * 0.2;
+        CGPoint triangleCenter     = center;
+
+        [trianglePath
+            moveToPoint:CGPointMake(triangleCenter.x - triangleSize / 2, triangleCenter.y - triangleSize / 2)];
+        [trianglePath addLineToPoint:CGPointMake(triangleCenter.x + triangleSize / 2, triangleCenter.y)];
+        [trianglePath
+            addLineToPoint:CGPointMake(triangleCenter.x - triangleSize / 2, triangleCenter.y + triangleSize / 2)];
         [trianglePath closePath];
-        trianglePath.lineWidth = 1.5;
-        [trianglePath stroke];
-        
+
+        CGFloat noSymbolRadius   = size.width * 0.45;
+        UIBezierPath *circlePath = [UIBezierPath bezierPathWithArcCenter:center
+                                                                  radius:noSymbolRadius
+                                                              startAngle:0
+                                                                endAngle:2 * M_PI
+                                                               clockwise:YES];
+
+        UIBezierPath *linePath = [UIBezierPath bezierPath];
+        CGFloat offset         = noSymbolRadius * 0.7071;
+        [linePath moveToPoint:CGPointMake(center.x - offset, center.y - offset)];
+        [linePath addLineToPoint:CGPointMake(center.x + offset, center.y + offset)];
+
+        CGFloat lineWidth      = 1.5;
+        rectPath.lineWidth     = lineWidth;
+        trianglePath.lineWidth = lineWidth;
+        circlePath.lineWidth   = lineWidth;
+        linePath.lineWidth     = lineWidth;
+
+        [rectPath stroke];
+        [trianglePath fill];
+        [circlePath stroke];
+        [linePath stroke];
+
         UIImage *icon = UIGraphicsGetImageFromCurrentImageContext();
         UIGraphicsEndImageContext();
 
