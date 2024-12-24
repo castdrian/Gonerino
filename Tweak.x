@@ -168,15 +168,16 @@
                                         extractVideoInfoFromNode:subnode
                                                       completion:^(NSString *videoId, NSString *videoTitle,
                                                                    NSString *ownerName) {
-                                                          if (videoTitle) {
-                                                              [[VideoManager sharedInstance]
-                                                                  addBlockedVideo:videoTitle];
+                                                          if (videoId) {
+                                                              [[VideoManager sharedInstance] addBlockedVideo:videoId
+                                                                                                       title:videoTitle
+                                                                                                     channel:ownerName];
                                                               UIViewController *viewController =
                                                                   (UIViewController *)strongSelf;
                                                               [[%c(YTToastResponderEvent)
                                                                   eventWithMessage:
                                                                       [NSString stringWithFormat:@"Blocked video: %@",
-                                                                                                 videoTitle]
+                                                                                                 videoTitle ?: videoId]
                                                                     firstResponder:viewController] send];
                                                               if ([strongSelf respondsToSelector:@selector(dismiss)]) {
                                                                   [strongSelf dismiss];

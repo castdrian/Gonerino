@@ -78,34 +78,38 @@
     }
 }
 
-+ (BOOL)nodeContainsBlockedVideo:(id)node {    
++ (BOOL)nodeContainsBlockedVideo:(id)node {
     __block BOOL isBlocked = NO;
-    
+
     if ([node isKindOfClass:NSClassFromString(@"YTInlinePlaybackPlayerNode")]) {
-        [self extractVideoInfoFromNode:node completion:^(NSString *videoId, NSString *videoTitle, NSString *ownerName) {
-            NSLog(@"[Gonerino] Found video info - ID: %@, Title: %@, Owner: %@", 
-                  videoId ?: @"nil", videoTitle ?: @"nil", ownerName ?: @"nil");
-                  
-            if ([[VideoManager sharedInstance] isVideoBlocked:videoId]) {
-                isBlocked = YES;
-                NSLog(@"[Gonerino] Blocking video with id: %@", videoId);
-            }
-            if ([[ChannelManager sharedInstance] isChannelBlocked:ownerName]) {
-                isBlocked = YES;
-                NSLog(@"[Gonerino] Blocking video with id %@: Channel %@ is blocked", videoId, ownerName);
-            }
-            if ([[WordManager sharedInstance] isWordBlocked:videoTitle]) {
-                isBlocked = YES;
-                NSLog(@"[Gonerino] Blocking video with id %@: title contains blocked word", videoId);
-            }
-            if ([[WordManager sharedInstance] isWordBlocked:ownerName]) {
-                isBlocked = YES;
-                NSLog(@"[Gonerino] Blocking video with id %@: channel name contains blocked word", videoId);
-            }
-        }];
+        [self
+            extractVideoInfoFromNode:node
+                          completion:^(NSString *videoId, NSString *videoTitle, NSString *ownerName) {
+                              NSLog(@"[Gonerino] Found video info - ID: %@, Title: %@, Owner: %@", videoId ?: @"nil",
+                                    videoTitle ?: @"nil", ownerName ?: @"nil");
+
+                              if ([[VideoManager sharedInstance] isVideoBlocked:videoId]) {
+                                  isBlocked = YES;
+                                  NSLog(@"[Gonerino] Blocking video: ID %@ matched", videoId);
+                              }
+                              if ([[ChannelManager sharedInstance] isChannelBlocked:ownerName]) {
+                                  isBlocked = YES;
+                                  NSLog(@"[Gonerino] Blocking video with id %@: Channel %@ is blocked", videoId,
+                                        ownerName);
+                              }
+                              if ([[WordManager sharedInstance] isWordBlocked:videoTitle]) {
+                                  isBlocked = YES;
+                                  NSLog(@"[Gonerino] Blocking video with id %@: title contains blocked word", videoId);
+                              }
+                              if ([[WordManager sharedInstance] isWordBlocked:ownerName]) {
+                                  isBlocked = YES;
+                                  NSLog(@"[Gonerino] Blocking video with id %@: channel name contains blocked word",
+                                        videoId);
+                              }
+                          }];
         return isBlocked;
     }
-    
+
     if ([node respondsToSelector:@selector(subnodes)]) {
         NSArray *subnodes = [node subnodes];
         for (id subnode in subnodes) {
@@ -114,7 +118,7 @@
             }
         }
     }
-    
+
     return NO;
 }
 
