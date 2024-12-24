@@ -2,7 +2,6 @@
 
 #import "ChannelManager.h"
 #import "VideoManager.h"
-#import "WordManager.h"
 
 #import <Foundation/Foundation.h>
 #import <UIKit/UIKit.h>
@@ -33,13 +32,6 @@ NS_ASSUME_NONNULL_BEGIN
 - (nullable NSIndexPath *)indexPathForCell:(UICollectionViewCell *)cell;
 
 - (void)removeOffendingCells;
-
-- (BOOL)nodeContainsBlockedChannelName:(id)node;
-
-- (BOOL)nodeContainsBlockedVideo:(id)node;
-
-- (void)extractVideoInfoFromNode:(id)node
-                      completion:(void (^)(NSString *videoId, NSString *videoTitle, NSString *ownerName))completion;
 
 @end
 
