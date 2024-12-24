@@ -211,9 +211,18 @@
             NSString *text                     = [attributedText string];
             if (text && [text containsString:@" · "]) {
                 NSArray *components = [text componentsSeparatedByString:@" · "];
-                if (components.count >= 1 && ![components[0] containsString:@":"]) {
-                    completion(components[0]);
-                    return;
+                if (components.count >= 1) {
+                    NSString *firstComponent = components[0];
+                    NSRegularExpression *timeRegex = [NSRegularExpression 
+                        regularExpressionWithPattern:@"^\\d{1,2}:\\d{2}$"
+                        options:0 
+                        error:nil];
+                    
+                    NSRange range = NSMakeRange(0, firstComponent.length);
+                    if ([timeRegex numberOfMatchesInString:firstComponent options:0 range:range] == 0) {
+                        completion(firstComponent);
+                        return;
+                    }
                 }
             }
         }
