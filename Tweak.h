@@ -1,6 +1,7 @@
+#import "Util.h"
+
 #import "ChannelManager.h"
 #import "VideoManager.h"
-#import "WordManager.h"
 
 #import <Foundation/Foundation.h>
 #import <UIKit/UIKit.h>
@@ -31,10 +32,6 @@ NS_ASSUME_NONNULL_BEGIN
 - (nullable NSIndexPath *)indexPathForCell:(UICollectionViewCell *)cell;
 
 - (void)removeOffendingCells;
-
-- (BOOL)nodeContainsBlockedChannelName:(id)node;
-
-- (BOOL)nodeContainsBlockedVideo:(id)node;
 
 @end
 
@@ -84,6 +81,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (UIViewController *)findViewControllerForView:(UIView *)view;
 - (void)extractChannelNameFromNode:(id)node completion:(void (^)(NSString *channelName))completion;
 - (nullable NSString *)extractVideoTitleFromNode:(id)node;
+- (NSArray<YTActionSheetAction *> *)actions;  // Added this line
 @end
 
 @interface YTActionSheetAction : NSObject
@@ -119,6 +117,43 @@ NS_ASSUME_NONNULL_BEGIN
               detailTextBlock:(nullable NSString * (^)(void))detailTextBlock
                   selectBlock:(BOOL (^)(YTSettingsCell *, NSUInteger))selectBlock
                 settingItemId:(NSUInteger)settingItemId;
+@end
+
+@interface YTICommand : NSObject
+@property(copy, nonatomic) NSString *description;
+@end
+
+@interface YTInlinePlaybackPlayerDescriptor : NSObject
+@property(retain, nonatomic) id navigationEndpoint;
+@end
+
+@interface YTASDPlayableEntry : NSObject
+@property(retain, nonatomic) YTICommand *navigationEndpoint;
+@property(nonatomic) BOOL hasNavigationEndpoint;
+@property(copy, nonatomic) NSString *description;
+@end
+
+@interface YTElementsInlineMutedPlaybackView : NSObject
+@property(retain, nonatomic) YTASDPlayableEntry *asdPlayableEntry;
+@end
+
+@interface ELMContext : NSObject
+- (id)elementForKey:(NSString *)key;
+@end
+
+@interface ELMElement : NSObject
+@property(retain, nonatomic) id properties;
+@property(retain, nonatomic) ELMContext *context;
+- (id)propertyForKey:(NSString *)key;
+- (NSDictionary *)allProperties;
+- (id)valueForKey:(NSString *)key;
+@end
+
+@interface YTInlinePlaybackPlayerNode : ASDisplayNode
+@property(nonatomic, readonly) id playbackView;
+@property(nonatomic, readonly) ELMElement *element;
+@property(nonatomic, readonly) ELMContext *context;
+- (id)playbackView;
 @end
 
 NS_ASSUME_NONNULL_END

@@ -230,16 +230,15 @@
                                                             return NO;
                                                         }]];
 
-                        for (NSString *videoTitle in blockedVideos) {
+                        for (NSDictionary *videoInfo in blockedVideos) {
                             [rows
                                 addObject:
                                     [%c(YTSettingsSectionItem)
-                                                  itemWithTitle:@""
-                                               titleDescription:videoTitle
+                                                  itemWithTitle:videoInfo[@"channel"] ?: @"Unknown Channel"
+                                               titleDescription:videoInfo[@"title"] ?: @"Unknown Title"
                                         accessibilityIdentifier:nil
                                                 detailTextBlock:nil
-                                                    selectBlock:^BOOL(YTSettingsCell *cell,
-                                                                      NSUInteger sectionItemIndex) {
+                                                    selectBlock:^BOOL(YTSettingsCell *cell, NSUInteger arg1) {
                                                         YTSettingsViewController *settingsVC =
                                                             [self valueForKey:@"_settingsViewControllerDelegate"];
                                                         UIAlertController *alertController = [UIAlertController
@@ -248,7 +247,7 @@
                                                                                          stringWithFormat:
                                                                                              @"Are you sure you want "
                                                                                              @"to delete '%@'?",
-                                                                                             videoTitle]
+                                                                                             videoInfo[@"title"]]
                                                                       preferredStyle:UIAlertControllerStyleAlert];
 
                                                         [alertController
@@ -258,7 +257,8 @@
                                                                               style:UIAlertActionStyleDestructive
                                                                             handler:^(UIAlertAction *action) {
                                                                                 [[VideoManager sharedInstance]
-                                                                                    removeBlockedVideo:videoTitle];
+                                                                                    removeBlockedVideo:videoInfo
+                                                                                                           [@"id"]];
                                                                                 [self reloadGonerinoSection];
 
                                                                                 UIImpactFeedbackGenerator *generator =
@@ -270,9 +270,10 @@
 
                                                                                 [[%c(YTToastResponderEvent)
                                                                                     eventWithMessage:
-                                                                                        [NSString stringWithFormat:
-                                                                                                      @"Deleted %@",
-                                                                                                      videoTitle]
+                                                                                        [NSString
+                                                                                            stringWithFormat:
+                                                                                                @"Deleted %@",
+                                                                                                videoInfo[@"title"]]
                                                                                       firstResponder:settingsVC] send];
                                                                             }]];
 
@@ -639,6 +640,29 @@
             return;
         }
 
+        void (^continueImport)(void) = ^{
+            NSArray *words = settings[@"blockedWords"];
+            if (words) {
+                [[WordManager sharedInstance] setBlockedWords:words];
+            }
+
+            NSNumber *peopleWatched = settings[@"blockPeopleWatched"];
+            if (peopleWatched) {
+                [[NSUserDefaults standardUserDefaults] setBool:[peopleWatched boolValue]
+                                                        forKey:@"GonerinoPeopleWatched"];
+            }
+
+            NSNumber *mightLike = settings[@"blockMightLike"];
+            if (mightLike) {
+                [[NSUserDefaults standardUserDefaults] setBool:[mightLike boolValue] forKey:@"GonerinoMightLike"];
+            }
+
+            [[NSUserDefaults standardUserDefaults] synchronize];
+            [self reloadGonerinoSection];
+            [[%c(YTToastResponderEvent) eventWithMessage:@"Settings imported successfully"
+                                                     firstResponder:settingsVC] send];
+        };
+
         NSArray *channels = settings[@"blockedChannels"];
         if (channels) {
             [[ChannelManager sharedInstance] setBlockedChannels:[NSMutableArray arrayWithArray:channels]];
@@ -646,28 +670,40 @@
 
         NSArray *videos = settings[@"blockedVideos"];
         if (videos) {
-            [[VideoManager sharedInstance] setBlockedVideos:videos];
-        }
+            if ([videos isKindOfClass:[NSArray class]]) {
+                BOOL isValidFormat = YES;
+                for (id videoEntry in videos) {
+                    if (![videoEntry isKindOfClass:[NSDictionary class]] ||
+                        ![videoEntry[@"id"] isKindOfClass:[NSString class]] ||
+                        ![videoEntry[@"title"] isKindOfClass:[NSString class]] ||
+                        ![videoEntry[@"channel"] isKindOfClass:[NSString class]] || [videoEntry count] != 3) {
+                        isValidFormat = NO;
+                        break;
+                    }
+                }
 
-        NSArray *words = settings[@"blockedWords"];
-        if (words) {
-            [[WordManager sharedInstance] setBlockedWords:words];
-        }
+                if (isValidFormat) {
+                    [[VideoManager sharedInstance] setBlockedVideos:videos];
+                    continueImport();
+                } else {
+                    [[%c(YTToastResponderEvent)
+                        eventWithMessage:@"Format outdated, blocked videos will not be imported"
+                          firstResponder:settingsVC] send];
 
-        NSNumber *peopleWatched = settings[@"blockPeopleWatched"];
-        if (peopleWatched) {
-            [[NSUserDefaults standardUserDefaults] setBool:[peopleWatched boolValue] forKey:@"GonerinoPeopleWatched"];
-        }
+                    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)),
+                                   dispatch_get_main_queue(), ^{ continueImport(); });
+                }
+            } else {
+                [[%c(YTToastResponderEvent)
+                    eventWithMessage:@"Format outdated, blocked videos will not be imported"
+                      firstResponder:settingsVC] send];
 
-        NSNumber *mightLike = settings[@"blockMightLike"];
-        if (mightLike) {
-            [[NSUserDefaults standardUserDefaults] setBool:[mightLike boolValue] forKey:@"GonerinoMightLike"];
+                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)),
+                               dispatch_get_main_queue(), ^{ continueImport(); });
+            }
+        } else {
+            continueImport();
         }
-
-        [[NSUserDefaults standardUserDefaults] synchronize];
-        [self reloadGonerinoSection];
-        [[%c(YTToastResponderEvent) eventWithMessage:@"Settings imported successfully"
-                                                 firstResponder:settingsVC] send];
     } else {
         NSMutableDictionary *settings = [NSMutableDictionary dictionary];
         settings[@"blockedChannels"]  = [[ChannelManager sharedInstance] blockedChannels];
