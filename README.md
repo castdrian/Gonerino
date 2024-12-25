@@ -2,6 +2,11 @@
 
 A YouTube tweak that allows you to block specific channels and automatically remove their videos from your feed.
 
+## Download
+
+- [apt repo](https://repo.adriancastro.dev)
+- [github release](https://github.com/castdrian/Gonerino/releases/latest)
+
 ## Features
 
 - Block channels directly from video context menu
