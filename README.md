@@ -22,9 +22,14 @@ A YouTube tweak that allows you to block specific channels and automatically rem
 | **iOS Version** | 15.8.3+ | ✅ |
 | **YouTube Version** | 19.42.1+ | ✅ |
 | **Injection Methods** | ElleKit (palera1n) (Dopamine) | ✅ |
-| | TrollFools (TrollStore) | ✅ |
+| | TrollFools (TrollStore) | ⚠️ |
 | | Sideloaded IPA (MobileSubstrate) | ✅ |
-| | LiveContainer (TweakLoader) | ✅ |
+| | LiveContainer (TweakLoader) | ⚠️ |
+
+### Status Legend
+✅ - Fully Working\
+⚠️ - Partially Working/Known Issues\
+❌ - Not Working
 
 ## Contributors
 
