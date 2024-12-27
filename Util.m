@@ -79,11 +79,58 @@
 }
 
 + (BOOL)nodeContainsBlockedVideo:(id)node {
+    if ([node respondsToSelector:@selector(accessibilityLabel)]) {
+        NSString *accessibilityLabel = [node accessibilityLabel];
+        if (accessibilityLabel) {
+            if ([[WordManager sharedInstance] isWordBlocked:accessibilityLabel]) {
+                NSLog(@"[Gonerino] Blocking video because of blocked word: %@", accessibilityLabel);
+                return YES;
+            }
+        }
+    }
+
+    if ([node isKindOfClass:NSClassFromString(@"ASTextNode")]) {
+        NSAttributedString *attributedText = [(ASTextNode *)node attributedText];
+        NSString *text                     = [attributedText string];
+
+        if ([[WordManager sharedInstance] isWordBlocked:text]) {
+            NSLog(@"[Gonerino] Blocking content with blocked word: %@", text);
+            return YES;
+        }
+
+        if ([text containsString:@" · "]) {
+            NSArray *components = [text componentsSeparatedByString:@" · "];
+            if (components.count >= 1) {
+                NSString *potentialChannelName = components[0];
+                if ([[ChannelManager sharedInstance] isChannelBlocked:potentialChannelName]) {
+                    NSLog(@"[Gonerino] Blocking content from blocked channel: %@", potentialChannelName);
+                    return YES;
+                }
+            }
+        }
+    }
+
+    if ([node respondsToSelector:@selector(channelName)]) {
+        NSString *nodeChannelName = [node channelName];
+        if ([[ChannelManager sharedInstance] isChannelBlocked:nodeChannelName]) {
+            NSLog(@"[Gonerino] Blocking content from blocked channel: %@", nodeChannelName);
+            return YES;
+        }
+    }
+
+    if ([node respondsToSelector:@selector(ownerName)]) {
+        NSString *nodeOwnerName = [node ownerName];
+        if ([[ChannelManager sharedInstance] isChannelBlocked:nodeOwnerName]) {
+            NSLog(@"[Gonerino] Blocking content from blocked channel: %@", nodeOwnerName);
+            return YES;
+        }
+    }
+
     __block BOOL isBlocked = NO;
 
     if ([node isKindOfClass:NSClassFromString(@"ASTextNode")]) {
         NSAttributedString *attributedText = [(ASTextNode *)node attributedText];
-        NSString *text = [attributedText string];
+        NSString *text                     = [attributedText string];
 
         if ([[NSUserDefaults standardUserDefaults] boolForKey:@"GonerinoPeopleWatched"] &&
             [text isEqualToString:@"People also watched this video"]) {

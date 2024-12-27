@@ -4,10 +4,14 @@
 
 - (void)layoutSubviews {
     %orig;
+    [self removeOffendingCells];
+}
 
+%new
+- (void)removeOffendingCells {
     __weak typeof(self) weakSelf = self;
 
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.1 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+    dispatch_async(dispatch_get_main_queue(), ^{
         __strong typeof(weakSelf) strongSelf = weakSelf;
         if (!strongSelf)
             return;
@@ -48,31 +52,6 @@
             NSLog(@"[Gonerino] Exception in removeOffendingCells: %@", exception);
         }
     });
-}
-
-%new
-- (void)removeOffendingCells {
-    NSArray *visibleCells              = [self visibleCells];
-    NSMutableArray *indexPathsToRemove = [NSMutableArray array];
-
-    for (UICollectionViewCell *cell in visibleCells) {
-        if ([cell isKindOfClass:NSClassFromString(@"_ASCollectionViewCell")]) {
-            _ASCollectionViewCell *asCell = (_ASCollectionViewCell *)cell;
-            if ([asCell respondsToSelector:@selector(node)]) {
-                id node = [asCell node];
-                if ([Util nodeContainsBlockedVideo:node]) {
-                    NSIndexPath *indexPath = [self indexPathForCell:cell];
-                    if (indexPath) {
-                        [indexPathsToRemove addObject:indexPath];
-                    }
-                }
-            }
-        }
-    }
-
-    if (indexPathsToRemove.count > 0) {
-        [self performBatchUpdates:^{ [self deleteItemsAtIndexPaths:indexPathsToRemove]; } completion:nil];
-    }
 }
 
 %end
