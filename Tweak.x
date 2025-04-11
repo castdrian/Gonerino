@@ -20,41 +20,30 @@ static void toggleGonerinoStatus() {
 
     UIViewController *topVC = nil;
 
-    UIWindow *window                  = nil;
-    NSSet<UIScene *> *connectedScenes = UIApplication.sharedApplication.connectedScenes;
+    NSSet<UIScene *> *connectedScenes = [UIApplication sharedApplication].connectedScenes;
     for (UIScene *scene in connectedScenes) {
-        if (scene.activationState == UISceneActivationStateForegroundActive &&
-            [scene isKindOfClass:[UIWindowScene class]]) {
+        if ([scene isKindOfClass:[UIWindowScene class]]) {
             UIWindowScene *windowScene = (UIWindowScene *)scene;
-            for (UIWindow *w in windowScene.windows) {
-                if (w.isKeyWindow) {
-                    window = w;
+            for (UIWindow *window in windowScene.windows) {
+                if (window.rootViewController) {
+                    topVC = window.rootViewController;
+                    while (topVC.presentedViewController) {
+                        topVC = topVC.presentedViewController;
+                    }
                     break;
                 }
             }
-            if (window)
+            if (topVC)
                 break;
         }
     }
 
-    if (window) {
-        UIView *frontView = window.subviews.firstObject;
-        if (frontView) {
-            UIResponder *responder = frontView;
-            while (responder) {
-                if ([responder isKindOfClass:[UIViewController class]]) {
-                    topVC = (UIViewController *)responder;
-                    break;
-                }
-                responder = [responder nextResponder];
-            }
-        }
-    }
-
     if (topVC) {
-        [[%c(YTToastResponderEvent)
-            eventWithMessage:[NSString stringWithFormat:@"Gonerino %@", !isEnabled ? @"activated" : @"deactivated"]
-              firstResponder:topVC] send];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [[%c(YTToastResponderEvent)
+                eventWithMessage:[NSString stringWithFormat:@"Gonerino %@", !isEnabled ? @"activated" : @"deactivated"]
+                  firstResponder:topVC] send];
+        });
     }
 }
 
