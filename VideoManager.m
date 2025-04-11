@@ -32,7 +32,6 @@
 
     NSDictionary *videoInfo = @{@"id": videoId, @"title": title ?: @"", @"channel": channel ?: @""};
 
-    // Check if video is already blocked
     NSInteger existingIndex =
         [self.blockedVideoArray indexOfObjectPassingTest:^BOOL(NSDictionary *obj, NSUInteger idx, BOOL *stop) {
             return [obj[@"id"] isEqualToString:videoId];
@@ -71,7 +70,6 @@
 }
 
 - (void)setBlockedVideos:(NSArray<NSDictionary *> *)videos {
-    // Validate the array contents
     NSArray *validVideos = [videos
         filteredArrayUsingPredicate:[NSPredicate predicateWithBlock:^BOOL(NSDictionary *dict, NSDictionary *bindings) {
             return [dict isKindOfClass:[NSDictionary class]] && dict[@"id"] &&
