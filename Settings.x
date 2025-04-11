@@ -35,23 +35,6 @@
 
     SECTION_HEADER(@"Gonerino Settings");
 
-    YTSettingsSectionItem *activateGonerino = [%c(YTSettingsSectionItem)
-            switchItemWithTitle:@"Activate Gonerino"
-               titleDescription:@"Enabling this will activate the blocking features"
-        accessibilityIdentifier:nil
-                       switchOn:[[NSUserDefaults standardUserDefaults] boolForKey:@"GonerinoEnabled"] ?: YES
-                    switchBlock:^BOOL(YTSettingsCell *cell, BOOL enabled) {
-                        [[NSUserDefaults standardUserDefaults] setBool:enabled forKey:@"GonerinoEnabled"];
-                        YTSettingsViewController *settingsVC = [self valueForKey:@"_settingsViewControllerDelegate"];
-                        [[%c(YTToastResponderEvent)
-                            eventWithMessage:[NSString stringWithFormat:@"Gonerino %@",
-                                                                        enabled ? @"activated" : @"deactivated"]
-                              firstResponder:settingsVC] send];
-                        return YES;
-                    }
-                  settingItemId:0];
-    [sectionItems addObject:activateGonerino];
-
     NSUInteger channelCount               = [[ChannelManager sharedInstance] blockedChannels].count;
     YTSettingsSectionItem *manageChannels = [%c(YTSettingsSectionItem)
                   itemWithTitle:@"Manage Channels"

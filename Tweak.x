@@ -3,6 +3,46 @@
 static BOOL isShaking                               = NO;
 static NSTimeInterval shakeStartTime                = 0;
 static UIImpactFeedbackGenerator *feedbackGenerator = nil;
+static UILabel *statusOverlayLabel                  = nil;
+
+static void updateStatusOverlay() {
+    BOOL isEnabled = [[NSUserDefaults standardUserDefaults] objectForKey:@"GonerinoEnabled"] == nil
+                         ? YES
+                         : [[NSUserDefaults standardUserDefaults] boolForKey:@"GonerinoEnabled"];
+
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (!statusOverlayLabel) {
+            statusOverlayLabel                     = [[UILabel alloc] initWithFrame:CGRectMake(0, 0, 150, 30)];
+            statusOverlayLabel.textColor           = [UIColor redColor];
+            statusOverlayLabel.backgroundColor     = [UIColor colorWithWhite:0 alpha:0.7];
+            statusOverlayLabel.textAlignment       = NSTextAlignmentCenter;
+            statusOverlayLabel.layer.cornerRadius  = 10;
+            statusOverlayLabel.layer.masksToBounds = YES;
+            statusOverlayLabel.font                = [UIFont systemFontOfSize:12 weight:UIFontWeightBold];
+            statusOverlayLabel.alpha               = 0.0;
+
+            UIWindow *keyWindow = nil;
+            for (UIWindow *window in [UIApplication sharedApplication].windows) {
+                if (window.isKeyWindow) {
+                    keyWindow = window;
+                    break;
+                }
+            }
+
+            if (keyWindow) {
+                statusOverlayLabel.frame =
+                    CGRectMake((keyWindow.bounds.size.width - 150) / 2, keyWindow.safeAreaInsets.top + 5, 150, 30);
+                [keyWindow addSubview:statusOverlayLabel];
+            }
+        }
+
+        statusOverlayLabel.text = @"GONERINO DISABLED";
+
+        [UIView animateWithDuration:0.3
+                         animations:^{ statusOverlayLabel.alpha = isEnabled ? 0.0 : 1.0; }
+                         completion:nil];
+    });
+}
 
 static void triggerHapticFeedback(void) {
     if (!feedbackGenerator) {
@@ -15,8 +55,11 @@ static void triggerHapticFeedback(void) {
 static void toggleGonerinoStatus() {
     NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
     BOOL isEnabled = [defaults objectForKey:@"GonerinoEnabled"] == nil ? YES : [defaults boolForKey:@"GonerinoEnabled"];
-    [defaults setBool:!isEnabled forKey:@"GonerinoEnabled"];
+    BOOL newState  = !isEnabled;
+    [defaults setBool:newState forKey:@"GonerinoEnabled"];
     [defaults synchronize];
+
+    updateStatusOverlay();
 
     UIViewController *topVC = nil;
 
@@ -265,3 +308,17 @@ static void toggleGonerinoStatus() {
 }
 
 %end
+
+%hook UIApplication
+
+- (void)applicationDidBecomeActive:(id)arg1 {
+    %orig;
+    updateStatusOverlay();
+}
+
+%end
+
+%ctor {
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)), dispatch_get_main_queue(),
+                   ^{ updateStatusOverlay(); });
+}
