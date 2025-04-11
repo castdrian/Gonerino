@@ -79,6 +79,13 @@
 }
 
 + (BOOL)nodeContainsBlockedVideo:(id)node {
+    BOOL isEnabled = [[NSUserDefaults standardUserDefaults] objectForKey:@"GonerinoEnabled"] == nil ? 
+                    YES : [[NSUserDefaults standardUserDefaults] boolForKey:@"GonerinoEnabled"];
+    
+    if (!isEnabled) {
+        return NO;
+    }
+    
     if ([node respondsToSelector:@selector(accessibilityLabel)]) {
         NSString *accessibilityLabel = [node accessibilityLabel];
         if (accessibilityLabel) {

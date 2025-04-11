@@ -1,5 +1,93 @@
 #import "Tweak.h"
 
+static BOOL isShaking                               = NO;
+static NSTimeInterval shakeStartTime                = 0;
+static UIImpactFeedbackGenerator *feedbackGenerator = nil;
+
+static void triggerHapticFeedback(void) {
+    if (!feedbackGenerator) {
+        feedbackGenerator = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleMedium];
+    }
+    [feedbackGenerator prepare];
+    [feedbackGenerator impactOccurred];
+}
+
+static void toggleGonerinoStatus() {
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    BOOL isEnabled = [defaults objectForKey:@"GonerinoEnabled"] == nil ? YES : [defaults boolForKey:@"GonerinoEnabled"];
+    [defaults setBool:!isEnabled forKey:@"GonerinoEnabled"];
+    [defaults synchronize];
+
+    UIViewController *topVC = nil;
+
+    UIWindow *window                  = nil;
+    NSSet<UIScene *> *connectedScenes = UIApplication.sharedApplication.connectedScenes;
+    for (UIScene *scene in connectedScenes) {
+        if (scene.activationState == UISceneActivationStateForegroundActive &&
+            [scene isKindOfClass:[UIWindowScene class]]) {
+            UIWindowScene *windowScene = (UIWindowScene *)scene;
+            for (UIWindow *w in windowScene.windows) {
+                if (w.isKeyWindow) {
+                    window = w;
+                    break;
+                }
+            }
+            if (window)
+                break;
+        }
+    }
+
+    if (window) {
+        UIView *frontView = window.subviews.firstObject;
+        if (frontView) {
+            UIResponder *responder = frontView;
+            while (responder) {
+                if ([responder isKindOfClass:[UIViewController class]]) {
+                    topVC = (UIViewController *)responder;
+                    break;
+                }
+                responder = [responder nextResponder];
+            }
+        }
+    }
+
+    if (topVC) {
+        [[%c(YTToastResponderEvent)
+            eventWithMessage:[NSString stringWithFormat:@"Gonerino %@", !isEnabled ? @"activated" : @"deactivated"]
+              firstResponder:topVC] send];
+    }
+}
+
+%hook UIWindow
+
+- (void)becomeKeyWindow {
+    %orig;
+}
+
+- (void)motionBegan:(UIEventSubtype)motion withEvent:(UIEvent *)event {
+    if (motion == UIEventSubtypeMotionShake) {
+        isShaking      = YES;
+        shakeStartTime = [[NSDate date] timeIntervalSince1970];
+    }
+    %orig;
+}
+
+- (void)motionEnded:(UIEventSubtype)motion withEvent:(UIEvent *)event {
+    if (motion == UIEventSubtypeMotionShake && isShaking) {
+        NSTimeInterval currentTime   = [[NSDate date] timeIntervalSince1970];
+        NSTimeInterval shakeDuration = currentTime - shakeStartTime;
+
+        if (shakeDuration >= 0.5 && shakeDuration <= 2.0) {
+            triggerHapticFeedback();
+            dispatch_async(dispatch_get_main_queue(), ^{ toggleGonerinoStatus(); });
+        }
+        isShaking = NO;
+    }
+    %orig;
+}
+
+%end
+
 %hook YTAsyncCollectionView
 
 - (void)layoutSubviews {

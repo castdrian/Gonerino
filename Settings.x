@@ -35,6 +35,23 @@
 
     SECTION_HEADER(@"Gonerino Settings");
 
+    YTSettingsSectionItem *activateGonerino = [%c(YTSettingsSectionItem)
+            switchItemWithTitle:@"Activate Gonerino"
+               titleDescription:@"Enabling this will activate the blocking features"
+        accessibilityIdentifier:nil
+                       switchOn:[[NSUserDefaults standardUserDefaults] boolForKey:@"GonerinoEnabled"] ?: YES
+                    switchBlock:^BOOL(YTSettingsCell *cell, BOOL enabled) {
+                        [[NSUserDefaults standardUserDefaults] setBool:enabled forKey:@"GonerinoEnabled"];
+                        YTSettingsViewController *settingsVC = [self valueForKey:@"_settingsViewControllerDelegate"];
+                        [[%c(YTToastResponderEvent)
+                            eventWithMessage:[NSString stringWithFormat:@"Gonerino %@",
+                                                                        enabled ? @"activated" : @"deactivated"]
+                              firstResponder:settingsVC] send];
+                        return YES;
+                    }
+                  settingItemId:0];
+    [sectionItems addObject:activateGonerino];
+
     NSUInteger channelCount               = [[ChannelManager sharedInstance] blockedChannels].count;
     YTSettingsSectionItem *manageChannels = [%c(YTSettingsSectionItem)
                   itemWithTitle:@"Manage Channels"
@@ -457,6 +474,11 @@
                        switchOn:[[NSUserDefaults standardUserDefaults] boolForKey:@"GonerinoPeopleWatched"]
                     switchBlock:^BOOL(YTSettingsCell *cell, BOOL enabled) {
                         [[NSUserDefaults standardUserDefaults] setBool:enabled forKey:@"GonerinoPeopleWatched"];
+                        YTSettingsViewController *settingsVC = [self valueForKey:@"_settingsViewControllerDelegate"];
+                        [[%c(YTToastResponderEvent)
+                            eventWithMessage:[NSString stringWithFormat:@"'People also watched' %@",
+                                                                        enabled ? @"blocked" : @"unblocked"]
+                              firstResponder:settingsVC] send];
                         return YES;
                     }
                   settingItemId:0];
@@ -469,6 +491,11 @@
                        switchOn:[[NSUserDefaults standardUserDefaults] boolForKey:@"GonerinoMightLike"]
                     switchBlock:^BOOL(YTSettingsCell *cell, BOOL enabled) {
                         [[NSUserDefaults standardUserDefaults] setBool:enabled forKey:@"GonerinoMightLike"];
+                        YTSettingsViewController *settingsVC = [self valueForKey:@"_settingsViewControllerDelegate"];
+                        [[%c(YTToastResponderEvent)
+                            eventWithMessage:[NSString stringWithFormat:@"'You might also like' %@",
+                                                                        enabled ? @"blocked" : @"unblocked"]
+                              firstResponder:settingsVC] send];
                         return YES;
                     }
                   settingItemId:0];
@@ -488,6 +515,10 @@
                         settings[@"blockedChannels"]  = [[ChannelManager sharedInstance] blockedChannels];
                         settings[@"blockedVideos"]    = [[VideoManager sharedInstance] blockedVideos];
                         settings[@"blockedWords"]     = [[WordManager sharedInstance] blockedWords];
+                        settings[@"gonerinoEnabled"] =
+                            @([[NSUserDefaults standardUserDefaults] objectForKey:@"GonerinoEnabled"] == nil
+                                  ? YES
+                                  : [[NSUserDefaults standardUserDefaults] boolForKey:@"GonerinoEnabled"]);
                         settings[@"blockPeopleWatched"] =
                             @([[NSUserDefaults standardUserDefaults] boolForKey:@"GonerinoPeopleWatched"]);
                         settings[@"blockMightLike"] =
@@ -657,6 +688,11 @@
                 [[NSUserDefaults standardUserDefaults] setBool:[mightLike boolValue] forKey:@"GonerinoMightLike"];
             }
 
+            NSNumber *gonerinoEnabled = settings[@"gonerinoEnabled"];
+            if (gonerinoEnabled) {
+                [[NSUserDefaults standardUserDefaults] setBool:[gonerinoEnabled boolValue] forKey:@"GonerinoEnabled"];
+            }
+
             [[NSUserDefaults standardUserDefaults] synchronize];
             [self reloadGonerinoSection];
             [[%c(YTToastResponderEvent) eventWithMessage:@"Settings imported successfully"
@@ -709,6 +745,9 @@
         settings[@"blockedChannels"]  = [[ChannelManager sharedInstance] blockedChannels];
         settings[@"blockedVideos"]    = [[VideoManager sharedInstance] blockedVideos];
         settings[@"blockedWords"]     = [[WordManager sharedInstance] blockedWords];
+        settings[@"gonerinoEnabled"]  = @([[NSUserDefaults standardUserDefaults] objectForKey:@"GonerinoEnabled"] == nil
+                                              ? YES
+                                              : [[NSUserDefaults standardUserDefaults] boolForKey:@"GonerinoEnabled"]);
         settings[@"blockPeopleWatched"] =
             @([[NSUserDefaults standardUserDefaults] boolForKey:@"GonerinoPeopleWatched"]);
         settings[@"blockMightLike"] = @([[NSUserDefaults standardUserDefaults] boolForKey:@"GonerinoMightLike"]);
