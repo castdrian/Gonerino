@@ -35,6 +35,26 @@
 
     SECTION_HEADER(@"Gonerino Settings");
 
+    YTSettingsSectionItem *shakeToggle = [%c(YTSettingsSectionItem)
+            switchItemWithTitle:@"Enable Shake Gesture"
+               titleDescription:@"Allow toggling Gonerino with shake gesture"
+        accessibilityIdentifier:nil
+                       switchOn:[[NSUserDefaults standardUserDefaults] objectForKey:@"GonerinoShakeEnabled"] == nil
+                                    ? NO
+                                    : [[NSUserDefaults standardUserDefaults] boolForKey:@"GonerinoShakeEnabled"]
+                    switchBlock:^BOOL(YTSettingsCell *cell, BOOL enabled) {
+                        [[NSUserDefaults standardUserDefaults] setBool:enabled forKey:@"GonerinoShakeEnabled"];
+                        [[NSUserDefaults standardUserDefaults] synchronize];
+                        YTSettingsViewController *settingsVC = [self valueForKey:@"_settingsViewControllerDelegate"];
+                        [[%c(YTToastResponderEvent)
+                            eventWithMessage:[NSString stringWithFormat:@"Shake gesture %@",
+                                                                        enabled ? @"enabled" : @"disabled"]
+                              firstResponder:settingsVC] send];
+                        return YES;
+                    }
+                  settingItemId:0];
+    [sectionItems addObject:shakeToggle];
+
     NSUInteger channelCount               = [[ChannelManager sharedInstance] blockedChannels].count;
     YTSettingsSectionItem *manageChannels = [%c(YTSettingsSectionItem)
                   itemWithTitle:@"Manage Channels"

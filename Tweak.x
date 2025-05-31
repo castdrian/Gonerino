@@ -97,7 +97,11 @@ static void toggleGonerinoStatus() {
 }
 
 - (void)motionBegan:(UIEventSubtype)motion withEvent:(UIEvent *)event {
-    if (motion == UIEventSubtypeMotionShake) {
+    BOOL isShakeEnabled = [[NSUserDefaults standardUserDefaults] objectForKey:@"GonerinoShakeEnabled"] == nil
+                              ? NO
+                              : [[NSUserDefaults standardUserDefaults] boolForKey:@"GonerinoShakeEnabled"];
+
+    if (motion == UIEventSubtypeMotionShake && isShakeEnabled) {
         isShaking      = YES;
         shakeStartTime = [[NSDate date] timeIntervalSince1970];
     }
@@ -105,7 +109,11 @@ static void toggleGonerinoStatus() {
 }
 
 - (void)motionEnded:(UIEventSubtype)motion withEvent:(UIEvent *)event {
-    if (motion == UIEventSubtypeMotionShake && isShaking) {
+    BOOL isShakeEnabled = [[NSUserDefaults standardUserDefaults] objectForKey:@"GonerinoShakeEnabled"] == nil
+                              ? NO
+                              : [[NSUserDefaults standardUserDefaults] boolForKey:@"GonerinoShakeEnabled"];
+
+    if (motion == UIEventSubtypeMotionShake && isShaking && isShakeEnabled) {
         NSTimeInterval currentTime   = [[NSDate date] timeIntervalSince1970];
         NSTimeInterval shakeDuration = currentTime - shakeStartTime;
 
