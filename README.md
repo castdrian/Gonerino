@@ -21,14 +21,15 @@ A YouTube tweak that allows you to block specific channels and automatically rem
 |----------|---------------|---------|
 | **iOS Version** | 15.8.3+ | ✅ |
 | **YouTube Version** | 19.42.1+ | ✅ |
-| **Injection Methods** | ElleKit (palera1n) (Dopamine) | ✅ |
+| **Loading Methods** | ElleKit (palera1n) (Dopamine) (Sideloaded) | ✅ |
 | | TrollFools (TrollStore) | ⚠️ |
-| | Sideloaded IPA (MobileSubstrate) | ✅ |
-| | LiveContainer (TweakLoader) | ⚠️ |
+| | CydiaSubstrate | ❓ |
+| | TweakLoader (LiveContainer) | ⚠️ |
 
 ### Status Legend
 ✅ - Fully Working\
 ⚠️ - Partially Working/Known Issues\
+❓ - Not Tested\
 ❌ - Not Working
 
 ## Contributors
