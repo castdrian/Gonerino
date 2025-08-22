@@ -17,6 +17,7 @@
 @class YTActionSheetAction;
 @class YTToastResponderEvent;
 @class YTSettingsCell;
+@class YTQTMButton;
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -154,6 +155,33 @@ NS_ASSUME_NONNULL_BEGIN
 @property(nonatomic, readonly) ELMElement *element;
 @property(nonatomic, readonly) ELMContext *context;
 - (id)playbackView;
+@end
+
+@interface YTRightNavigationButtons : UIView
+@property (retain, nonatomic, nullable) YTQTMButton *gonerinoButton;
+- (NSMutableArray *)buttons;
+- (NSMutableArray *)visibleButtons;
+- (void)gonerinoButtonPressed:(UIButton *)sender;
+@end
+
+@interface YTQTMButton : UIButton
++ (instancetype)iconButton;
+- (void)enableNewTouchFeedback;
+@end
+
+@interface QTMIcon : NSObject
++ (UIImage *)tintImage:(UIImage *)image color:(UIColor *)color;
+@end
+
+@interface YTPageStyleController : NSObject
++ (NSInteger)pageStyle;
+@end
+
+@interface YTAppDelegate : NSObject
+@end
+
+@interface YTAppViewControllerImpl : NSObject
+- (NSInteger)pageStyle;
 @end
 
 NS_ASSUME_NONNULL_END

@@ -1,133 +1,5 @@
 #import "Tweak.h"
 
-static BOOL isShaking                               = NO;
-static NSTimeInterval shakeStartTime                = 0;
-static UIImpactFeedbackGenerator *feedbackGenerator = nil;
-static UILabel *statusOverlayLabel                  = nil;
-
-static void updateStatusOverlay() {
-    BOOL isEnabled = [[NSUserDefaults standardUserDefaults] objectForKey:@"GonerinoEnabled"] == nil
-                         ? YES
-                         : [[NSUserDefaults standardUserDefaults] boolForKey:@"GonerinoEnabled"];
-
-    dispatch_async(dispatch_get_main_queue(), ^{
-        if (!statusOverlayLabel) {
-            statusOverlayLabel                     = [[UILabel alloc] initWithFrame:CGRectMake(0, 0, 150, 30)];
-            statusOverlayLabel.textColor           = [UIColor redColor];
-            statusOverlayLabel.backgroundColor     = [UIColor colorWithWhite:0 alpha:0.7];
-            statusOverlayLabel.textAlignment       = NSTextAlignmentCenter;
-            statusOverlayLabel.layer.cornerRadius  = 10;
-            statusOverlayLabel.layer.masksToBounds = YES;
-            statusOverlayLabel.font                = [UIFont systemFontOfSize:12 weight:UIFontWeightBold];
-            statusOverlayLabel.alpha               = 0.0;
-
-            UIWindow *keyWindow = nil;
-            for (UIWindow *window in [UIApplication sharedApplication].windows) {
-                if (window.isKeyWindow) {
-                    keyWindow = window;
-                    break;
-                }
-            }
-
-            if (keyWindow) {
-                statusOverlayLabel.frame =
-                    CGRectMake((keyWindow.bounds.size.width - 150) / 2, keyWindow.safeAreaInsets.top + 5, 150, 30);
-                [keyWindow addSubview:statusOverlayLabel];
-            }
-        }
-
-        statusOverlayLabel.text = @"GONERINO DISABLED";
-
-        [UIView animateWithDuration:0.3
-                         animations:^{ statusOverlayLabel.alpha = isEnabled ? 0.0 : 1.0; }
-                         completion:nil];
-    });
-}
-
-static void triggerHapticFeedback(void) {
-    if (!feedbackGenerator) {
-        feedbackGenerator = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleMedium];
-    }
-    [feedbackGenerator prepare];
-    [feedbackGenerator impactOccurred];
-}
-
-static void toggleGonerinoStatus() {
-    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-    BOOL isEnabled = [defaults objectForKey:@"GonerinoEnabled"] == nil ? YES : [defaults boolForKey:@"GonerinoEnabled"];
-    BOOL newState  = !isEnabled;
-    [defaults setBool:newState forKey:@"GonerinoEnabled"];
-    [defaults synchronize];
-
-    updateStatusOverlay();
-
-    UIViewController *topVC = nil;
-
-    NSSet<UIScene *> *connectedScenes = [UIApplication sharedApplication].connectedScenes;
-    for (UIScene *scene in connectedScenes) {
-        if ([scene isKindOfClass:[UIWindowScene class]]) {
-            UIWindowScene *windowScene = (UIWindowScene *)scene;
-            for (UIWindow *window in windowScene.windows) {
-                if (window.rootViewController) {
-                    topVC = window.rootViewController;
-                    while (topVC.presentedViewController) {
-                        topVC = topVC.presentedViewController;
-                    }
-                    break;
-                }
-            }
-            if (topVC)
-                break;
-        }
-    }
-
-    if (topVC) {
-        dispatch_async(dispatch_get_main_queue(), ^{
-            [[%c(YTToastResponderEvent)
-                eventWithMessage:[NSString stringWithFormat:@"Gonerino %@", !isEnabled ? @"activated" : @"deactivated"]
-                  firstResponder:topVC] send];
-        });
-    }
-}
-
-%hook UIWindow
-
-- (void)becomeKeyWindow {
-    %orig;
-}
-
-- (void)motionBegan:(UIEventSubtype)motion withEvent:(UIEvent *)event {
-    BOOL isShakeEnabled = [[NSUserDefaults standardUserDefaults] objectForKey:@"GonerinoShakeEnabled"] == nil
-                              ? NO
-                              : [[NSUserDefaults standardUserDefaults] boolForKey:@"GonerinoShakeEnabled"];
-
-    if (motion == UIEventSubtypeMotionShake && isShakeEnabled) {
-        isShaking      = YES;
-        shakeStartTime = [[NSDate date] timeIntervalSince1970];
-    }
-    %orig;
-}
-
-- (void)motionEnded:(UIEventSubtype)motion withEvent:(UIEvent *)event {
-    BOOL isShakeEnabled = [[NSUserDefaults standardUserDefaults] objectForKey:@"GonerinoShakeEnabled"] == nil
-                              ? NO
-                              : [[NSUserDefaults standardUserDefaults] boolForKey:@"GonerinoShakeEnabled"];
-
-    if (motion == UIEventSubtypeMotionShake && isShaking && isShakeEnabled) {
-        NSTimeInterval currentTime   = [[NSDate date] timeIntervalSince1970];
-        NSTimeInterval shakeDuration = currentTime - shakeStartTime;
-
-        if (shakeDuration >= 0.5 && shakeDuration <= 2.0) {
-            triggerHapticFeedback();
-            dispatch_async(dispatch_get_main_queue(), ^{ toggleGonerinoStatus(); });
-        }
-        isShaking = NO;
-    }
-    %orig;
-}
-
-%end
-
 %hook YTAsyncCollectionView
 
 - (void)layoutSubviews {
@@ -317,16 +189,127 @@ static void toggleGonerinoStatus() {
 
 %end
 
-%hook UIApplication
+%hook YTRightNavigationButtons
+%property(retain, nonatomic) YTQTMButton *gonerinoButton;
 
-- (void)applicationDidBecomeActive:(id)arg1 {
-    %orig;
-    updateStatusOverlay();
+- (NSMutableArray *)buttons {
+    NSMutableArray *retVal = %orig.mutableCopy;
+
+    BOOL showButton = [[NSUserDefaults standardUserDefaults] objectForKey:@"GonerinoShowButton"] == nil
+                          ? YES
+                          : [[NSUserDefaults standardUserDefaults] boolForKey:@"GonerinoShowButton"];
+
+    if (showButton) {
+        [self.gonerinoButton removeFromSuperview];
+        [self addSubview:self.gonerinoButton];
+
+        NSInteger pageStyle;
+        Class YTPageStyleControllerClass = %c(YTPageStyleController);
+        if (YTPageStyleControllerClass)
+            pageStyle = [YTPageStyleControllerClass pageStyle];
+        else {
+            YTAppDelegate *delegate                    = (YTAppDelegate *)[UIApplication sharedApplication].delegate;
+            YTAppViewControllerImpl *appViewController = [delegate valueForKey:@"_appViewController"];
+            pageStyle                                  = [appViewController pageStyle];
+        }
+
+        if (!self.gonerinoButton) {
+            self.gonerinoButton = [%c(YTQTMButton) iconButton];
+            if ([self.gonerinoButton respondsToSelector:@selector(enableNewTouchFeedback)]) {
+                [self.gonerinoButton enableNewTouchFeedback];
+            }
+            self.gonerinoButton.frame = CGRectMake(0, 0, 40, 40);
+            [self.gonerinoButton addTarget:self
+                                    action:@selector(gonerinoButtonPressed:)
+                          forControlEvents:UIControlEventTouchUpInside];
+            [retVal insertObject:self.gonerinoButton atIndex:0];
+        }
+
+        BOOL isEnabled = [[NSUserDefaults standardUserDefaults] objectForKey:@"GonerinoEnabled"] == nil
+                             ? YES
+                             : [[NSUserDefaults standardUserDefaults] boolForKey:@"GonerinoEnabled"];
+
+        UIImage *image     = [Util createBlockVideoIconWithSize:CGSizeMake(20, 20)];
+        UIColor *tintColor = pageStyle ? UIColor.whiteColor : UIColor.blackColor;
+
+        if (!isEnabled) {
+            tintColor = [tintColor colorWithAlphaComponent:0.4];
+        }
+
+        image = [%c(QTMIcon) tintImage:image color:tintColor];
+        [self.gonerinoButton setImage:image forState:UIControlStateNormal];
+    } else {
+        if (self.gonerinoButton) {
+            [self.gonerinoButton removeFromSuperview];
+            self.gonerinoButton = nil;
+        }
+    }
+
+    return retVal;
+}
+
+- (NSMutableArray *)visibleButtons {
+    NSMutableArray *retVal = %orig.mutableCopy;
+
+    BOOL showButton = [[NSUserDefaults standardUserDefaults] objectForKey:@"GonerinoShowButton"] == nil
+                          ? YES
+                          : [[NSUserDefaults standardUserDefaults] boolForKey:@"GonerinoShowButton"];
+
+    if (showButton && self.gonerinoButton) {
+        [self.gonerinoButton removeFromSuperview];
+        [self addSubview:self.gonerinoButton];
+        [retVal insertObject:self.gonerinoButton atIndex:0];
+    }
+
+    return retVal;
+}
+
+%new
+- (void)gonerinoButtonPressed:(UIButton *)sender {
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    BOOL isEnabled = [defaults objectForKey:@"GonerinoEnabled"] == nil ? YES : [defaults boolForKey:@"GonerinoEnabled"];
+    BOOL newState  = !isEnabled;
+    [defaults setBool:newState forKey:@"GonerinoEnabled"];
+    [defaults synchronize];
+
+    // Update button appearance
+    NSInteger pageStyle;
+    Class YTPageStyleControllerClass = %c(YTPageStyleController);
+    if (YTPageStyleControllerClass)
+        pageStyle = [YTPageStyleControllerClass pageStyle];
+    else {
+        YTAppDelegate *delegate                    = (YTAppDelegate *)[UIApplication sharedApplication].delegate;
+        YTAppViewControllerImpl *appViewController = [delegate valueForKey:@"_appViewController"];
+        pageStyle                                  = [appViewController pageStyle];
+    }
+
+    UIImage *image     = [Util createBlockVideoIconWithSize:CGSizeMake(20, 20)];
+    UIColor *tintColor = pageStyle ? UIColor.whiteColor : UIColor.blackColor;
+
+    if (!newState) {
+        tintColor = [tintColor colorWithAlphaComponent:0.4];
+    }
+
+    image = [%c(QTMIcon) tintImage:image color:tintColor];
+    [self.gonerinoButton setImage:image forState:UIControlStateNormal];
+
+    // Show toast
+    UIViewController *topVC = [[UIApplication sharedApplication] delegate].window.rootViewController;
+    while (topVC.presentedViewController) {
+        topVC = topVC.presentedViewController;
+    }
+
+    if (topVC) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [[%c(YTToastResponderEvent)
+                eventWithMessage:[NSString stringWithFormat:@"Gonerino %@", newState ? @"enabled" : @"disabled"]
+                  firstResponder:topVC] send];
+        });
+    }
 }
 
 %end
 
 %ctor {
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)), dispatch_get_main_queue(),
-                   ^{ updateStatusOverlay(); });
+    %init;
 }

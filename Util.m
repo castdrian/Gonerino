@@ -1,4 +1,28 @@
 #import "Util.h"
+#import "ChannelManager.h"
+#import "VideoManager.h"
+
+// Add forward declarations for missing interfaces
+@interface YTElementsInlineMutedPlaybackView : NSObject
+@property(retain, nonatomic) id asdPlayableEntry;
+@end
+
+@interface YTASDPlayableEntry : NSObject
+@property(nonatomic) BOOL hasNavigationEndpoint;
+@property(retain, nonatomic) id navigationEndpoint;
+@end
+
+@interface ASTextNode : NSObject
+@property(nonatomic, copy, nullable) NSAttributedString *attributedText;
+@end
+
+// Add category for node methods
+@interface NSObject (NodeMethods)
+- (nullable NSString *)channelName;
+- (nullable NSString *)ownerName;
+- (nullable NSArray *)subnodes;
+- (nullable NSString *)accessibilityLabel;
+@end
 
 @implementation Util
 
@@ -18,7 +42,7 @@
         for (UIView *subview in view.subviews) {
             if ([subview isKindOfClass:NSClassFromString(@"YTElementsInlineMutedPlaybackView")]) {
                 YTElementsInlineMutedPlaybackView *playbackView = (YTElementsInlineMutedPlaybackView *)subview;
-                YTASDPlayableEntry *playableEntry               = playbackView.asdPlayableEntry;
+                YTASDPlayableEntry *playableEntry = (YTASDPlayableEntry *)playbackView.asdPlayableEntry;
 
                 if (playableEntry && playableEntry.hasNavigationEndpoint) {
                     NSString *description = [playableEntry.navigationEndpoint description];
@@ -97,8 +121,9 @@
     }
 
     if ([node isKindOfClass:NSClassFromString(@"ASTextNode")]) {
-        NSAttributedString *attributedText = [(ASTextNode *)node attributedText];
-        NSString *text                     = [attributedText string];
+        ASTextNode *textNode = (ASTextNode *)node;
+        NSAttributedString *attributedText = textNode.attributedText;
+        NSString *text = [attributedText string];
 
         if ([[WordManager sharedInstance] isWordBlocked:text]) {
             NSLog(@"[Gonerino] Blocking content with blocked word: %@", text);
@@ -136,8 +161,9 @@
     __block BOOL isBlocked = NO;
 
     if ([node isKindOfClass:NSClassFromString(@"ASTextNode")]) {
-        NSAttributedString *attributedText = [(ASTextNode *)node attributedText];
-        NSString *text                     = [attributedText string];
+        ASTextNode *textNode = (ASTextNode *)node;
+        NSAttributedString *attributedText = textNode.attributedText;
+        NSString *text = [attributedText string];
 
         if ([[NSUserDefaults standardUserDefaults] boolForKey:@"GonerinoPeopleWatched"] &&
             [text isEqualToString:@"People also watched this video"]) {

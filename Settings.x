@@ -1,4 +1,5 @@
 #import "Settings.h"
+#import "Util.h"
 
 %hook YTSettingsGroupData
 
@@ -35,25 +36,25 @@
 
     SECTION_HEADER(@"Gonerino Settings");
 
-    YTSettingsSectionItem *shakeToggle = [%c(YTSettingsSectionItem)
-            switchItemWithTitle:@"Enable Shake Gesture"
-               titleDescription:@"Allow toggling Gonerino with shake gesture"
+    YTSettingsSectionItem *showButtonToggle = [%c(YTSettingsSectionItem)
+            switchItemWithTitle:@"Show Gonerino Button"
+               titleDescription:@"Display Gonerino toggle button in navigation"
         accessibilityIdentifier:nil
-                       switchOn:[[NSUserDefaults standardUserDefaults] objectForKey:@"GonerinoShakeEnabled"] == nil
-                                    ? NO
-                                    : [[NSUserDefaults standardUserDefaults] boolForKey:@"GonerinoShakeEnabled"]
+                       switchOn:[[NSUserDefaults standardUserDefaults] objectForKey:@"GonerinoShowButton"] == nil
+                                    ? YES
+                                    : [[NSUserDefaults standardUserDefaults] boolForKey:@"GonerinoShowButton"]
                     switchBlock:^BOOL(YTSettingsCell *cell, BOOL enabled) {
-                        [[NSUserDefaults standardUserDefaults] setBool:enabled forKey:@"GonerinoShakeEnabled"];
+                        [[NSUserDefaults standardUserDefaults] setBool:enabled forKey:@"GonerinoShowButton"];
                         [[NSUserDefaults standardUserDefaults] synchronize];
                         YTSettingsViewController *settingsVC = [self valueForKey:@"_settingsViewControllerDelegate"];
                         [[%c(YTToastResponderEvent)
-                            eventWithMessage:[NSString stringWithFormat:@"Shake gesture %@",
-                                                                        enabled ? @"enabled" : @"disabled"]
+                            eventWithMessage:[NSString
+                                                 stringWithFormat:@"Gonerino button %@", enabled ? @"shown" : @"hidden"]
                               firstResponder:settingsVC] send];
                         return YES;
                     }
                   settingItemId:0];
-    [sectionItems addObject:shakeToggle];
+    [sectionItems addObject:showButtonToggle];
 
     NSUInteger channelCount               = [[ChannelManager sharedInstance] blockedChannels].count;
     YTSettingsSectionItem *manageChannels = [%c(YTSettingsSectionItem)
@@ -472,7 +473,7 @@
 
     YTSettingsSectionItem *blockPeopleWatched = [%c(YTSettingsSectionItem)
             switchItemWithTitle:@"Block 'People also watched this video'"
-               titleDescription:@"Remove 'People also watched this video' suggestions"
+               titleDescription:@"Remove 'People also watched' suggestions"
         accessibilityIdentifier:nil
                        switchOn:[[NSUserDefaults standardUserDefaults] boolForKey:@"GonerinoPeopleWatched"]
                     switchBlock:^BOOL(YTSettingsCell *cell, BOOL enabled) {
@@ -587,6 +588,7 @@
                                                    forCategory:title:icon:titleDescription:headerHidden:)]) {
         YTIIcon *icon = [%c(YTIIcon) new];
         icon.iconType = YT_FILTER;
+
         [delegate setSectionItems:sectionItems
                       forCategory:GonerinoSection
                             title:@"Gonerino"

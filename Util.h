@@ -2,7 +2,6 @@
 #import <UIKit/UIKit.h>
 #import <objc/runtime.h>
 
-#import "Tweak.h"
 #import "WordManager.h"
 
 NS_ASSUME_NONNULL_BEGIN
