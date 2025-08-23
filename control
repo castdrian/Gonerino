@@ -6,6 +6,6 @@ Description: Remove videos uploaded by specific channels
 Maintainer: Adrian Castro
 Author: Adrian Castro
 Section: Tweaks
-Depends: mobilesubstrate (>= 0.9.5000)
+Depends: ellekit
 Depiction: https://repo.adriancastro.dev/depictions/web/?p=dev.adrian.gonerino
 SileoDepiction: https://repo.adriancastro.dev/depictions/native/dev.adrian.gonerino/depiction.json
