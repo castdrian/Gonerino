@@ -272,7 +272,6 @@
     [defaults setBool:newState forKey:@"GonerinoEnabled"];
     [defaults synchronize];
 
-    // Update button appearance
     NSInteger pageStyle;
     Class YTPageStyleControllerClass = %c(YTPageStyleController);
     if (YTPageStyleControllerClass)
@@ -293,7 +292,6 @@
     image = [%c(QTMIcon) tintImage:image color:tintColor];
     [self.gonerinoButton setImage:image forState:UIControlStateNormal];
 
-    // Show toast
     UIViewController *topVC = [[UIApplication sharedApplication] delegate].window.rootViewController;
     while (topVC.presentedViewController) {
         topVC = topVC.presentedViewController;

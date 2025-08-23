@@ -38,7 +38,7 @@
 
     YTSettingsSectionItem *showButtonToggle = [%c(YTSettingsSectionItem)
             switchItemWithTitle:@"Show Gonerino Button"
-               titleDescription:@"Display Gonerino toggle button in navigation"
+               titleDescription:@"Display Gonerino toggle button in top navbar"
         accessibilityIdentifier:nil
                        switchOn:[[NSUserDefaults standardUserDefaults] objectForKey:@"GonerinoShowButton"] == nil
                                     ? YES
