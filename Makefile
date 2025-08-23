@@ -8,9 +8,9 @@ include $(THEOS)/makefiles/common.mk
 
 TWEAK_NAME = Gonerino
 
-Gonerino_FILES = $(wildcard *.x) $(wildcard *.m)
-Gonerino_FRAMEWORKS = UIKit Foundation UniformTypeIdentifiers MobileCoreServices
-Gonerino_CFLAGS = -fobjc-arc -DPACKAGE_VERSION='@"$(shell grep '^Version:' control | cut -d' ' -f2)"'
+$(TWEAK_NAME)_FILES = $(shell find sources -name "*.x*" -o -name "*.m*")
+$(TWEAK_NAME)_FRAMEWORKS = UIKit Foundation UniformTypeIdentifiers MobileCoreServices
+$(TWEAK_NAME)_CFLAGS = -fobjc-arc -DPACKAGE_VERSION='@"$(shell grep '^Version:' control | cut -d' ' -f2)"' -I$(THEOS_PROJECT_DIR)/headers
 
 include $(THEOS_MAKE_PATH)/tweak.mk
 
