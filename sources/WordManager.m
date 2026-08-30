@@ -16,8 +16,14 @@
 - (instancetype)init {
     self = [super init];
     if (self) {
-        _blockedWordSet = [[[NSUserDefaults standardUserDefaults] arrayForKey:@"GonerinoBlockedWords"] mutableCopy]
-                              ?: [NSMutableSet set];
+        _blockedWordSet = [NSMutableSet set];
+        for (id value in [[NSUserDefaults standardUserDefaults] arrayForKey:@"GonerinoBlockedWords"]) {
+            if (![value isKindOfClass:[NSString class]])
+                continue;
+            NSString *word = [value stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+            if (word.length > 0)
+                [_blockedWordSet addObject:word];
+        }
     }
     return self;
 }
@@ -27,8 +33,9 @@
 }
 
 - (void)addBlockedWord:(NSString *)word {
-    if (word.length > 0) {
-        [self.blockedWordSet addObject:word];
+    NSString *normalizedWord = [word stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    if (normalizedWord.length > 0) {
+        [self.blockedWordSet addObject:normalizedWord];
         [self saveBlockedWords];
     }
 }
@@ -41,6 +48,9 @@
 }
 
 - (BOOL)isWordBlocked:(NSString *)text {
+    if (![text isKindOfClass:[NSString class]] || text.length == 0)
+        return NO;
+
     for (NSString *word in self.blockedWordSet) {
         if ([text.lowercaseString containsString:word.lowercaseString]) {
             return YES;
@@ -55,7 +65,14 @@
 }
 
 - (void)setBlockedWords:(NSArray<NSString *> *)words {
-    self.blockedWordSet = [NSMutableSet setWithArray:words];
+    self.blockedWordSet = [NSMutableSet set];
+    for (id value in words) {
+        if (![value isKindOfClass:[NSString class]])
+            continue;
+        NSString *word = [value stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+        if (word.length > 0)
+            [self.blockedWordSet addObject:word];
+    }
     [self saveBlockedWords];
 }
 

@@ -16,33 +16,51 @@
 - (instancetype)init {
     self = [super init];
     if (self) {
-        _blockedChannelSet =
-            [[[NSUserDefaults standardUserDefaults] arrayForKey:@"GonerinoBlockedChannels"] mutableCopy]
-                ?: [NSMutableSet set];
+        _blockedChannelSet = [NSMutableSet set];
+        for (id value in [[NSUserDefaults standardUserDefaults] arrayForKey:@"GonerinoBlockedChannels"]) {
+            if (![value isKindOfClass:[NSString class]])
+                continue;
+            NSString *channel = [value stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+            if (channel.length > 0)
+                [_blockedChannelSet addObject:channel];
+        }
     }
     return self;
 }
 
 - (NSArray<NSString *> *)blockedChannels {
-    return [self.blockedChannelSet allObjects];
+    return [[self.blockedChannelSet allObjects]
+        sortedArrayUsingSelector:@selector(localizedCaseInsensitiveCompare:)];
 }
 
 - (void)addBlockedChannel:(NSString *)channelName {
-    if (channelName.length > 0) {
-        [self.blockedChannelSet addObject:channelName];
+    NSString *channel = [channelName stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    if (channel.length > 0) {
+        [self.blockedChannelSet addObject:channel];
         [self saveBlockedChannels];
     }
 }
 
 - (void)removeBlockedChannel:(NSString *)channelName {
-    if (channelName) {
-        [self.blockedChannelSet removeObject:channelName];
+    NSString *channel = [channelName stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    if (channel.length > 0) {
+        for (NSString *value in [self.blockedChannelSet copy]) {
+            if ([value caseInsensitiveCompare:channel] == NSOrderedSame)
+                [self.blockedChannelSet removeObject:value];
+        }
         [self saveBlockedChannels];
     }
 }
 
 - (BOOL)isChannelBlocked:(NSString *)channelName {
-    return [self.blockedChannelSet containsObject:channelName];
+    if (![channelName isKindOfClass:[NSString class]] || channelName.length == 0)
+        return NO;
+
+    for (NSString *value in self.blockedChannelSet) {
+        if ([value caseInsensitiveCompare:channelName] == NSOrderedSame)
+            return YES;
+    }
+    return NO;
 }
 
 - (void)saveBlockedChannels {
@@ -52,7 +70,14 @@
 }
 
 - (void)setBlockedChannels:(NSArray<NSString *> *)channels {
-    self.blockedChannelSet = [NSMutableSet setWithArray:channels];
+    self.blockedChannelSet = [NSMutableSet set];
+    for (id value in channels) {
+        if (![value isKindOfClass:[NSString class]])
+            continue;
+        NSString *channel = [value stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+        if (channel.length > 0)
+            [self.blockedChannelSet addObject:channel];
+    }
     [self saveBlockedChannels];
 }
 

@@ -26,7 +26,7 @@
     return [self.blockedVideoArray copy];
 }
 
-- (void)addBlockedVideo:(NSString *)videoId title:(NSString *)title channel:(NSString *)channel { // Fixed: Method name
+- (void)addBlockedVideo:(NSString *)videoId title:(NSString *)title channel:(NSString *)channel {
     if (!videoId.length)
         return;
 
@@ -56,7 +56,7 @@
 }
 
 - (BOOL)isVideoBlocked:(NSString *)videoId {
-    if (!videoId)
+    if (![videoId isKindOfClass:[NSString class]] || videoId.length == 0)
         return NO;
 
     return [self.blockedVideoArray indexOfObjectPassingTest:^BOOL(NSDictionary *obj, NSUInteger idx, BOOL *stop) {
@@ -70,13 +70,21 @@
 }
 
 - (void)setBlockedVideos:(NSArray<NSDictionary *> *)videos {
-    NSArray *validVideos = [videos
-        filteredArrayUsingPredicate:[NSPredicate predicateWithBlock:^BOOL(NSDictionary *dict, NSDictionary *bindings) {
-            return [dict isKindOfClass:[NSDictionary class]] && dict[@"id"] &&
-                   [dict[@"id"] isKindOfClass:[NSString class]] && [dict[@"id"] length] > 0;
-        }]];
+    NSMutableArray *validVideos = [NSMutableArray array];
+    for (id value in videos) {
+        if (![value isKindOfClass:[NSDictionary class]])
+            continue;
+        NSString *videoId = value[@"id"];
+        if (![videoId isKindOfClass:[NSString class]] || videoId.length == 0)
+            continue;
+        [validVideos addObject:@{
+            @"id": videoId,
+            @"title": [value[@"title"] isKindOfClass:[NSString class]] ? value[@"title"] : @"",
+            @"channel": [value[@"channel"] isKindOfClass:[NSString class]] ? value[@"channel"] : @""
+        }];
+    }
 
-    self.blockedVideoArray = [validVideos mutableCopy];
+    self.blockedVideoArray = validVideos;
     [self saveBlockedVideos];
 }
 

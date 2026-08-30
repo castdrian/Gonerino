@@ -23,7 +23,12 @@ NS_ASSUME_NONNULL_BEGIN
 
 @interface YTAsyncCollectionView : UICollectionView
 
+@property(nonatomic, assign) BOOL gonerinoFiltering;
+@property(nonatomic, assign) BOOL gonerinoFilterScheduled;
+@property(nonatomic, assign) NSTimeInterval gonerinoLastFilterTime;
+
 - (void)layoutSubviews;
+- (void)gonerinoScheduleFiltering;
 
 - (void)performBatchUpdates:(void(NS_NOESCAPE ^ _Nullable)(void))updates
                  completion:(void (^_Nullable)(BOOL finished))completion;
@@ -48,7 +53,13 @@ NS_ASSUME_NONNULL_BEGIN
 @property(nonatomic, copy, nullable) NSString *accessibilityIdentifier;
 
 - (nullable NSArray<ASDisplayNode *> *)subnodes;
+- (nullable id)controller;
+- (nullable UIView *)view;
 
+@end
+
+@interface YTElementsCellController : NSObject
+- (nullable id)elementEntry;
 @end
 
 @interface ASTextNode : ASDisplayNode
@@ -82,7 +93,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (UIViewController *)findViewControllerForView:(UIView *)view;
 - (void)extractChannelNameFromNode:(id)node completion:(void (^)(NSString *channelName))completion;
 - (nullable NSString *)extractVideoTitleFromNode:(id)node;
-- (NSArray<YTActionSheetAction *> *)actions;  // Added this line
+- (NSArray<YTActionSheetAction *> *)actions;
 @end
 
 @interface YTActionSheetAction : NSObject

@@ -30,6 +30,7 @@ NS_ASSUME_NONNULL_BEGIN
                                             }]]
 
 static const NSInteger GonerinoSection = 2002;
+static const NSInteger GonerinoGroup = 'gnrn';
 
 #define TWEAK_VERSION PACKAGE_VERSION
 
