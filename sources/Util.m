@@ -5,19 +5,19 @@
 #import <objc/runtime.h>
 #import <objc/message.h>
 
-@interface NSObject (GonerinoText)
+@interface NSObject (Text)
 - (NSString *)stringWithFormattingRemoved;
 - (NSString *)string;
 @end
 
-typedef NS_ENUM(NSUInteger, GonerinoFieldRole) {
-    GonerinoFieldRoleNone,
-    GonerinoFieldRoleVideoId,
-    GonerinoFieldRoleTitle,
-    GonerinoFieldRoleChannel
+typedef NS_ENUM(NSUInteger, FieldRole) {
+    FieldRoleNone,
+    FieldRoleVideoId,
+    FieldRoleTitle,
+    FieldRoleChannel
 };
 
-static NSMapTable *GonerinoMetadataCache(void) {
+static NSMapTable *MetadataCache(void) {
     static NSMapTable *cache;
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
@@ -26,7 +26,7 @@ static NSMapTable *GonerinoMetadataCache(void) {
     return cache;
 }
 
-static NSString *GonerinoNormalizedKey(NSString *key) {
+static NSString *NormalizedKey(NSString *key) {
     if (key.length == 0)
         return @"";
 
@@ -36,11 +36,11 @@ static NSString *GonerinoNormalizedKey(NSString *key) {
     return normalized;
 }
 
-static BOOL GonerinoMetadataComplete(NSDictionary *result) {
+static BOOL MetadataComplete(NSDictionary *result) {
     return [result[@"id"] length] > 0 && [result[@"title"] length] > 0 && [result[@"channel"] length] > 0;
 }
 
-static id GonerinoValueForKey(id object, NSString *key) {
+static id ValueForKey(id object, NSString *key) {
     if (!object || key.length == 0)
         return nil;
 
@@ -51,11 +51,11 @@ static id GonerinoValueForKey(id object, NSString *key) {
             if (value)
                 return value;
 
-            NSString *normalizedKey = GonerinoNormalizedKey(key);
+            NSString *normalizedKey = NormalizedKey(key);
             for (id dictionaryKey in dictionary.allKeys) {
                 if (![dictionaryKey isKindOfClass:[NSString class]])
                     continue;
-                NSString *candidate = GonerinoNormalizedKey(dictionaryKey);
+                NSString *candidate = NormalizedKey(dictionaryKey);
                 if ([candidate isEqualToString:normalizedKey])
                     return dictionary[dictionaryKey];
             }
@@ -81,7 +81,7 @@ static id GonerinoValueForKey(id object, NSString *key) {
     return nil;
 }
 
-static id GonerinoValueForArgumentKey(id object, SEL selector, NSString *key) {
+static id ValueForArgumentKey(id object, SEL selector, NSString *key) {
     if (!object || !selector || key.length == 0 || ![object respondsToSelector:selector])
         return nil;
 
@@ -97,13 +97,13 @@ static id GonerinoValueForArgumentKey(id object, SEL selector, NSString *key) {
     return nil;
 }
 
-static id GonerinoValueForNamedKey(id object, NSString *key) {
-    id value = GonerinoValueForKey(object, key);
+static id ValueForNamedKey(id object, NSString *key) {
+    id value = ValueForKey(object, key);
     if (value)
         return value;
 
     for (NSString *selectorName in @[@"propertyForKey:", @"elementForKey:", @"safeSwiftValueForKey:", @"safeSwiftStringForKey:", @"tps_safeValueForKey:", @"valueForKey:"]) {
-        value = GonerinoValueForArgumentKey(object, NSSelectorFromString(selectorName), key);
+        value = ValueForArgumentKey(object, NSSelectorFromString(selectorName), key);
         if (value)
             return value;
     }
@@ -111,9 +111,9 @@ static id GonerinoValueForNamedKey(id object, NSString *key) {
     return nil;
 }
 
-static void GonerinoRecordField(NSMutableDictionary *result, NSMutableDictionary *priorities, NSString *key, id value);
+static void RecordField(NSMutableDictionary *result, NSMutableDictionary *priorities, NSString *key, id value);
 
-static BOOL GonerinoIsVideoIdCandidate(NSString *value) {
+static BOOL IsVideoIdCandidate(NSString *value) {
     if (value.length != 11)
         return NO;
 
@@ -122,7 +122,7 @@ static BOOL GonerinoIsVideoIdCandidate(NSString *value) {
     return [value rangeOfCharacterFromSet:[allowed invertedSet]].location == NSNotFound;
 }
 
-static BOOL GonerinoReadVarint(const uint8_t *bytes, NSUInteger length, NSUInteger *offset, uint64_t *value) {
+static BOOL ReadVarint(const uint8_t *bytes, NSUInteger length, NSUInteger *offset, uint64_t *value) {
     if (!bytes || !offset || !value)
         return NO;
 
@@ -139,7 +139,7 @@ static BOOL GonerinoReadVarint(const uint8_t *bytes, NSUInteger length, NSUInteg
     return NO;
 }
 
-static void GonerinoRecordVideoIdsFromProtobuf(const uint8_t *bytes,
+static void RecordVideoIdsFromProtobuf(const uint8_t *bytes,
                                                NSUInteger length,
                                                NSMutableDictionary *result,
                                                NSMutableDictionary *priorities,
@@ -150,27 +150,27 @@ static void GonerinoRecordVideoIdsFromProtobuf(const uint8_t *bytes,
     for (NSUInteger index = 0; index < length; index++) {
         NSUInteger cursor = index;
         uint64_t tag = 0;
-        if (!GonerinoReadVarint(bytes, length, &cursor, &tag) || tag < 8)
+        if (!ReadVarint(bytes, length, &cursor, &tag) || tag < 8)
             continue;
 
         NSUInteger wireType = tag & 7;
         if (wireType == 2) {
             uint64_t valueLength = 0;
-            if (!GonerinoReadVarint(bytes, length, &cursor, &valueLength) || valueLength > length - cursor)
+            if (!ReadVarint(bytes, length, &cursor, &valueLength) || valueLength > length - cursor)
                 continue;
             NSString *value = [[NSString alloc] initWithBytes:bytes + cursor
                                                         length:(NSUInteger)valueLength
                                                       encoding:NSUTF8StringEncoding];
-            if (GonerinoIsVideoIdCandidate(value))
-                GonerinoRecordField(result, priorities, @"videoId", value);
-            GonerinoRecordVideoIdsFromProtobuf(bytes + cursor,
+            if (IsVideoIdCandidate(value))
+                RecordField(result, priorities, @"videoId", value);
+            RecordVideoIdsFromProtobuf(bytes + cursor,
                                                (NSUInteger)valueLength,
                                                result,
                                                priorities,
                                                depth + 1);
             index = cursor + (NSUInteger)valueLength - 1;
         } else if (wireType == 0) {
-            GonerinoReadVarint(bytes, length, &cursor, &tag);
+            ReadVarint(bytes, length, &cursor, &tag);
             index = cursor > index ? cursor - 1 : index;
         } else if (wireType == 1 && cursor + 8 <= length) {
             index = cursor + 7;
@@ -180,7 +180,7 @@ static void GonerinoRecordVideoIdsFromProtobuf(const uint8_t *bytes,
     }
 }
 
-static void GonerinoRecordVideoIdsFromData(NSMutableDictionary *result,
+static void RecordVideoIdsFromData(NSMutableDictionary *result,
                                            NSMutableDictionary *priorities,
                                            NSData *data) {
     if (![data isKindOfClass:[NSData class]] || data.length == 0)
@@ -199,15 +199,15 @@ static void GonerinoRecordVideoIdsFromData(NSMutableDictionary *result,
             NSString *candidate = [[NSString alloc] initWithBytes:bytes + index
                                                             length:11
                                                           encoding:NSUTF8StringEncoding];
-            if (GonerinoIsVideoIdCandidate(candidate))
-                GonerinoRecordField(result, priorities, @"videoId", candidate);
+            if (IsVideoIdCandidate(candidate))
+                RecordField(result, priorities, @"videoId", candidate);
         }
         index = end > index ? end - 1 : index;
     }
-    GonerinoRecordVideoIdsFromProtobuf(bytes, length, result, priorities, 0);
+    RecordVideoIdsFromProtobuf(bytes, length, result, priorities, 0);
 }
 
-static void GonerinoRecordAttributedStringVideoIds(NSAttributedString *string,
+static void RecordAttributedStringVideoIds(NSAttributedString *string,
                                                     NSMutableDictionary *result,
                                                     NSMutableDictionary *priorities) {
     if (![string isKindOfClass:[NSAttributedString class]] || string.length == 0)
@@ -220,7 +220,7 @@ static void GonerinoRecordAttributedStringVideoIds(NSAttributedString *string,
             NSDictionary *attributes = [string attributesAtIndex:index effectiveRange:&range];
             for (id value in attributes.allValues) {
                 if ([value isKindOfClass:[NSData class]])
-                    GonerinoRecordVideoIdsFromData(result, priorities, value);
+                    RecordVideoIdsFromData(result, priorities, value);
             }
             NSUInteger nextIndex = NSMaxRange(range);
             if (nextIndex <= index)
@@ -231,7 +231,7 @@ static void GonerinoRecordAttributedStringVideoIds(NSAttributedString *string,
     }
 }
 
-static NSString *GonerinoTextFromValue(id value, NSUInteger depth) {
+static NSString *TextFromValue(id value, NSUInteger depth) {
     if (!value || depth > 4)
         return nil;
 
@@ -243,16 +243,16 @@ static NSString *GonerinoTextFromValue(id value, NSUInteger depth) {
 
     if ([value isKindOfClass:[NSDictionary class]]) {
         for (NSString *key in @[@"simpleText", @"text", @"label", @"title", @"name"]) {
-            NSString *text = GonerinoTextFromValue(GonerinoValueForKey(value, key), depth + 1);
+            NSString *text = TextFromValue(ValueForKey(value, key), depth + 1);
             if (text.length > 0)
                 return text;
         }
 
-        NSArray *runs = GonerinoValueForKey(value, @"runs");
+        NSArray *runs = ValueForKey(value, @"runs");
         if ([runs isKindOfClass:[NSArray class]]) {
             NSMutableString *text = [NSMutableString string];
             for (id run in runs) {
-                NSString *runText = GonerinoTextFromValue(run, depth + 1);
+                NSString *runText = TextFromValue(run, depth + 1);
                 if (runText.length > 0)
                     [text appendString:runText];
             }
@@ -263,7 +263,7 @@ static NSString *GonerinoTextFromValue(id value, NSUInteger depth) {
     if ([value isKindOfClass:[NSArray class]]) {
         NSMutableString *text = [NSMutableString string];
         for (id item in (NSArray *)value) {
-            NSString *itemText = GonerinoTextFromValue(item, depth + 1);
+            NSString *itemText = TextFromValue(item, depth + 1);
             if (itemText.length == 0)
                 continue;
             if (text.length > 0)
@@ -287,7 +287,7 @@ static NSString *GonerinoTextFromValue(id value, NSUInteger depth) {
         }
 
         for (NSString *key in @[@"simpleText", @"text", @"label", @"title", @"name", @"runs"]) {
-            NSString *text = GonerinoTextFromValue(GonerinoValueForKey(value, key), depth + 1);
+            NSString *text = TextFromValue(ValueForKey(value, key), depth + 1);
             if (text.length > 0)
                 return text;
         }
@@ -297,7 +297,7 @@ static NSString *GonerinoTextFromValue(id value, NSUInteger depth) {
     return nil;
 }
 
-static NSString *GonerinoVideoIdFromText(NSString *text) {
+static NSString *VideoIdFromText(NSString *text) {
     if (text.length == 0)
         return nil;
 
@@ -322,42 +322,42 @@ static NSString *GonerinoVideoIdFromText(NSString *text) {
     return nil;
 }
 
-static GonerinoFieldRole GonerinoRoleForKey(NSString *key, NSUInteger *priority) {
-    NSString *normalized = GonerinoNormalizedKey(key);
+static FieldRole RoleForKey(NSString *key, NSUInteger *priority) {
+    NSString *normalized = NormalizedKey(key);
     if ([normalized isEqualToString:@"videoid"] || [normalized isEqualToString:@"videoidentifier"] ||
         [normalized isEqualToString:@"contentvideoid"] || [normalized isEqualToString:@"youtubevideoid"] ||
         [normalized isEqualToString:@"playerresponsevideoid"] || [normalized isEqualToString:@"watchvideoid"]) {
         if (priority)
             *priority = [normalized isEqualToString:@"videoid"] ? 100 : 90;
-        return GonerinoFieldRoleVideoId;
+        return FieldRoleVideoId;
     }
 
     if ([normalized isEqualToString:@"videourl"] || [normalized isEqualToString:@"watchurl"] ||
         [normalized isEqualToString:@"webpageurl"]) {
         if (priority)
             *priority = 70;
-        return GonerinoFieldRoleVideoId;
+        return FieldRoleVideoId;
     }
 
     if ([normalized isEqualToString:@"videotitle"] || [normalized isEqualToString:@"contenttitle"] ||
         [normalized isEqualToString:@"videoname"]) {
         if (priority)
             *priority = 100;
-        return GonerinoFieldRoleTitle;
+        return FieldRoleTitle;
     }
 
     if ([normalized isEqualToString:@"title"] || [normalized isEqualToString:@"headline"] ||
         [normalized isEqualToString:@"titletext"]) {
         if (priority)
             *priority = 80;
-        return GonerinoFieldRoleTitle;
+        return FieldRoleTitle;
     }
 
     if ([normalized isEqualToString:@"ownerdisplayname"] || [normalized isEqualToString:@"ownername"] ||
         [normalized isEqualToString:@"channeldisplayname"] || [normalized isEqualToString:@"authorname"]) {
         if (priority)
             *priority = 100;
-        return GonerinoFieldRoleChannel;
+        return FieldRoleChannel;
     }
 
     if ([normalized isEqualToString:@"channelname"] || [normalized isEqualToString:@"channeltitle"] ||
@@ -365,34 +365,34 @@ static GonerinoFieldRole GonerinoRoleForKey(NSString *key, NSUInteger *priority)
         [normalized isEqualToString:@"author"] || [normalized isEqualToString:@"owner"]) {
         if (priority)
             *priority = 80;
-        return GonerinoFieldRoleChannel;
+        return FieldRoleChannel;
     }
 
     if ([normalized isEqualToString:@"url"]) {
         if (priority)
             *priority = 40;
-        return GonerinoFieldRoleVideoId;
+        return FieldRoleVideoId;
     }
 
     if (priority)
         *priority = 0;
-    return GonerinoFieldRoleNone;
+    return FieldRoleNone;
 }
 
-static void GonerinoRecordField(NSMutableDictionary *result, NSMutableDictionary *priorities, NSString *key, id value) {
+static void RecordField(NSMutableDictionary *result, NSMutableDictionary *priorities, NSString *key, id value) {
     NSUInteger priority = 0;
-    GonerinoFieldRole role = GonerinoRoleForKey(key, &priority);
-    if (role == GonerinoFieldRoleNone)
+    FieldRole role = RoleForKey(key, &priority);
+    if (role == FieldRoleNone)
         return;
 
-    NSString *text = GonerinoTextFromValue(value, 0);
-    if (role == GonerinoFieldRoleVideoId)
-        text = GonerinoVideoIdFromText(text);
+    NSString *text = TextFromValue(value, 0);
+    if (role == FieldRoleVideoId)
+        text = VideoIdFromText(text);
     if (text.length == 0)
         return;
 
-    NSString *resultKey = role == GonerinoFieldRoleVideoId ? @"id" :
-                          role == GonerinoFieldRoleTitle ? @"title" : @"channel";
+    NSString *resultKey = role == FieldRoleVideoId ? @"id" :
+                          role == FieldRoleTitle ? @"title" : @"channel";
     NSUInteger previousPriority = [priorities[resultKey] unsignedIntegerValue];
     if ([(NSString *)result[resultKey] length] == 0 || priority > previousPriority) {
         result[resultKey] = text;
@@ -400,7 +400,7 @@ static void GonerinoRecordField(NSMutableDictionary *result, NSMutableDictionary
     }
 }
 
-static NSString *GonerinoDescriptionField(NSString *description, NSString *pattern) {
+static NSString *DescriptionField(NSString *description, NSString *pattern) {
     if (description.length == 0 || pattern.length == 0)
         return nil;
 
@@ -417,24 +417,24 @@ static NSString *GonerinoDescriptionField(NSString *description, NSString *patte
     return [value stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
 }
 
-static void GonerinoRecordSerializedDescription(NSMutableDictionary *result,
+static void RecordSerializedDescription(NSMutableDictionary *result,
                                                  NSMutableDictionary *priorities,
                                                  NSString *description) {
     if (description.length == 0)
         return;
 
-    GonerinoRecordField(result, priorities, @"videoId",
-                        GonerinoDescriptionField(description,
+    RecordField(result, priorities, @"videoId",
+                        DescriptionField(description,
                                                  @"(?:video_id|videoId|video_identifier)\\s*[:=]\\s*\\\"([^\\\"]+)\\\""));
-    GonerinoRecordField(result, priorities, @"videoTitle",
-                        GonerinoDescriptionField(description,
+    RecordField(result, priorities, @"videoTitle",
+                        DescriptionField(description,
                                                  @"(?:video_title|videoTitle|title)\\s*[:=]\\s*\\\"([^\\\"]+)\\\""));
-    GonerinoRecordField(result, priorities, @"ownerDisplayName",
-                        GonerinoDescriptionField(description,
+    RecordField(result, priorities, @"ownerDisplayName",
+                        DescriptionField(description,
                                                  @"(?:owner_display_name|ownerDisplayName|channel_name|channelName)\\s*[:=]\\s*\\\"([^\\\"]+)\\\""));
 }
 
-static NSArray<NSString *> *GonerinoMetadataChildKeys(void) {
+static NSArray<NSString *> *MetadataChildKeys(void) {
     static NSArray<NSString *> *keys;
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
@@ -454,7 +454,7 @@ static NSArray<NSString *> *GonerinoMetadataChildKeys(void) {
     return keys;
 }
 
-static NSArray<NSString *> *GonerinoMetadataFieldKeys(void) {
+static NSArray<NSString *> *MetadataFieldKeys(void) {
     static NSArray<NSString *> *keys;
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
@@ -469,19 +469,19 @@ static NSArray<NSString *> *GonerinoMetadataFieldKeys(void) {
     return keys;
 }
 
-static BOOL GonerinoShouldVisitMetadataKey(NSString *key) {
+static BOOL ShouldVisitMetadataKey(NSString *key) {
     static NSSet<NSString *> *keys;
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
         NSMutableSet *normalizedKeys = [NSMutableSet set];
-        for (NSString *candidate in GonerinoMetadataChildKeys())
-            [normalizedKeys addObject:GonerinoNormalizedKey(candidate)];
+        for (NSString *candidate in MetadataChildKeys())
+            [normalizedKeys addObject:NormalizedKey(candidate)];
         keys = [normalizedKeys copy];
     });
-    return [keys containsObject:GonerinoNormalizedKey(key)];
+    return [keys containsObject:NormalizedKey(key)];
 }
 
-static void GonerinoCollectElementTreeMetadata(id object,
+static void CollectElementTreeMetadata(id object,
                                                 NSMutableDictionary *result,
                                                 NSMutableDictionary *priorities,
                                                 NSMutableSet *visited,
@@ -501,13 +501,13 @@ static void GonerinoCollectElementTreeMetadata(id object,
     } @catch (__unused NSException *exception) {
     }
     if ([className containsString:@"textnode"]) {
-        NSAttributedString *attributedText = GonerinoValueForKey(object, @"attributedText");
-        NSString *text = GonerinoTextFromValue(attributedText, 0);
+        NSAttributedString *attributedText = ValueForKey(object, @"attributedText");
+        NSString *text = TextFromValue(attributedText, 0);
         if ([objectDescription containsString:@"channel_name"] && text.length > 0)
-            GonerinoRecordField(result, priorities, @"ownerDisplayName", text);
+            RecordField(result, priorities, @"ownerDisplayName", text);
         if ([objectDescription containsString:@"shorts-video-title"] && text.length > 0) {
-            GonerinoRecordField(result, priorities, @"videoTitle", text);
-            GonerinoRecordAttributedStringVideoIds(attributedText, result, priorities);
+            RecordField(result, priorities, @"videoTitle", text);
+            RecordAttributedStringVideoIds(attributedText, result, priorities);
         }
     }
 
@@ -517,33 +517,33 @@ static void GonerinoCollectElementTreeMetadata(id object,
         @"contentId", @"entityId", @"navigationEndpoint", @"watchEndpoint", @"endpoint",
         @"command", @"playerResponse", @"videoDetails", @"title", @"channelName", @"ownerName"
     ];
-    id element = GonerinoValueForKey(object, @"element");
-    id context = GonerinoValueForKey(object, @"context");
+    id element = ValueForKey(object, @"element");
+    id context = ValueForKey(object, @"context");
     for (id candidate in @[element ?: [NSNull null], context ?: [NSNull null]]) {
         if (candidate == [NSNull null])
             continue;
         for (NSString *key in keyCandidates) {
-            id value = GonerinoValueForNamedKey(candidate, key);
+            id value = ValueForNamedKey(candidate, key);
             if (!value)
                 continue;
-            GonerinoRecordField(result, priorities, key, value);
+            RecordField(result, priorities, key, value);
             if (value != candidate && ![value isKindOfClass:[NSString class]] &&
                 ![value isKindOfClass:[NSNumber class]])
-                GonerinoCollectElementTreeMetadata(value, result, priorities, visited, depth + 1);
+                CollectElementTreeMetadata(value, result, priorities, visited, depth + 1);
         }
     }
 
-    NSArray *subnodes = GonerinoValueForKey(object, @"subnodes");
+    NSArray *subnodes = ValueForKey(object, @"subnodes");
     if ([subnodes isKindOfClass:[NSArray class]]) {
         for (id subnode in subnodes)
-            GonerinoCollectElementTreeMetadata(subnode, result, priorities, visited, depth + 1);
+            CollectElementTreeMetadata(subnode, result, priorities, visited, depth + 1);
     }
 }
 
-static void GonerinoCollectObject(id object, NSMutableDictionary *result, NSMutableDictionary *priorities,
+static void CollectObject(id object, NSMutableDictionary *result, NSMutableDictionary *priorities,
                                   NSMutableSet *visited, NSUInteger *budget, NSUInteger depth);
 
-static void GonerinoCollectObject(id object, NSMutableDictionary *result, NSMutableDictionary *priorities,
+static void CollectObject(id object, NSMutableDictionary *result, NSMutableDictionary *priorities,
                                   NSMutableSet *visited, NSUInteger *budget, NSUInteger depth) {
     if (!object || !budget || *budget == 0 || depth > 8)
         return;
@@ -564,15 +564,15 @@ static void GonerinoCollectObject(id object, NSMutableDictionary *result, NSMuta
         objectDescription = [object debugDescription] ?: @"";
     } @catch (__unused NSException *exception) {
     }
-    GonerinoRecordSerializedDescription(result, priorities, objectDescription);
+    RecordSerializedDescription(result, priorities, objectDescription);
     if ([className containsString:@"textnode"]) {
-        NSAttributedString *attributedText = GonerinoValueForKey(object, @"attributedText");
-        NSString *text = GonerinoTextFromValue(attributedText, 0);
+        NSAttributedString *attributedText = ValueForKey(object, @"attributedText");
+        NSString *text = TextFromValue(attributedText, 0);
         if ([objectDescription containsString:@"channel_name"] && text.length > 0)
-            GonerinoRecordField(result, priorities, @"channelName", text);
+            RecordField(result, priorities, @"channelName", text);
         if ([objectDescription containsString:@"shorts-video-title"] && text.length > 0) {
-            GonerinoRecordField(result, priorities, @"videoTitle", text);
-            GonerinoRecordAttributedStringVideoIds(attributedText, result, priorities);
+            RecordField(result, priorities, @"videoTitle", text);
+            RecordAttributedStringVideoIds(attributedText, result, priorities);
         }
     }
 
@@ -580,11 +580,11 @@ static void GonerinoCollectObject(id object, NSMutableDictionary *result, NSMuta
         for (id key in [(NSDictionary *)object allKeys]) {
             id value = [(NSDictionary *)object objectForKey:key];
             if ([key isKindOfClass:[NSString class]]) {
-                GonerinoRecordField(result, priorities, key, value);
-                if (GonerinoShouldVisitMetadataKey(key))
-                    GonerinoCollectObject(value, result, priorities, visited, budget, depth + 1);
+                RecordField(result, priorities, key, value);
+                if (ShouldVisitMetadataKey(key))
+                    CollectObject(value, result, priorities, visited, budget, depth + 1);
             }
-            if (GonerinoMetadataComplete(result))
+            if (MetadataComplete(result))
                 return;
         }
         return;
@@ -595,80 +595,80 @@ static void GonerinoCollectObject(id object, NSMutableDictionary *result, NSMuta
         for (id value in object) {
             if (childCount++ >= 24)
                 break;
-            GonerinoCollectObject(value, result, priorities, visited, budget, depth + 1);
-            if (GonerinoMetadataComplete(result))
+            CollectObject(value, result, priorities, visited, budget, depth + 1);
+            if (MetadataComplete(result))
                 return;
         }
         return;
     }
 
     if ([object isKindOfClass:[UIView class]]) {
-        id node = GonerinoValueForKey(object, @"asyncdisplaykit_node");
+        id node = ValueForKey(object, @"asyncdisplaykit_node");
         if (node)
-            GonerinoCollectObject(node, result, priorities, visited, budget, depth + 1);
-        for (NSString *key in GonerinoMetadataChildKeys()) {
+            CollectObject(node, result, priorities, visited, budget, depth + 1);
+        for (NSString *key in MetadataChildKeys()) {
             if ([key isEqualToString:@"view"] || [key isEqualToString:@"subviews"])
                 continue;
-            id value = GonerinoValueForNamedKey(object, key);
+            id value = ValueForNamedKey(object, key);
             if (!value)
                 continue;
-            GonerinoRecordField(result, priorities, key, value);
-            GonerinoCollectObject(value, result, priorities, visited, budget, depth + 1);
-            if (GonerinoMetadataComplete(result))
+            RecordField(result, priorities, key, value);
+            CollectObject(value, result, priorities, visited, budget, depth + 1);
+            if (MetadataComplete(result))
                 return;
             if (*budget == 0)
                 return;
         }
         for (UIView *subview in [(UIView *)object subviews])
-            GonerinoCollectObject(subview, result, priorities, visited, budget, depth + 1);
+            CollectObject(subview, result, priorities, visited, budget, depth + 1);
         return;
     }
 
-    for (NSString *key in GonerinoMetadataFieldKeys()) {
-        id value = GonerinoValueForNamedKey(object, key);
+    for (NSString *key in MetadataFieldKeys()) {
+        id value = ValueForNamedKey(object, key);
         if (value)
-            GonerinoRecordField(result, priorities, key, value);
-        if (GonerinoMetadataComplete(result))
+            RecordField(result, priorities, key, value);
+        if (MetadataComplete(result))
             return;
     }
 
     if ([className containsString:@"endpoint"] || [className containsString:@"playable"] ||
         [className containsString:@"playback"] || [className containsString:@"video"] ||
         [className containsString:@"element"]) {
-        NSString *description = GonerinoTextFromValue(GonerinoValueForKey(object, @"description"), 0);
-        GonerinoRecordSerializedDescription(result, priorities, description);
-        if (GonerinoMetadataComplete(result))
+        NSString *description = TextFromValue(ValueForKey(object, @"description"), 0);
+        RecordSerializedDescription(result, priorities, description);
+        if (MetadataComplete(result))
             return;
     }
 
-    for (NSString *key in GonerinoMetadataChildKeys()) {
-        id value = GonerinoValueForNamedKey(object, key);
+    for (NSString *key in MetadataChildKeys()) {
+        id value = ValueForNamedKey(object, key);
         if (!value)
             continue;
-        GonerinoRecordField(result, priorities, key, value);
-        if (GonerinoMetadataComplete(result))
+        RecordField(result, priorities, key, value);
+        if (MetadataComplete(result))
             return;
         if (value != object)
-            GonerinoCollectObject(value, result, priorities, visited, budget, depth + 1);
-        if (GonerinoMetadataComplete(result))
+            CollectObject(value, result, priorities, visited, budget, depth + 1);
+        if (MetadataComplete(result))
             return;
         if (*budget == 0)
             return;
     }
 }
 
-static NSString *GonerinoTextForNode(id node) {
+static NSString *TextForNode(id node) {
     if ([node isKindOfClass:NSClassFromString(@"ASTextNode")]) {
-        NSString *text = GonerinoTextFromValue(GonerinoValueForKey(node, @"attributedText"), 0);
+        NSString *text = TextFromValue(ValueForKey(node, @"attributedText"), 0);
         if (text.length > 0)
             return text;
     }
 
-    NSString *accessibilityLabel = GonerinoTextFromValue(GonerinoValueForKey(node, @"accessibilityLabel"), 0);
+    NSString *accessibilityLabel = TextFromValue(ValueForKey(node, @"accessibilityLabel"), 0);
     return accessibilityLabel.length > 0 ? accessibilityLabel : nil;
 }
 
-static void GonerinoCollectInlinePlaybackMetadata(id node,
+static void CollectInlinePlaybackMetadata(id node,
                                                    NSMutableDictionary *result,
                                                    NSMutableDictionary *priorities) {
     if (!node)
@@ -676,11 +676,11 @@ static void GonerinoCollectInlinePlaybackMetadata(id node,
 
     @try {
         NSMutableArray *playbackViews = [NSMutableArray array];
-        id playbackView = GonerinoValueForKey(node, @"playbackView");
+        id playbackView = ValueForKey(node, @"playbackView");
         if (playbackView)
             [playbackViews addObject:playbackView];
 
-        UIView *view = GonerinoValueForKey(node, @"view");
+        UIView *view = ValueForKey(node, @"view");
         if (view)
             [playbackViews addObjectsFromArray:view.subviews];
 
@@ -689,27 +689,27 @@ static void GonerinoCollectInlinePlaybackMetadata(id node,
             if ([className rangeOfString:@"YTElementsInlineMutedPlaybackView"].location == NSNotFound)
                 continue;
 
-            id playableEntry = GonerinoValueForKey(candidate, @"asdPlayableEntry");
-            for (NSString *key in GonerinoMetadataFieldKeys())
-                GonerinoRecordField(result, priorities, key, GonerinoValueForKey(playableEntry, key));
+            id playableEntry = ValueForKey(candidate, @"asdPlayableEntry");
+            for (NSString *key in MetadataFieldKeys())
+                RecordField(result, priorities, key, ValueForKey(playableEntry, key));
 
-            id navigationEndpoint = GonerinoValueForKey(playableEntry, @"navigationEndpoint");
-            for (NSString *key in GonerinoMetadataFieldKeys())
-                GonerinoRecordField(result, priorities, key, GonerinoValueForKey(navigationEndpoint, key));
+            id navigationEndpoint = ValueForKey(playableEntry, @"navigationEndpoint");
+            for (NSString *key in MetadataFieldKeys())
+                RecordField(result, priorities, key, ValueForKey(navigationEndpoint, key));
 
-            NSString *entryDescription = GonerinoTextFromValue(GonerinoValueForKey(playableEntry, @"description"), 0);
-            NSString *endpointDescription = GonerinoTextFromValue(GonerinoValueForKey(navigationEndpoint, @"description"), 0);
-            GonerinoRecordSerializedDescription(result, priorities, entryDescription);
-            GonerinoRecordSerializedDescription(result, priorities, endpointDescription);
-            if (GonerinoMetadataComplete(result))
+            NSString *entryDescription = TextFromValue(ValueForKey(playableEntry, @"description"), 0);
+            NSString *endpointDescription = TextFromValue(ValueForKey(navigationEndpoint, @"description"), 0);
+            RecordSerializedDescription(result, priorities, entryDescription);
+            RecordSerializedDescription(result, priorities, endpointDescription);
+            if (MetadataComplete(result))
                 return;
         }
     } @catch (__unused NSException *exception) {
     }
 }
 
-static UIViewController *GonerinoViewControllerForNode(id node) {
-    UIView *view = GonerinoValueForKey(node, @"view");
+static UIViewController *ViewControllerForNode(id node) {
+    UIView *view = ValueForKey(node, @"view");
     UIResponder *responder = view;
     NSUInteger depth = 0;
     while (responder && depth++ < 32) {
@@ -742,7 +742,7 @@ static UIViewController *GonerinoViewControllerForNode(id node) {
     if (!node)
         return nil;
 
-    NSDictionary *cached = [GonerinoMetadataCache() objectForKey:node];
+    NSDictionary *cached = [MetadataCache() objectForKey:node];
     if (cached)
         return cached;
 
@@ -753,18 +753,18 @@ static UIViewController *GonerinoViewControllerForNode(id node) {
     NSUInteger budget = 96;
 
     @try {
-        GonerinoCollectInlinePlaybackMetadata(node, result, priorities);
-        GonerinoCollectObject(GonerinoViewControllerForNode(node), result, priorities, visited, &budget, 0);
-        GonerinoCollectElementTreeMetadata(node, result, priorities, elementVisited, 0);
-        GonerinoCollectObject(node, result, priorities, visited, &budget, 0);
+        CollectInlinePlaybackMetadata(node, result, priorities);
+        CollectObject(ViewControllerForNode(node), result, priorities, visited, &budget, 0);
+        CollectElementTreeMetadata(node, result, priorities, elementVisited, 0);
+        CollectObject(node, result, priorities, visited, &budget, 0);
     } @catch (__unused NSException *exception) {
     }
 
     if (result.count == 0)
         return nil;
     NSDictionary *metadata = [result copy];
-    if (GonerinoMetadataComplete(metadata))
-        [GonerinoMetadataCache() setObject:metadata forKey:node];
+    if (MetadataComplete(metadata))
+        [MetadataCache() setObject:metadata forKey:node];
     return metadata;
 }
 
@@ -792,7 +792,7 @@ static UIViewController *GonerinoViewControllerForNode(id node) {
         return YES;
 
     if ([node isKindOfClass:NSClassFromString(@"ASTextNode")]) {
-        NSString *text = GonerinoTextForNode(node);
+        NSString *text = TextForNode(node);
         NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
         if ([defaults boolForKey:@"GonerinoPeopleWatched"] &&
             [text isEqualToString:@"People also watched this video"])
@@ -816,20 +816,24 @@ static UIViewController *GonerinoViewControllerForNode(id node) {
         CGContextSetAllowsAntialiasing(context, YES);
         [[UIColor whiteColor] setStroke];
 
-        CGFloat radius = size.width * 0.45;
-        CGPoint center = CGPointMake(size.width / 2, size.height / 2);
+        CGFloat contentWidth = MIN(size.width, 20.0);
+        CGFloat contentHeight = MIN(size.height, 20.0);
+        CGContextTranslateCTM(context, (size.width - contentWidth) / 2.0, (size.height - contentHeight) / 2.0);
+
+        CGFloat radius = contentWidth * 0.45;
+        CGPoint center = CGPointMake(contentWidth / 2, contentHeight / 2);
         UIBezierPath *circle = [UIBezierPath bezierPathWithArcCenter:center
                                                                   radius:radius
                                                               startAngle:0
                                                                 endAngle:2 * M_PI
                                                                clockwise:YES];
-        UIBezierPath *body = [UIBezierPath bezierPathWithArcCenter:CGPointMake(size.width / 2, size.height * 0.85)
-                                                              radius:size.width * 0.3
+        UIBezierPath *body = [UIBezierPath bezierPathWithArcCenter:CGPointMake(contentWidth / 2, contentHeight * 0.85)
+                                                              radius:contentWidth * 0.3
                                                           startAngle:M_PI
                                                             endAngle:2 * M_PI
                                                            clockwise:YES];
-        UIBezierPath *head = [UIBezierPath bezierPathWithArcCenter:CGPointMake(size.width / 2, size.height * 0.35)
-                                                              radius:size.width * 0.15
+        UIBezierPath *head = [UIBezierPath bezierPathWithArcCenter:CGPointMake(contentWidth / 2, contentHeight * 0.35)
+                                                              radius:contentWidth * 0.15
                                                           startAngle:0
                                                             endAngle:2 * M_PI
                                                            clockwise:YES];
@@ -867,18 +871,22 @@ static UIViewController *GonerinoViewControllerForNode(id node) {
         [[UIColor whiteColor] setStroke];
         [[UIColor whiteColor] setFill];
 
-        CGPoint center = CGPointMake(size.width / 2, size.height / 2);
-        UIBezierPath *rectangle = [UIBezierPath bezierPathWithRoundedRect:CGRectMake(size.width * 0.2, size.height * 0.3,
-                                                                                       size.width * 0.6, size.height * 0.4)
+        CGFloat contentWidth = MIN(size.width, 20.0);
+        CGFloat contentHeight = MIN(size.height, 20.0);
+        CGContextTranslateCTM(context, (size.width - contentWidth) / 2.0, (size.height - contentHeight) / 2.0);
+
+        CGPoint center = CGPointMake(contentWidth / 2, contentHeight / 2);
+        UIBezierPath *rectangle = [UIBezierPath bezierPathWithRoundedRect:CGRectMake(contentWidth * 0.2, contentHeight * 0.3,
+                                                                                       contentWidth * 0.6, contentHeight * 0.4)
                                                                cornerRadius:3.0];
         UIBezierPath *triangle = [UIBezierPath bezierPath];
-        CGFloat triangleSize = size.width * 0.2;
+        CGFloat triangleSize = contentWidth * 0.2;
         [triangle moveToPoint:CGPointMake(center.x - triangleSize / 2, center.y - triangleSize / 2)];
         [triangle addLineToPoint:CGPointMake(center.x + triangleSize / 2, center.y)];
         [triangle addLineToPoint:CGPointMake(center.x - triangleSize / 2, center.y + triangleSize / 2)];
         [triangle closePath];
 
-        CGFloat radius = size.width * 0.45;
+        CGFloat radius = contentWidth * 0.45;
         UIBezierPath *circle = [UIBezierPath bezierPathWithArcCenter:center
                                                                   radius:radius
                                                               startAngle:0

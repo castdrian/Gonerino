@@ -2,7 +2,7 @@
 #import <objc/runtime.h>
 
 #if 0
-static id GonerinoValueForArgumentKey(id object, SEL selector, NSString *key) {
+static id ValueForArgumentKey(id object, SEL selector, NSString *key) {
     if (!object || !selector || key.length == 0 || ![object respondsToSelector:selector])
         return nil;
 
@@ -18,9 +18,9 @@ static id GonerinoValueForArgumentKey(id object, SEL selector, NSString *key) {
     return nil;
 }
 
-static id GonerinoValueForArgumentKeyName(id object, NSString *key) {
+static id ValueForArgumentKeyName(id object, NSString *key) {
     for (NSString *selectorName in @[@"propertyForKey:", @"elementForKey:", @"safeSwiftValueForKey:", @"safeSwiftStringForKey:", @"tps_safeValueForKey:", @"valueForKey:"]) {
-        id value = GonerinoValueForArgumentKey(object, NSSelectorFromString(selectorName), key);
+        id value = ValueForArgumentKey(object, NSSelectorFromString(selectorName), key);
         if (value)
             return value;
     }
@@ -28,7 +28,7 @@ static id GonerinoValueForArgumentKeyName(id object, NSString *key) {
 }
 #endif
 
-static id GonerinoValueForObjectKey(id object, NSString *key) {
+static id ValueForObjectKey(id object, NSString *key) {
     if (!object || key.length == 0)
         return nil;
 
@@ -51,11 +51,11 @@ static id GonerinoValueForObjectKey(id object, NSString *key) {
     return nil;
 }
 
-static NSString * __attribute__((unused)) GonerinoDebugString(id value) {
+static NSString * __attribute__((unused)) DebugString(id value) {
     return [value isKindOfClass:[NSString class]] ? value : @"";
 }
 
-static BOOL GonerinoNodeLooksLikeVideo(id node) {
+static BOOL NodeLooksLikeVideo(id node) {
     if (!node)
         return NO;
 
@@ -65,7 +65,7 @@ static BOOL GonerinoNodeLooksLikeVideo(id node) {
         [normalizedClassName containsString:@"reorderable"] ||
         [normalizedClassName containsString:@"scrollablepage"])
         return NO;
-    id controller = GonerinoValueForObjectKey(node, @"controller");
+    id controller = ValueForObjectKey(node, @"controller");
     NSString *controllerClassName = NSStringFromClass([controller class]).lowercaseString;
     if ([controllerClassName containsString:@"shortsplayerviewcontroller"])
         return YES;
@@ -79,16 +79,16 @@ static BOOL GonerinoNodeLooksLikeVideo(id node) {
     return NO;
 }
 
-static id GonerinoVideoNodeFromView(UIView *view, NSUInteger depth) {
+static id VideoNodeFromView(UIView *view, NSUInteger depth) {
     if (!view || depth > 60)
         return nil;
 
-    id node = GonerinoValueForObjectKey(view, @"asyncdisplaykit_node");
-    if (GonerinoNodeLooksLikeVideo(node))
+    id node = ValueForObjectKey(view, @"asyncdisplaykit_node");
+    if (NodeLooksLikeVideo(node))
         return node;
 
     for (UIView *subview in view.subviews) {
-        node = GonerinoVideoNodeFromView(subview, depth + 1);
+        node = VideoNodeFromView(subview, depth + 1);
         if (node)
             return node;
     }
@@ -97,26 +97,26 @@ static id GonerinoVideoNodeFromView(UIView *view, NSUInteger depth) {
 }
 
 #if 0
-static id GonerinoObjectIvar(id object, NSString *name) {
+static id ObjectIvar(id object, NSString *name) {
     if (!object || name.length == 0)
         return nil;
     Ivar ivar = class_getInstanceVariable([object class], name.UTF8String);
     return ivar ? object_getIvar(object, ivar) : nil;
 }
 
-static void GonerinoWriteRuntimeDiagnostics(id node) {
+static void WriteRuntimeDiagnostics(id node) {
     if (!node || [[NSUserDefaults standardUserDefaults] objectForKey:@"GonerinoRuntimeDiagnostics4"])
         return;
 
     NSMutableArray *objects = [NSMutableArray array];
-    id element = GonerinoValueForObjectKey(node, @"element");
-    id controller = GonerinoValueForObjectKey(node, @"controller");
-    id context = GonerinoValueForObjectKey(node, @"context");
+    id element = ValueForObjectKey(node, @"element");
+    id controller = ValueForObjectKey(node, @"controller");
+    id context = ValueForObjectKey(node, @"context");
     NSArray *candidateObjects = @[node ?: [NSNull null], element ?: [NSNull null], controller ?: [NSNull null],
-                                  context ?: [NSNull null], GonerinoObjectIvar(node, @"_context") ?: [NSNull null],
-                                  GonerinoObjectIvar(node, @"_nodeContext") ?: [NSNull null],
-                                  GonerinoObjectIvar(controller, @"_context") ?: [NSNull null],
-                                  GonerinoObjectIvar(controller, @"_treeLocalContext") ?: [NSNull null]];
+                                  context ?: [NSNull null], ObjectIvar(node, @"_context") ?: [NSNull null],
+                                  ObjectIvar(node, @"_nodeContext") ?: [NSNull null],
+                                  ObjectIvar(controller, @"_context") ?: [NSNull null],
+                                  ObjectIvar(controller, @"_treeLocalContext") ?: [NSNull null]];
     for (id object in candidateObjects) {
         if (object == [NSNull null])
             continue;
@@ -219,11 +219,11 @@ static void GonerinoWriteRuntimeDiagnostics(id node) {
     [[NSUserDefaults standardUserDefaults] synchronize];
 }
 
-static void __attribute__((unused)) GonerinoCollectSheetDiagnostics(UIView *view, NSMutableArray *entries, NSUInteger depth) {
+static void __attribute__((unused)) CollectSheetDiagnostics(UIView *view, NSMutableArray *entries, NSUInteger depth) {
     if (!view || depth > 30 || entries.count >= 4096)
         return;
 
-    id node = GonerinoValueForObjectKey(view, @"asyncdisplaykit_node");
+    id node = ValueForObjectKey(view, @"asyncdisplaykit_node");
     NSString *nodeDescription = @"";
     @try {
         nodeDescription = [node debugDescription] ?: @"";
@@ -233,7 +233,7 @@ static void __attribute__((unused)) GonerinoCollectSheetDiagnostics(UIView *view
         nodeDescription = [nodeDescription substringToIndex:1500];
 
     NSMutableArray *subnodeClasses = [NSMutableArray array];
-    for (id subnode in GonerinoValueForObjectKey(node, @"subnodes")) {
+    for (id subnode in ValueForObjectKey(node, @"subnodes")) {
         if (subnodeClasses.count >= 16)
             break;
         [subnodeClasses addObject:NSStringFromClass([subnode class]) ?: @""];
@@ -244,30 +244,30 @@ static void __attribute__((unused)) GonerinoCollectSheetDiagnostics(UIView *view
         @"nodeClass": NSStringFromClass([node class]) ?: @"",
         @"nodeDescription": nodeDescription,
         @"subnodeClasses": subnodeClasses,
-        @"elementClass": NSStringFromClass([GonerinoValueForObjectKey(node, @"element") class]) ?: @"",
-        @"contextClass": NSStringFromClass([GonerinoValueForObjectKey(node, @"context") class]) ?: @"",
-        @"controllerClass": NSStringFromClass([GonerinoValueForObjectKey(node, @"controller") class]) ?: @""
+        @"elementClass": NSStringFromClass([ValueForObjectKey(node, @"element") class]) ?: @"",
+        @"contextClass": NSStringFromClass([ValueForObjectKey(node, @"context") class]) ?: @"",
+        @"controllerClass": NSStringFromClass([ValueForObjectKey(node, @"controller") class]) ?: @""
     }];
 
     for (UIView *subview in view.subviews)
-        GonerinoCollectSheetDiagnostics(subview, entries, depth + 1);
+        CollectSheetDiagnostics(subview, entries, depth + 1);
 }
 #endif
 
-static id GonerinoVideoNodeForSheet(id sheet) {
-    UIView *sourceView = GonerinoValueForObjectKey(sheet, @"sourceView");
+static id VideoNodeForSheet(id sheet) {
+    UIView *sourceView = ValueForObjectKey(sheet, @"sourceView");
     if (!sourceView)
-        sourceView = GonerinoValueForObjectKey(sheet, @"_sourceView");
+        sourceView = ValueForObjectKey(sheet, @"_sourceView");
 
     while (sourceView) {
-        id node = GonerinoVideoNodeFromView(sourceView, 0);
+        id node = VideoNodeFromView(sourceView, 0);
         if (node)
             return node;
         sourceView = sourceView.superview;
     }
 
     for (UIWindow *window in [UIApplication sharedApplication].windows) {
-        id node = GonerinoVideoNodeFromView(window, 0);
+        id node = VideoNodeFromView(window, 0);
         if (node)
             return node;
     }
@@ -275,7 +275,7 @@ static id GonerinoVideoNodeForSheet(id sheet) {
     return nil;
 }
 
-static UIViewController *GonerinoViewControllerForObject(id object) {
+static UIViewController *ViewControllerForObject(id object) {
     if ([object isKindOfClass:[UIViewController class]])
         return object;
 
@@ -291,7 +291,7 @@ static UIViewController *GonerinoViewControllerForObject(id object) {
     return nil;
 }
 
-static void GonerinoSendToast(UIViewController *viewController, NSString *message) {
+static void SendToast(UIViewController *viewController, NSString *message) {
     if (!viewController || message.length == 0)
         return;
 
@@ -301,7 +301,7 @@ static void GonerinoSendToast(UIViewController *viewController, NSString *messag
 }
 
 #if 0
-static void __attribute__((unused)) GonerinoShowMetadataAlert(UIViewController *viewController, NSDictionary *info) {
+static void __attribute__((unused)) ShowMetadataAlert(UIViewController *viewController, NSDictionary *info) {
     if (!viewController) {
         for (UIWindow *window in [UIApplication sharedApplication].windows) {
             if (!window.isKeyWindow)
@@ -327,7 +327,7 @@ static void __attribute__((unused)) GonerinoShowMetadataAlert(UIViewController *
 }
 #endif
 
-static NSDictionary *GonerinoMergedVideoInfo(NSDictionary *current, NSDictionary *fallback) {
+static NSDictionary *MergedVideoInfo(NSDictionary *current, NSDictionary *fallback) {
     NSMutableDictionary *result = [fallback mutableCopy] ?: [NSMutableDictionary dictionary];
     [current enumerateKeysAndObjectsUsingBlock:^(NSString *key, NSString *value, __unused BOOL *stop) {
         if ([value isKindOfClass:[NSString class]] && value.length > 0)
@@ -337,7 +337,7 @@ static NSDictionary *GonerinoMergedVideoInfo(NSDictionary *current, NSDictionary
 }
 
 #if 0
-static void __attribute__((unused)) GonerinoWriteDebugMetadata(NSString *stage, id node, NSDictionary *info) {
+static void __attribute__((unused)) WriteDebugMetadata(NSString *stage, id node, NSDictionary *info) {
     NSString *description = @"";
     NSMutableArray *subviewDescriptions = [NSMutableArray array];
     NSMutableArray *subnodeDescriptions = [NSMutableArray array];
@@ -345,9 +345,9 @@ static void __attribute__((unused)) GonerinoWriteDebugMetadata(NSString *stage, 
     NSMutableArray *objectDiagnostics = [NSMutableArray array];
     @try {
         description = [node debugDescription] ?: [node description] ?: @"";
-        id rootElement = GonerinoValueForObjectKey(node, @"element");
+        id rootElement = ValueForObjectKey(node, @"element");
         for (NSString *key in @[@"videoId", @"video_id", @"videoIdentifier", @"contentVideoId", @"contentId", @"id", @"url", @"navigationEndpoint", @"watchEndpoint", @"endpoint", @"command", @"title", @"channelName", @"ownerName"]) {
-            id value = GonerinoValueForArgumentKeyName(rootElement, key);
+            id value = ValueForArgumentKeyName(rootElement, key);
             if (!value)
                 continue;
             NSString *valueDescription = @"";
@@ -364,33 +364,33 @@ static void __attribute__((unused)) GonerinoWriteDebugMetadata(NSString *stage, 
                 @"description": valueDescription
             }];
         }
-        id playbackView = GonerinoValueForObjectKey(node, @"playbackView");
-        id nodeView = GonerinoValueForObjectKey(node, @"view");
+        id playbackView = ValueForObjectKey(node, @"playbackView");
+        id nodeView = ValueForObjectKey(node, @"view");
         NSMutableArray *playbackCandidates = [NSMutableArray array];
         if (playbackView)
             [playbackCandidates addObject:playbackView];
         if (nodeView)
             [playbackCandidates addObjectsFromArray:[nodeView subviews]];
         for (id candidate in playbackCandidates) {
-            id playableEntry = GonerinoValueForObjectKey(candidate, @"asdPlayableEntry");
-            id navigationEndpoint = GonerinoValueForObjectKey(playableEntry, @"navigationEndpoint");
+            id playableEntry = ValueForObjectKey(candidate, @"asdPlayableEntry");
+            id navigationEndpoint = ValueForObjectKey(playableEntry, @"navigationEndpoint");
             [playbackDiagnostics addObject:@{
                 @"class": NSStringFromClass([candidate class]) ?: @"",
                 @"hasEntry": @(playableEntry != nil),
                 @"entryClass": NSStringFromClass([playableEntry class]) ?: @"",
-                @"entryDescription": GonerinoDebugString(GonerinoValueForObjectKey(playableEntry, @"description")),
+                @"entryDescription": DebugString(ValueForObjectKey(playableEntry, @"description")),
                 @"endpointClass": NSStringFromClass([navigationEndpoint class]) ?: @"",
-                @"endpointDescription": GonerinoDebugString(GonerinoValueForObjectKey(navigationEndpoint, @"description"))
+                @"endpointDescription": DebugString(ValueForObjectKey(navigationEndpoint, @"description"))
             }];
         }
-        UIView *view = GonerinoValueForObjectKey(node, @"view");
+        UIView *view = ValueForObjectKey(node, @"view");
         for (UIView *subview in view.subviews) {
             NSString *subviewDescription = [NSString stringWithFormat:@"%@ %@",
                                             NSStringFromClass([subview class]),
                                             [subview debugDescription] ?: @""];
             [subviewDescriptions addObject:subviewDescription];
         }
-        NSArray *subnodes = GonerinoValueForObjectKey(node, @"subnodes");
+        NSArray *subnodes = ValueForObjectKey(node, @"subnodes");
         for (id subnode in subnodes) {
             NSString *subnodeDescription = [NSString stringWithFormat:@"%@ %@",
                                             NSStringFromClass([subnode class]),
@@ -407,7 +407,7 @@ static void __attribute__((unused)) GonerinoWriteDebugMetadata(NSString *stage, 
                 continue;
             [visitedObjects addObject:identity];
             for (NSString *key in @[@"element", @"context", @"controller", @"viewController", @"navigationEndpoint", @"videoDetails", @"playerResponse", @"subnodes", @"allProperties", @"properties", @"description", @"text", @"attributedText", @"protoText", @"childElements", @"instance", @"cxxSharedElement", @"currentVideo", @"videoController", @"watchController", @"playbackController", @"videoData", @"response", @"renderer", @"content", @"data", @"model", @"media"]) {
-                id value = GonerinoValueForObjectKey(object, key);
+                id value = ValueForObjectKey(object, key);
                 if (!value)
                     continue;
                 NSString *valueDescription = @"";
@@ -473,7 +473,7 @@ static void __attribute__((unused)) GonerinoWriteDebugMetadata(NSString *stage, 
                     @"methods": methodNames
                 }];
                 for (NSString *key in @[@"videoId", @"video_id", @"videoIdentifier", @"contentVideoId", @"contentId", @"id", @"url", @"navigationEndpoint", @"watchEndpoint", @"endpoint", @"command", @"title", @"channelName", @"ownerName"]) {
-                    id value = GonerinoValueForArgumentKeyName(object, key);
+                    id value = ValueForArgumentKeyName(object, key);
                     if (!value)
                         continue;
                     NSString *valueDescription = @"";
@@ -512,7 +512,7 @@ static void __attribute__((unused)) GonerinoWriteDebugMetadata(NSString *stage, 
 }
 #endif
 
-static void GonerinoRefreshVisibleFeeds(void) {
+static void RefreshVisibleFeeds(void) {
     UIWindow *keyWindow = nil;
     for (UIWindow *window in [UIApplication sharedApplication].windows) {
         if (window.isKeyWindow) {
@@ -537,40 +537,72 @@ static void GonerinoRefreshVisibleFeeds(void) {
     }
 }
 
-static void GonerinoScaleActionIcons(UIView *view) {
+static void CollectSubviewsOfClass(UIView *view, Class viewClass, NSMutableArray *result) {
     if (!view)
         return;
+    if ([view isKindOfClass:viewClass])
+        [result addObject:view];
+    for (UIView *subview in view.subviews)
+        CollectSubviewsOfClass(subview, viewClass, result);
+}
 
-    static void *iconMarker = &iconMarker;
-    static void *scaledMarker = &scaledMarker;
-    if ([view isKindOfClass:[UIImageView class]]) {
-        UIImage *image = [(UIImageView *)view image];
-        if (image && objc_getAssociatedObject(image, iconMarker) && !objc_getAssociatedObject(view, scaledMarker)) {
-            objc_setAssociatedObject(view, scaledMarker, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-            view.clipsToBounds = NO;
-            view.superview.clipsToBounds = NO;
-            view.transform = CGAffineTransformMakeScale(1.5, 1.5);
+static NSString *ActionTitleForView(UIView *view) {
+    if ([view isKindOfClass:[UILabel class]]) {
+        NSString *text = [(UILabel *)view text];
+        if (text.length > 0)
+            return text;
+    }
+    return view.accessibilityLabel;
+}
+
+static NSArray *ApplicationWindows(void) {
+    NSMutableArray *windows = [NSMutableArray array];
+    for (UIScene *scene in [UIApplication sharedApplication].connectedScenes) {
+        if (![scene isKindOfClass:[UIWindowScene class]])
+            continue;
+        [windows addObjectsFromArray:[(UIWindowScene *)scene windows]];
+    }
+    if (windows.count == 0)
+        [windows addObjectsFromArray:[UIApplication sharedApplication].windows];
+    return windows;
+}
+
+static void NormalizeActionLayout(UIView *view) {
+    NSMutableArray *views = [NSMutableArray array];
+    CollectSubviewsOfClass(view, [UIView class], views);
+    BOOL isLongForm = NO;
+    for (UIView *candidate in views) {
+        if ([ActionTitleForView(candidate) isEqualToString:@"Thanks"]) {
+            isLongForm = YES;
+            break;
         }
     }
 
-    for (UIView *subview in view.subviews)
-        GonerinoScaleActionIcons(subview);
+    for (UIView *row in views) {
+        NSString *identifier = row.accessibilityIdentifier;
+        BOOL injectedAction = [identifier isEqualToString:@"GonerinoBlockChannel"] || [identifier isEqualToString:@"GonerinoBlockVideo"];
+        if (!injectedAction)
+            continue;
+        row.clipsToBounds = NO;
+        for (UIView *subview in row.subviews) {
+            if ([subview isKindOfClass:[UIImageView class]]) {
+                subview.clipsToBounds = NO;
+                subview.transform = CGAffineTransformMake(1.2, 0, 0, 1.2, isLongForm ? 29.5 : 8.0, 0);
+            } else if ([NSStringFromClass([subview class]) isEqualToString:@"UIButtonLabel"]) {
+                CGRect frame = subview.frame;
+                frame.origin.x = isLongForm ? 52.0 : 64.0;
+                subview.frame = frame;
+            }
+        }
+    }
 }
 
-static void GonerinoMarkActionIcon(UIImage *image) {
-    if (!image)
-        return;
-
-    static void *iconMarker = &iconMarker;
-    objc_setAssociatedObject(image, iconMarker, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-}
-
-static BOOL GonerinoCollectionViewIsScrolling(YTAsyncCollectionView *collectionView) {
+static BOOL CollectionViewIsScrolling(YTAsyncCollectionView *collectionView) {
     return collectionView.isDragging || collectionView.isDecelerating || collectionView.isTracking;
 }
 
-static void GonerinoFilterVisibleCells(YTAsyncCollectionView *collectionView) {
-    if (!collectionView || GonerinoCollectionViewIsScrolling(collectionView))
+static void FilterVisibleCells(YTAsyncCollectionView *collectionView) {
+    if (!collectionView || CollectionViewIsScrolling(collectionView))
         return;
 
     if (collectionView.gonerinoFiltering)
@@ -585,7 +617,7 @@ static void GonerinoFilterVisibleCells(YTAsyncCollectionView *collectionView) {
 
             _ASCollectionViewCell *asCell = (_ASCollectionViewCell *)cell;
             id node = [asCell respondsToSelector:@selector(node)] ? [asCell node] : nil;
-            if (!GonerinoNodeLooksLikeVideo(node))
+            if (!NodeLooksLikeVideo(node))
                 continue;
 
             BOOL blocked = [Util nodeContainsBlockedVideo:node];
@@ -610,7 +642,7 @@ static void GonerinoFilterVisibleCells(YTAsyncCollectionView *collectionView) {
     if ([[NSUserDefaults standardUserDefaults] objectForKey:@"GonerinoEnabled"] != nil &&
         ![[NSUserDefaults standardUserDefaults] boolForKey:@"GonerinoEnabled"])
         return;
-    if (self.gonerinoFilterScheduled || GonerinoCollectionViewIsScrolling(self))
+    if (self.gonerinoFilterScheduled || CollectionViewIsScrolling(self))
         return;
     if (CFAbsoluteTimeGetCurrent() - self.gonerinoLastFilterTime < 0.35)
         return;
@@ -626,7 +658,7 @@ static void GonerinoFilterVisibleCells(YTAsyncCollectionView *collectionView) {
         if ([[NSUserDefaults standardUserDefaults] objectForKey:@"GonerinoEnabled"] != nil &&
             ![[NSUserDefaults standardUserDefaults] boolForKey:@"GonerinoEnabled"])
             return;
-        GonerinoFilterVisibleCells(strongSelf);
+        FilterVisibleCells(strongSelf);
     });
 }
 
@@ -660,7 +692,7 @@ static void GonerinoFilterVisibleCells(YTAsyncCollectionView *collectionView) {
     if (injectionInProgress || objc_getAssociatedObject(self, injectionKey))
         return;
 
-    id node = GonerinoVideoNodeForSheet(self);
+    id node = VideoNodeForSheet(self);
     if (!node)
         return;
     NSDictionary *metadataAtPresentation = [Util videoInfoFromNode:node] ?: @{};
@@ -668,57 +700,57 @@ static void GonerinoFilterVisibleCells(YTAsyncCollectionView *collectionView) {
     objc_setAssociatedObject(self, injectionInProgressKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 
     __weak typeof(self) weakSelf = self;
-    CGSize iconSize = CGSizeMake(16, 16);
+    CGSize iconSize = CGSizeMake(24, 24);
     UIImage *channelIcon = [Util createBlockChannelIconWithSize:iconSize];
     UIImage *videoIcon = [Util createBlockVideoIconWithSize:iconSize];
-    GonerinoMarkActionIcon(channelIcon);
-    GonerinoMarkActionIcon(videoIcon);
 
     YTActionSheetAction *blockChannelAction = [%c(YTActionSheetAction)
         actionWithTitle:@"Block channel"
               iconImage:channelIcon
-                  style:0
-                handler:^(__unused YTActionSheetAction *selectedAction) {
+     secondaryIconImage:nil
+ accessibilityIdentifier:@"GonerinoBlockChannel"
+                handler:^ {
                     __strong typeof(weakSelf) strongSelf = weakSelf;
-                    id selectedNode = GonerinoVideoNodeForSheet(strongSelf);
-                    NSDictionary *info = GonerinoMergedVideoInfo([Util videoInfoFromNode:selectedNode], metadataAtPresentation);
+                    id selectedNode = VideoNodeForSheet(strongSelf);
+                    NSDictionary *info = MergedVideoInfo([Util videoInfoFromNode:selectedNode], metadataAtPresentation);
                     NSString *channel = info[@"channel"];
-                    UIViewController *viewController = GonerinoViewControllerForObject(strongSelf);
+                    UIViewController *viewController = ViewControllerForObject(strongSelf);
                     if (channel.length == 0) {
-                        GonerinoSendToast(viewController, @"Could not read the channel for this video");
+                        SendToast(viewController, @"Could not read the channel for this video");
                         return;
                     }
 
                     [[ChannelManager sharedInstance] addBlockedChannel:channel];
-                    GonerinoSendToast(viewController, [NSString stringWithFormat:@"Blocked %@", channel]);
+                    SendToast(viewController, [NSString stringWithFormat:@"Blocked %@", channel]);
                     if ([strongSelf respondsToSelector:@selector(dismiss)])
                         [strongSelf dismiss];
-                    GonerinoRefreshVisibleFeeds();
+                    RefreshVisibleFeeds();
                 }];
 
     YTActionSheetAction *blockVideoAction = [%c(YTActionSheetAction)
         actionWithTitle:@"Block video"
               iconImage:videoIcon
-                  style:0
-                handler:^(__unused YTActionSheetAction *selectedAction) {
+     secondaryIconImage:nil
+ accessibilityIdentifier:@"GonerinoBlockVideo"
+                handler:^ {
                     __strong typeof(weakSelf) strongSelf = weakSelf;
-                    id selectedNode = GonerinoVideoNodeForSheet(strongSelf);
-                    NSDictionary *info = GonerinoMergedVideoInfo([Util videoInfoFromNode:selectedNode], metadataAtPresentation);
+                    id selectedNode = VideoNodeForSheet(strongSelf);
+                    NSDictionary *info = MergedVideoInfo([Util videoInfoFromNode:selectedNode], metadataAtPresentation);
                     NSString *videoId = info[@"id"];
-                    UIViewController *viewController = GonerinoViewControllerForObject(strongSelf);
+                    UIViewController *viewController = ViewControllerForObject(strongSelf);
                     if (videoId.length == 0) {
-                        GonerinoSendToast(viewController, @"Could not read the video for this item");
+                        SendToast(viewController, @"Could not read the video for this item");
                         return;
                     }
 
                     [[VideoManager sharedInstance] addBlockedVideo:videoId
                                                              title:info[@"title"]
                                                            channel:info[@"channel"]];
-                    GonerinoSendToast(viewController,
+                    SendToast(viewController,
                                       [NSString stringWithFormat:@"Blocked video: %@", info[@"title"] ?: videoId]);
                     if ([strongSelf respondsToSelector:@selector(dismiss)])
                         [strongSelf dismiss];
-                    GonerinoRefreshVisibleFeeds();
+                    RefreshVisibleFeeds();
                 }];
 
     blockChannelAction.shouldDismissOnAction = YES;
@@ -728,19 +760,35 @@ static void GonerinoFilterVisibleCells(YTAsyncCollectionView *collectionView) {
     [self addAction:blockChannelAction];
     [self addAction:blockVideoAction];
 
-    __weak UIViewController *weakViewController = GonerinoViewControllerForObject(self);
     dispatch_async(dispatch_get_main_queue(), ^{
-        UIViewController *viewController = weakViewController;
-        GonerinoScaleActionIcons(viewController.view);
+        for (UIWindow *window in ApplicationWindows())
+            NormalizeActionLayout(window);
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.05 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-            GonerinoScaleActionIcons(weakViewController.view);
+            for (UIWindow *window in ApplicationWindows())
+                NormalizeActionLayout(window);
+        });
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.2 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            for (UIWindow *window in ApplicationWindows())
+                NormalizeActionLayout(window);
+        });
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            for (UIWindow *window in ApplicationWindows())
+                NormalizeActionLayout(window);
+        });
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            for (UIWindow *window in ApplicationWindows())
+                NormalizeActionLayout(window);
+        });
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            for (UIWindow *window in ApplicationWindows())
+                NormalizeActionLayout(window);
         });
     });
 }
 
 %new
 - (UIViewController *)findViewControllerForView:(UIView *)view {
-    return GonerinoViewControllerForObject(view);
+    return ViewControllerForObject(view);
 }
 
 %end
@@ -774,7 +822,7 @@ static void GonerinoFilterVisibleCells(YTAsyncCollectionView *collectionView) {
         pageStyle = [pageStyleClass pageStyle];
     else {
         YTAppDelegate *delegate = (YTAppDelegate *)[UIApplication sharedApplication].delegate;
-        YTAppViewControllerImpl *appViewController = GonerinoValueForObjectKey(delegate, @"_appViewController");
+        YTAppViewControllerImpl *appViewController = ValueForObjectKey(delegate, @"_appViewController");
         if ([appViewController respondsToSelector:@selector(pageStyle)])
             pageStyle = [appViewController pageStyle];
     }
@@ -813,9 +861,9 @@ static void GonerinoFilterVisibleCells(YTAsyncCollectionView *collectionView) {
     [defaults synchronize];
 
     [self buttons];
-    GonerinoRefreshVisibleFeeds();
-    UIViewController *viewController = GonerinoViewControllerForObject(self);
-    GonerinoSendToast(viewController, [NSString stringWithFormat:@"Gonerino %@", newState ? @"enabled" : @"disabled"]);
+    RefreshVisibleFeeds();
+    UIViewController *viewController = ViewControllerForObject(self);
+    SendToast(viewController, [NSString stringWithFormat:@"Gonerino %@", newState ? @"enabled" : @"disabled"]);
 }
 
 %end

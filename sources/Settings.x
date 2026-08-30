@@ -1,7 +1,7 @@
 #import "Settings.h"
 #import "Util.h"
 
-static void GonerinoToast(UIViewController *viewController, NSString *message) {
+static void Toast(UIViewController *viewController, NSString *message) {
     if (!viewController || message.length == 0)
         return;
     Class toastClass = NSClassFromString(@"YTToastResponderEvent");
@@ -9,7 +9,7 @@ static void GonerinoToast(UIViewController *viewController, NSString *message) {
         [[toastClass eventWithMessage:message firstResponder:viewController] send];
 }
 
-static YTSettingsViewController *GonerinoSettingsViewControllerForManager(YTSettingsSectionItemManager *manager) {
+static YTSettingsViewController *SettingsViewControllerForManager(YTSettingsSectionItemManager *manager) {
     if (!manager)
         return nil;
 
@@ -25,17 +25,17 @@ static YTSettingsViewController *GonerinoSettingsViewControllerForManager(YTSett
     return nil;
 }
 
-@interface GonerinoListEntry : NSObject
+@interface ListEntry : NSObject
 @property(nonatomic, copy) NSString *title;
 @property(nonatomic, copy) NSString *subtitle;
 @property(nonatomic, copy) dispatch_block_t action;
 + (instancetype)entryWithTitle:(NSString *)title subtitle:(NSString *)subtitle action:(dispatch_block_t)action;
 @end
 
-@implementation GonerinoListEntry
+@implementation ListEntry
 
 + (instancetype)entryWithTitle:(NSString *)title subtitle:(NSString *)subtitle action:(dispatch_block_t)action {
-    GonerinoListEntry *entry = [self new];
+    ListEntry *entry = [self new];
     entry.title = title ?: @"";
     entry.subtitle = subtitle;
     entry.action = action;
@@ -44,22 +44,22 @@ static YTSettingsViewController *GonerinoSettingsViewControllerForManager(YTSett
 
 @end
 
-@interface GonerinoListViewController : UITableViewController <UISearchResultsUpdating>
-@property(nonatomic, copy) NSArray<GonerinoListEntry *> *(^entriesProvider)(void);
+@interface ListViewController : UITableViewController <UISearchResultsUpdating>
+@property(nonatomic, copy) NSArray<ListEntry *> *(^entriesProvider)(void);
 @property(nonatomic, copy) NSString *searchPlaceholder;
-@property(nonatomic, copy) NSArray<GonerinoListEntry *> *entries;
-@property(nonatomic, copy) NSArray<GonerinoListEntry *> *filteredEntries;
+@property(nonatomic, copy) NSArray<ListEntry *> *entries;
+@property(nonatomic, copy) NSArray<ListEntry *> *filteredEntries;
 - (instancetype)initWithTitle:(NSString *)title
              searchPlaceholder:(NSString *)searchPlaceholder
-              entriesProvider:(NSArray<GonerinoListEntry *> *(^)(void))entriesProvider;
+              entriesProvider:(NSArray<ListEntry *> *(^)(void))entriesProvider;
 - (void)refreshEntries;
 @end
 
-@implementation GonerinoListViewController
+@implementation ListViewController
 
 - (instancetype)initWithTitle:(NSString *)title
              searchPlaceholder:(NSString *)searchPlaceholder
-              entriesProvider:(NSArray<GonerinoListEntry *> *(^)(void))entriesProvider {
+              entriesProvider:(NSArray<ListEntry *> *(^)(void))entriesProvider {
     self = [super initWithStyle:UITableViewStyleInsetGrouped];
     if (self) {
         self.title = title;
@@ -100,7 +100,7 @@ static YTSettingsViewController *GonerinoSettingsViewControllerForManager(YTSett
     } else {
         NSString *normalizedQuery = query.lowercaseString;
         self.filteredEntries = [self.entries filteredArrayUsingPredicate:
-            [NSPredicate predicateWithBlock:^BOOL(GonerinoListEntry *entry, NSDictionary *bindings) {
+            [NSPredicate predicateWithBlock:^BOOL(ListEntry *entry, NSDictionary *bindings) {
                 return [entry.title.lowercaseString containsString:normalizedQuery] ||
                        [entry.subtitle.lowercaseString containsString:normalizedQuery];
             }]];
@@ -122,7 +122,7 @@ static YTSettingsViewController *GonerinoSettingsViewControllerForManager(YTSett
     if (!cell)
         cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:cellIdentifier];
 
-    GonerinoListEntry *entry = self.filteredEntries[indexPath.row];
+    ListEntry *entry = self.filteredEntries[indexPath.row];
     cell.textLabel.text = entry.title;
     cell.detailTextLabel.text = entry.subtitle;
     cell.accessoryType = entry.action ? UITableViewCellAccessoryDisclosureIndicator : UITableViewCellAccessoryNone;
@@ -131,7 +131,7 @@ static YTSettingsViewController *GonerinoSettingsViewControllerForManager(YTSett
 }
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
-    GonerinoListEntry *entry = self.filteredEntries[indexPath.row];
+    ListEntry *entry = self.filteredEntries[indexPath.row];
     [tableView deselectRowAtIndexPath:indexPath animated:YES];
     if (entry.action)
         entry.action();
@@ -139,13 +139,13 @@ static YTSettingsViewController *GonerinoSettingsViewControllerForManager(YTSett
 
 @end
 
-@interface GonerinoSettingsViewController : UITableViewController <UIDocumentPickerDelegate>
+@interface SettingsViewController : UITableViewController <UIDocumentPickerDelegate>
 @property(nonatomic, weak) YTSettingsSectionItemManager *settingsManager;
 @property(nonatomic, assign) BOOL importingSettings;
 - (instancetype)initWithSettingsManager:(YTSettingsSectionItemManager *)settingsManager;
 @end
 
-@implementation GonerinoSettingsViewController
+@implementation SettingsViewController
 
 - (instancetype)initWithSettingsManager:(YTSettingsSectionItemManager *)settingsManager {
     self = [super initWithStyle:UITableViewStyleInsetGrouped];
@@ -283,14 +283,14 @@ static YTSettingsViewController *GonerinoSettingsViewControllerForManager(YTSett
 }
 
 - (void)openChannels {
-    __weak __block GonerinoListViewController *weakList;
+    __weak __block ListViewController *weakList;
     __weak typeof(self) weakSelf = self;
-    GonerinoListViewController *list = [[GonerinoListViewController alloc]
+    ListViewController *list = [[ListViewController alloc]
            initWithTitle:@"Blocked Channels"
         searchPlaceholder:@"Search channels"
-         entriesProvider:^NSArray<GonerinoListEntry *> *{
+         entriesProvider:^NSArray<ListEntry *> *{
              NSMutableArray *entries = [NSMutableArray array];
-             [entries addObject:[GonerinoListEntry entryWithTitle:@"Add Channel"
+             [entries addObject:[ListEntry entryWithTitle:@"Add Channel"
                                                            subtitle:@"Block a new channel"
                                                              action:^{
                                                                  UIAlertController *alert =
@@ -308,7 +308,7 @@ static YTSettingsViewController *GonerinoSettingsViewControllerForManager(YTSett
                                                                                                                  return;
                                                                                                              [[ChannelManager sharedInstance] addBlockedChannel:channel];
                                                                                                              [weakList refreshEntries];
-                                                                                                             [weakSelf.settingsManager reloadGonerinoSection];
+                                                                                                             [weakSelf.settingsManager reloadSection];
                                                                                                          }]];
                                                                  [alert addAction:[UIAlertAction actionWithTitle:@"Cancel"
                                                                                                            style:UIAlertActionStyleCancel
@@ -316,7 +316,7 @@ static YTSettingsViewController *GonerinoSettingsViewControllerForManager(YTSett
                                                                  [weakSelf presentViewController:alert animated:YES completion:nil];
                                                              }]];
              for (NSString *channel in [[ChannelManager sharedInstance] blockedChannels]) {
-                 [entries addObject:[GonerinoListEntry entryWithTitle:channel
+                 [entries addObject:[ListEntry entryWithTitle:channel
                                                                subtitle:nil
                                                                  action:^{
                                                                      UIAlertController *alert =
@@ -328,7 +328,7 @@ static YTSettingsViewController *GonerinoSettingsViewControllerForManager(YTSett
                                                                                                              handler:^(__unused UIAlertAction *action) {
                                                                                                                  [[ChannelManager sharedInstance] removeBlockedChannel:channel];
                                                                                                                  [weakList refreshEntries];
-                                                                                                                 [weakSelf.settingsManager reloadGonerinoSection];
+                                                                                                                 [weakSelf.settingsManager reloadSection];
                                                                                                              }]];
                                                                      [alert addAction:[UIAlertAction actionWithTitle:@"Cancel"
                                                                                                                style:UIAlertActionStyleCancel
@@ -343,23 +343,23 @@ static YTSettingsViewController *GonerinoSettingsViewControllerForManager(YTSett
 }
 
 - (void)openVideos {
-    __weak __block GonerinoListViewController *weakList;
+    __weak __block ListViewController *weakList;
     __weak typeof(self) weakSelf = self;
-    GonerinoListViewController *list = [[GonerinoListViewController alloc]
+    ListViewController *list = [[ListViewController alloc]
            initWithTitle:@"Blocked Videos"
         searchPlaceholder:@"Search videos"
-         entriesProvider:^NSArray<GonerinoListEntry *> *{
+         entriesProvider:^NSArray<ListEntry *> *{
              NSMutableArray *entries = [NSMutableArray array];
              NSArray *videos = [[VideoManager sharedInstance] blockedVideos];
              if (videos.count == 0) {
-                 [entries addObject:[GonerinoListEntry entryWithTitle:@"No blocked videos" subtitle:nil action:nil]];
+                 [entries addObject:[ListEntry entryWithTitle:@"No blocked videos" subtitle:nil action:nil]];
                  return entries;
              }
              for (NSDictionary *video in videos) {
                  NSString *videoId = video[@"id"];
                  NSString *title = [(NSString *)video[@"title"] length] > 0 ? video[@"title"] : videoId;
                  NSString *channel = [(NSString *)video[@"channel"] length] > 0 ? video[@"channel"] : @"Unknown Channel";
-                 [entries addObject:[GonerinoListEntry entryWithTitle:title
+                 [entries addObject:[ListEntry entryWithTitle:title
                                                                subtitle:channel
                                                                  action:^{
                                                                      UIAlertController *alert =
@@ -371,7 +371,7 @@ static YTSettingsViewController *GonerinoSettingsViewControllerForManager(YTSett
                                                                                                              handler:^(__unused UIAlertAction *action) {
                                                                                                                  [[VideoManager sharedInstance] removeBlockedVideo:videoId];
                                                                                                                  [weakList refreshEntries];
-                                                                                                                 [weakSelf.settingsManager reloadGonerinoSection];
+                                                                                                                 [weakSelf.settingsManager reloadSection];
                                                                                                              }]];
                                                                      [alert addAction:[UIAlertAction actionWithTitle:@"Cancel"
                                                                                                                style:UIAlertActionStyleCancel
@@ -386,14 +386,14 @@ static YTSettingsViewController *GonerinoSettingsViewControllerForManager(YTSett
 }
 
 - (void)openWords {
-    __weak __block GonerinoListViewController *weakList;
+    __weak __block ListViewController *weakList;
     __weak typeof(self) weakSelf = self;
-    GonerinoListViewController *list = [[GonerinoListViewController alloc]
+    ListViewController *list = [[ListViewController alloc]
            initWithTitle:@"Blocked Words"
         searchPlaceholder:@"Search words"
-         entriesProvider:^NSArray<GonerinoListEntry *> *{
+         entriesProvider:^NSArray<ListEntry *> *{
              NSMutableArray *entries = [NSMutableArray array];
-             [entries addObject:[GonerinoListEntry entryWithTitle:@"Add Word"
+             [entries addObject:[ListEntry entryWithTitle:@"Add Word"
                                                            subtitle:@"Block a new word or phrase"
                                                              action:^{
                                                                  UIAlertController *alert =
@@ -411,7 +411,7 @@ static YTSettingsViewController *GonerinoSettingsViewControllerForManager(YTSett
                                                                                                                  return;
                                                                                                              [[WordManager sharedInstance] addBlockedWord:word];
                                                                                                              [weakList refreshEntries];
-                                                                                                             [weakSelf.settingsManager reloadGonerinoSection];
+                                                                                                             [weakSelf.settingsManager reloadSection];
                                                                                                          }]];
                                                                  [alert addAction:[UIAlertAction actionWithTitle:@"Cancel"
                                                                                                            style:UIAlertActionStyleCancel
@@ -419,7 +419,7 @@ static YTSettingsViewController *GonerinoSettingsViewControllerForManager(YTSett
                                                                  [weakSelf presentViewController:alert animated:YES completion:nil];
                                                              }]];
              for (NSString *word in [[WordManager sharedInstance] blockedWords]) {
-                 [entries addObject:[GonerinoListEntry entryWithTitle:word
+                 [entries addObject:[ListEntry entryWithTitle:word
                                                                subtitle:nil
                                                                  action:^{
                                                                      UIAlertController *alert =
@@ -431,7 +431,7 @@ static YTSettingsViewController *GonerinoSettingsViewControllerForManager(YTSett
                                                                                                              handler:^(__unused UIAlertAction *action) {
                                                                                                                  [[WordManager sharedInstance] removeBlockedWord:word];
                                                                                                                  [weakList refreshEntries];
-                                                                                                                 [weakSelf.settingsManager reloadGonerinoSection];
+                                                                                                                 [weakSelf.settingsManager reloadSection];
                                                                                                              }]];
                                                                      [alert addAction:[UIAlertAction actionWithTitle:@"Cancel"
                                                                                                                style:UIAlertActionStyleCancel
@@ -499,13 +499,13 @@ static YTSettingsViewController *GonerinoSettingsViewControllerForManager(YTSett
     }
     [defaults synchronize];
     [self.tableView reloadData];
-    [self.settingsManager reloadGonerinoSection];
+    [self.settingsManager reloadSection];
     [Util refreshFeedViews];
 }
 
 - (void)documentPicker:(UIDocumentPickerViewController *)controller didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
     if (!self.importingSettings) {
-        GonerinoToast(self, @"Settings exported successfully");
+        Toast(self, @"Settings exported successfully");
         return;
     }
     NSURL *url = urls.firstObject;
@@ -520,15 +520,15 @@ static YTSettingsViewController *GonerinoSettingsViewControllerForManager(YTSett
                                                                                     error:nil]
                                   : nil;
     if (![settings isKindOfClass:[NSDictionary class]]) {
-        GonerinoToast(self, @"Invalid settings file format");
+        Toast(self, @"Invalid settings file format");
         return;
     }
     [self applyImportedSettings:settings];
-    GonerinoToast(self, @"Settings imported successfully");
+    Toast(self, @"Settings imported successfully");
 }
 
 - (void)documentPickerWasCancelled:(UIDocumentPickerViewController *)controller {
-    GonerinoToast(self, self.importingSettings ? @"Import cancelled" : @"Export cancelled");
+    Toast(self, self.importingSettings ? @"Import cancelled" : @"Export cancelled");
 }
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
@@ -565,15 +565,15 @@ static YTSettingsViewController *GonerinoSettingsViewControllerForManager(YTSett
 
 + (NSArray *)settingsCategoryOrder {
     NSArray *order = %orig;
-    if ([order containsObject:@(GonerinoSection)])
+    if ([order containsObject:@(Section)])
         return order;
 
     NSMutableArray *mutableOrder = [order mutableCopy];
     NSUInteger insertIndex = [order indexOfObject:@(1)];
     if (insertIndex == NSNotFound)
-        [mutableOrder addObject:@(GonerinoSection)];
+        [mutableOrder addObject:@(Section)];
     else
-        [mutableOrder insertObject:@(GonerinoSection) atIndex:insertIndex + 1];
+        [mutableOrder insertObject:@(Section) atIndex:insertIndex + 1];
     return mutableOrder;
 }
 
@@ -582,8 +582,8 @@ static YTSettingsViewController *GonerinoSettingsViewControllerForManager(YTSett
 %hook YTSettingsSectionItemManager
 
 %new
-- (void)updateGonerinoSectionWithEntry:(id)entry {
-    YTSettingsViewController *settingsViewController = GonerinoSettingsViewControllerForManager(self);
+- (void)updateSectionWithEntry:(id)entry {
+    YTSettingsViewController *settingsViewController = SettingsViewControllerForManager(self);
     if (!settingsViewController)
         return;
     NSMutableArray *sectionItems = [NSMutableArray array];
@@ -595,8 +595,8 @@ static YTSettingsViewController *GonerinoSettingsViewControllerForManager(YTSett
         accessibilityIdentifier:nil
                 detailTextBlock:nil
                     selectBlock:^BOOL(__unused YTSettingsCell *cell, __unused NSUInteger index) {
-                        GonerinoSettingsViewController *viewController =
-                            [[GonerinoSettingsViewController alloc] initWithSettingsManager:weakManager];
+                        SettingsViewController *viewController =
+                            [[SettingsViewController alloc] initWithSettingsManager:weakManager];
                         [settingsViewController.navigationController pushViewController:viewController animated:YES];
                         return YES;
                     }]];
@@ -605,14 +605,14 @@ static YTSettingsViewController *GonerinoSettingsViewControllerForManager(YTSett
         YTIIcon *icon = [%c(YTIIcon) new];
         icon.iconType = YT_FILTER;
         [settingsViewController setSectionItems:sectionItems
-                                    forCategory:GonerinoSection
+                                    forCategory:Section
                                           title:@"Gonerino"
                                            icon:icon
                                titleDescription:nil
                                    headerHidden:NO];
     } else {
         [settingsViewController setSectionItems:sectionItems
-                                    forCategory:GonerinoSection
+                                    forCategory:Section
                                           title:@"Gonerino"
                                titleDescription:nil
                                    headerHidden:NO];
@@ -620,20 +620,20 @@ static YTSettingsViewController *GonerinoSettingsViewControllerForManager(YTSett
 }
 
 - (void)updateSectionForCategory:(NSUInteger)category withEntry:(id)entry {
-    if (category == GonerinoSection) {
-        [self updateGonerinoSectionWithEntry:entry];
+    if (category == Section) {
+        [self updateSectionWithEntry:entry];
         return;
     }
     %orig;
 }
 
 %new
-- (void)reloadGonerinoSection {
+- (void)reloadSection {
     dispatch_async(dispatch_get_main_queue(), ^{
-        YTSettingsViewController *settingsViewController = GonerinoSettingsViewControllerForManager(self);
+        YTSettingsViewController *settingsViewController = SettingsViewControllerForManager(self);
         if (![settingsViewController isKindOfClass:%c(YTSettingsViewController)])
             return;
-        [self updateGonerinoSectionWithEntry:nil];
+        [self updateSectionWithEntry:nil];
         if ([settingsViewController respondsToSelector:@selector(reloadData)])
             [settingsViewController reloadData];
     });
@@ -646,12 +646,12 @@ static YTSettingsViewController *GonerinoSettingsViewControllerForManager(YTSett
 + (NSArray *)orderedGroups {
     NSArray *groups = %orig;
     for (YTSettingsGroupData *group in groups) {
-        if (group.type == GonerinoGroup)
+        if (group.type == Group)
             return groups;
     }
 
     NSMutableArray *mutableGroups = groups.mutableCopy ?: [NSMutableArray array];
-    [mutableGroups insertObject:[[%c(YTSettingsGroupData) alloc] initWithGroupType:GonerinoGroup] atIndex:0];
+    [mutableGroups insertObject:[[%c(YTSettingsGroupData) alloc] initWithGroupType:Group] atIndex:0];
     return mutableGroups.copy;
 }
 
@@ -660,14 +660,14 @@ static YTSettingsViewController *GonerinoSettingsViewControllerForManager(YTSett
 %hook YTSettingsGroupData
 
 - (NSString *)titleForSettingGroupType:(NSUInteger)type {
-    if (type == GonerinoGroup)
+    if (type == Group)
         return @"Gonerino";
     return %orig;
 }
 
 - (NSArray *)orderedCategoriesForGroupType:(NSUInteger)type {
-    if (type == GonerinoGroup)
-        return @[@(GonerinoSection)];
+    if (type == Group)
+        return @[@(Section)];
     return %orig;
 }
 
@@ -678,8 +678,8 @@ static YTSettingsViewController *GonerinoSettingsViewControllerForManager(YTSett
 - (void)loadWithModel:(id)model {
     %orig;
     YTSettingsSectionItemManager *manager = [self valueForKey:@"_sectionItemManager"];
-    if ([manager respondsToSelector:@selector(updateGonerinoSectionWithEntry:)])
-        [manager updateGonerinoSectionWithEntry:nil];
+    if ([manager respondsToSelector:@selector(updateSectionWithEntry:)])
+        [manager updateSectionWithEntry:nil];
 }
 
 %end

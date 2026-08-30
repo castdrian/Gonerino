@@ -108,6 +108,12 @@ NS_ASSUME_NONNULL_BEGIN
                         handler:(void (^)(id))handler;
 
 + (instancetype)actionWithTitle:(NSString *)title iconImage:(UIImage *)iconImage handler:(void (^)(id))handler;
+
++ (instancetype)actionWithTitle:(NSString *)title
+                      iconImage:(UIImage *)iconImage
+             secondaryIconImage:(nullable UIImage *)secondaryIconImage
+         accessibilityIdentifier:(nullable NSString *)accessibilityIdentifier
+                          handler:(void (^)(void))handler;
 @end
 
 @interface YTActionSheetController : UIViewController
@@ -117,6 +123,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)dismiss;
 - (UIViewController *)findViewControllerForView:(UIView *)view;
 @end
+
 @interface YTToastResponderEvent : NSObject
 + (instancetype)eventWithMessage:(NSString *)message firstResponder:(UIViewController *)responder;
 - (void)send;

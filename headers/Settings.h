@@ -29,8 +29,8 @@ NS_ASSUME_NONNULL_BEGIN
                                                 return NO;                                                             \
                                             }]]
 
-static const NSInteger GonerinoSection = 2002;
-static const NSInteger GonerinoGroup = 'gnrn';
+static const NSInteger Section = 2002;
+static const NSInteger Group = 'gnrn';
 
 #define TWEAK_VERSION PACKAGE_VERSION
 
@@ -48,7 +48,7 @@ static BOOL isImportOperation = NO;
 @property(nonatomic, strong, readonly, nullable) YTNavigationController *navigationController;
 @end
 
-@interface YTSettingsViewController (Gonerino)
+@interface YTSettingsViewController (SettingsIntegration)
 - (void)setSectionItems:(nullable NSArray *)items
             forCategory:(NSInteger)category
                   title:(nullable NSString *)title
@@ -56,11 +56,11 @@ static BOOL isImportOperation = NO;
            headerHidden:(BOOL)headerHidden;
 @end
 
-@interface YTSettingsSectionItemManager (Gonerino)<UIDocumentPickerDelegate>
-- (void)updateGonerinoSectionWithEntry:(nullable id)entry;
+@interface YTSettingsSectionItemManager (SettingsIntegration)<UIDocumentPickerDelegate>
+- (void)updateSectionWithEntry:(nullable id)entry;
 - (void)updateChannelManagementSection:(nonnull YTSettingsViewController *)viewController;
 - (nullable UITableView *)findTableViewInView:(nonnull UIView *)view;
-- (void)reloadGonerinoSection;
+- (void)reloadSection;
 @end
 
 NS_ASSUME_NONNULL_END
