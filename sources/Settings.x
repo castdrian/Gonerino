@@ -117,7 +117,7 @@ static YTSettingsViewController *SettingsViewControllerForManager(YTSettingsSect
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
-    static NSString *cellIdentifier = @"GonerinoListCell";
+    static NSString *cellIdentifier = @"ListCell";
     UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:cellIdentifier];
     if (!cell)
         cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:cellIdentifier];
@@ -259,7 +259,7 @@ static YTSettingsViewController *SettingsViewControllerForManager(YTSettingsSect
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
-    NSString *identifier = indexPath.section == 0 ? @"GonerinoSwitchCell" : @"GonerinoActionCell";
+    NSString *identifier = indexPath.section == 0 ? @"SwitchCell" : @"ActionCell";
     UITableViewCellStyle style = indexPath.section == 0 ? UITableViewCellStyleDefault : UITableViewCellStyleSubtitle;
     UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:identifier];
     if (!cell)
@@ -462,7 +462,7 @@ static YTSettingsViewController *SettingsViewControllerForManager(YTSettingsSect
 }
 
 - (void)exportSettings {
-    NSURL *fileURL = [NSURL fileURLWithPath:[NSTemporaryDirectory() stringByAppendingPathComponent:@"gonerino_settings.plist"]];
+    NSURL *fileURL = [NSURL fileURLWithPath:[NSTemporaryDirectory() stringByAppendingPathComponent:@"settings.plist"]];
     [[self settingsDictionary] writeToURL:fileURL atomically:YES];
     self.importingSettings = NO;
     UIDocumentPickerViewController *picker = [[UIDocumentPickerViewController alloc] initForExportingURLs:@[fileURL]];

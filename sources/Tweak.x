@@ -580,7 +580,7 @@ static void NormalizeActionLayout(UIView *view) {
 
     for (UIView *row in views) {
         NSString *identifier = row.accessibilityIdentifier;
-        BOOL injectedAction = [identifier isEqualToString:@"GonerinoBlockChannel"] || [identifier isEqualToString:@"GonerinoBlockVideo"];
+        BOOL injectedAction = [identifier isEqualToString:@"BlockChannel"] || [identifier isEqualToString:@"BlockVideo"];
         if (!injectedAction)
             continue;
         row.clipsToBounds = NO;
@@ -605,11 +605,11 @@ static void FilterVisibleCells(YTAsyncCollectionView *collectionView) {
     if (!collectionView || CollectionViewIsScrolling(collectionView))
         return;
 
-    if (collectionView.gonerinoFiltering)
+    if (collectionView.filtering)
         return;
 
-    collectionView.gonerinoFiltering = YES;
-    collectionView.gonerinoLastFilterTime = CFAbsoluteTimeGetCurrent();
+    collectionView.filtering = YES;
+    collectionView.lastFilterTime = CFAbsoluteTimeGetCurrent();
     @try {
         for (UICollectionViewCell *cell in collectionView.visibleCells) {
             if (![cell isKindOfClass:NSClassFromString(@"_ASCollectionViewCell")])
@@ -628,33 +628,33 @@ static void FilterVisibleCells(YTAsyncCollectionView *collectionView) {
         }
     } @catch (__unused NSException *exception) {
     }
-    collectionView.gonerinoFiltering = NO;
+    collectionView.filtering = NO;
 }
 
 %hook YTAsyncCollectionView
 
-%property(nonatomic, assign) BOOL gonerinoFiltering;
-%property(nonatomic, assign) BOOL gonerinoFilterScheduled;
-%property(nonatomic, assign) NSTimeInterval gonerinoLastFilterTime;
+%property(nonatomic, assign) BOOL filtering;
+%property(nonatomic, assign) BOOL filterScheduled;
+%property(nonatomic, assign) NSTimeInterval lastFilterTime;
 
 %new
-- (void)gonerinoScheduleFiltering {
+- (void)scheduleFiltering {
     if ([[NSUserDefaults standardUserDefaults] objectForKey:@"GonerinoEnabled"] != nil &&
         ![[NSUserDefaults standardUserDefaults] boolForKey:@"GonerinoEnabled"])
         return;
-    if (self.gonerinoFilterScheduled || CollectionViewIsScrolling(self))
+    if (self.filterScheduled || CollectionViewIsScrolling(self))
         return;
-    if (CFAbsoluteTimeGetCurrent() - self.gonerinoLastFilterTime < 0.35)
+    if (CFAbsoluteTimeGetCurrent() - self.lastFilterTime < 0.35)
         return;
 
-    self.gonerinoFilterScheduled = YES;
+    self.filterScheduled = YES;
     __weak typeof(self) weakSelf = self;
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.12 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
         __strong typeof(weakSelf) strongSelf = weakSelf;
         if (!strongSelf)
             return;
 
-        strongSelf.gonerinoFilterScheduled = NO;
+        strongSelf.filterScheduled = NO;
         if ([[NSUserDefaults standardUserDefaults] objectForKey:@"GonerinoEnabled"] != nil &&
             ![[NSUserDefaults standardUserDefaults] boolForKey:@"GonerinoEnabled"])
             return;
@@ -664,18 +664,18 @@ static void FilterVisibleCells(YTAsyncCollectionView *collectionView) {
 
 - (void)layoutSubviews {
     %orig;
-    [self gonerinoScheduleFiltering];
+    [self scheduleFiltering];
 }
 
 - (void)reloadData {
     %orig;
-    [self gonerinoScheduleFiltering];
+    [self scheduleFiltering];
 }
 
 - (void)didMoveToWindow {
     %orig;
     if (self.window)
-        [self gonerinoScheduleFiltering];
+        [self scheduleFiltering];
 }
 
 %end
@@ -708,7 +708,7 @@ static void FilterVisibleCells(YTAsyncCollectionView *collectionView) {
         actionWithTitle:@"Block channel"
               iconImage:channelIcon
      secondaryIconImage:nil
- accessibilityIdentifier:@"GonerinoBlockChannel"
+ accessibilityIdentifier:@"BlockChannel"
                 handler:^ {
                     __strong typeof(weakSelf) strongSelf = weakSelf;
                     id selectedNode = VideoNodeForSheet(strongSelf);
@@ -731,7 +731,7 @@ static void FilterVisibleCells(YTAsyncCollectionView *collectionView) {
         actionWithTitle:@"Block video"
               iconImage:videoIcon
      secondaryIconImage:nil
- accessibilityIdentifier:@"GonerinoBlockVideo"
+ accessibilityIdentifier:@"BlockVideo"
                 handler:^ {
                     __strong typeof(weakSelf) strongSelf = weakSelf;
                     id selectedNode = VideoNodeForSheet(strongSelf);
@@ -794,7 +794,7 @@ static void FilterVisibleCells(YTAsyncCollectionView *collectionView) {
 %end
 
 %hook YTRightNavigationButtons
-%property(retain, nonatomic) YTQTMButton *gonerinoButton;
+%property(retain, nonatomic) YTQTMButton *actionButton;
 
 - (NSMutableArray *)buttons {
     NSMutableArray *result = %orig.mutableCopy ?: [NSMutableArray array];
@@ -802,17 +802,17 @@ static void FilterVisibleCells(YTAsyncCollectionView *collectionView) {
                           ? YES
                           : [[NSUserDefaults standardUserDefaults] boolForKey:@"GonerinoShowButton"];
 
-    [result removeObject:self.gonerinoButton];
-    [self.gonerinoButton removeFromSuperview];
+    [result removeObject:self.actionButton];
+    [self.actionButton removeFromSuperview];
     if (!showButton)
         return result;
 
-    if (!self.gonerinoButton) {
-        self.gonerinoButton = [%c(YTQTMButton) iconButton];
-        if ([self.gonerinoButton respondsToSelector:@selector(enableNewTouchFeedback)])
-            [self.gonerinoButton enableNewTouchFeedback];
-        self.gonerinoButton.frame = CGRectMake(0, 0, 40, 40);
-        [self.gonerinoButton addTarget:self action:@selector(gonerinoButtonPressed:)
+    if (!self.actionButton) {
+        self.actionButton = [%c(YTQTMButton) iconButton];
+        if ([self.actionButton respondsToSelector:@selector(enableNewTouchFeedback)])
+            [self.actionButton enableNewTouchFeedback];
+        self.actionButton.frame = CGRectMake(0, 0, 40, 40);
+        [self.actionButton addTarget:self action:@selector(actionButtonPressed:)
                       forControlEvents:UIControlEventTouchUpInside];
     }
 
@@ -835,9 +835,9 @@ static void FilterVisibleCells(YTAsyncCollectionView *collectionView) {
         tintColor = [tintColor colorWithAlphaComponent:0.4];
     UIImage *image = [Util createBlockVideoIconWithSize:CGSizeMake(20, 20)];
     image = [%c(QTMIcon) tintImage:image color:tintColor];
-    [self.gonerinoButton setImage:image forState:UIControlStateNormal];
-    [self addSubview:self.gonerinoButton];
-    [result insertObject:self.gonerinoButton atIndex:0];
+    [self.actionButton setImage:image forState:UIControlStateNormal];
+    [self addSubview:self.actionButton];
+    [result insertObject:self.actionButton atIndex:0];
     return result;
 }
 
@@ -846,14 +846,14 @@ static void FilterVisibleCells(YTAsyncCollectionView *collectionView) {
     BOOL showButton = [[NSUserDefaults standardUserDefaults] objectForKey:@"GonerinoShowButton"] == nil
                           ? YES
                           : [[NSUserDefaults standardUserDefaults] boolForKey:@"GonerinoShowButton"];
-    [result removeObject:self.gonerinoButton];
-    if (showButton && self.gonerinoButton)
-        [result insertObject:self.gonerinoButton atIndex:0];
+    [result removeObject:self.actionButton];
+    if (showButton && self.actionButton)
+        [result insertObject:self.actionButton atIndex:0];
     return result;
 }
 
 %new
-- (void)gonerinoButtonPressed:(UIButton *)sender {
+- (void)actionButtonPressed:(UIButton *)sender {
     NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
     BOOL isEnabled = [defaults objectForKey:@"GonerinoEnabled"] == nil ? YES : [defaults boolForKey:@"GonerinoEnabled"];
     BOOL newState = !isEnabled;

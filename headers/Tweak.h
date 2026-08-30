@@ -23,12 +23,12 @@ NS_ASSUME_NONNULL_BEGIN
 
 @interface YTAsyncCollectionView : UICollectionView
 
-@property(nonatomic, assign) BOOL gonerinoFiltering;
-@property(nonatomic, assign) BOOL gonerinoFilterScheduled;
-@property(nonatomic, assign) NSTimeInterval gonerinoLastFilterTime;
+@property(nonatomic, assign) BOOL filtering;
+@property(nonatomic, assign) BOOL filterScheduled;
+@property(nonatomic, assign) NSTimeInterval lastFilterTime;
 
 - (void)layoutSubviews;
-- (void)gonerinoScheduleFiltering;
+- (void)scheduleFiltering;
 
 - (void)performBatchUpdates:(void(NS_NOESCAPE ^ _Nullable)(void))updates
                  completion:(void (^_Nullable)(BOOL finished))completion;
@@ -176,10 +176,10 @@ NS_ASSUME_NONNULL_BEGIN
 @end
 
 @interface YTRightNavigationButtons : UIView
-@property (retain, nonatomic, nullable) YTQTMButton *gonerinoButton;
+@property (retain, nonatomic, nullable) YTQTMButton *actionButton;
 - (NSMutableArray *)buttons;
 - (NSMutableArray *)visibleButtons;
-- (void)gonerinoButtonPressed:(UIButton *)sender;
+- (void)actionButtonPressed:(UIButton *)sender;
 @end
 
 @interface YTQTMButton : UIButton
