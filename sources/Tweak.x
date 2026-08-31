@@ -453,19 +453,14 @@ static void AddBlockingActions(id sheet, YTActionSheetAction *originalAction) {
         __weak id weakSheet = sheet;
         id presentationNode = node;
         id presentationSourceNode = sourceNode;
-        CGSize iconSize = CGSizeMake(24, 24);
-        @try {
-            UIImage *originalIcon = [originalAction valueForKey:@"_iconImage"];
-            if (originalIcon.size.width > 0.0 && originalIcon.size.height > 0.0)
-                iconSize = originalIcon.size;
-        } @catch (__unused NSException *exception) {
-        }
+        CGSize iconSize = CGSizeMake(24.0, 24.0);
 
         YTActionSheetAction *blockChannelAction = [%c(YTActionSheetAction)
             actionWithTitle:@"Block channel"
                   iconImage:[Util createBlockChannelIconWithSize:iconSize]
-                    style:0
-                  handler:^(__unused YTActionSheetAction *selectedAction) {
+             secondaryIconImage:nil
+         accessibilityIdentifier:nil
+                  handler:^{
                       ResolveActionVideoInfo(presentationNode,
                                              presentationSourceNode,
                                              sourceView,
@@ -491,8 +486,9 @@ static void AddBlockingActions(id sheet, YTActionSheetAction *originalAction) {
         YTActionSheetAction *blockVideoAction = [%c(YTActionSheetAction)
             actionWithTitle:@"Block video"
                   iconImage:[Util createBlockVideoIconWithSize:iconSize]
-                    style:0
-                  handler:^(__unused YTActionSheetAction *selectedAction) {
+             secondaryIconImage:nil
+         accessibilityIdentifier:nil
+                  handler:^{
                       ResolveActionVideoInfo(presentationNode,
                                              presentationSourceNode,
                                              sourceView,

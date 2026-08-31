@@ -308,6 +308,116 @@ static NSString *TextFromValue(id value, NSUInteger depth) {
     return nil;
 }
 
+static void CollectTextNodeValues(id object,
+                                  NSMutableArray<NSString *> *values,
+                                  NSMutableSet *visited,
+                                  NSUInteger depth) {
+    if (!object || !values || !visited || depth > 14 || values.count >= 256)
+        return;
+
+    NSValue *identity = [NSValue valueWithNonretainedObject:object];
+    if ([visited containsObject:identity])
+        return;
+    [visited addObject:identity];
+
+    NSString *className = NSStringFromClass([object class]).lowercaseString;
+    if ([className containsString:@"textnode"]) {
+        NSString *text = TextFromValue(ValueForKey(object, @"attributedText"), 0);
+        if (text.length > 0)
+            [values addObject:text];
+    }
+
+    NSString *accessibilityLabel = TextFromValue(ValueForKey(object, @"accessibilityLabel"), 0);
+    if (accessibilityLabel.length > 0 && ![values containsObject:accessibilityLabel])
+        [values addObject:accessibilityLabel];
+
+    for (NSString *key in @[@"element", @"instance", @"childElements", @"subnodes", @"view", @"subviews",
+                            @"ownerText", @"shortBylineText", @"longBylineText"]) {
+        id value = ValueForKey(object, key);
+        if (!value || value == object)
+            continue;
+        if ([value isKindOfClass:[NSArray class]]) {
+            for (id child in value) {
+                CollectTextNodeValues(child, values, visited, depth + 1);
+                if (values.count >= 256)
+                    return;
+            }
+        } else {
+            CollectTextNodeValues(value, values, visited, depth + 1);
+        }
+    }
+}
+
+static BOOL IsLikelyChannelText(NSString *text, NSString *title) {
+    if (text.length == 0 || text.length > 120)
+        return NO;
+
+    NSString *normalizedText = [text stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    NSString *normalizedTitle = [title stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    if (normalizedText.length == 0 || [normalizedText isEqualToString:normalizedTitle] ||
+        (normalizedTitle.length > 0 && [normalizedText containsString:normalizedTitle]))
+        return NO;
+
+    NSString *lowercaseText = normalizedText.lowercaseString;
+    if ([lowercaseText containsString:@" views"] || [lowercaseText containsString:@" view"] ||
+        [lowercaseText containsString:@" ago"] || [lowercaseText containsString:@" subscribers"] ||
+        [lowercaseText containsString:@" sponsored"] || [lowercaseText containsString:@"subscribe"] ||
+        [lowercaseText containsString:@"watch later"] || [lowercaseText containsString:@"playlist"] ||
+        [lowercaseText containsString:@"share"] || [lowercaseText isEqualToString:@"more actions"] ||
+        [lowercaseText isEqualToString:@"description"] || [lowercaseText isEqualToString:@"clear screen"] ||
+        [lowercaseText isEqualToString:@"not interested"] || [lowercaseText isEqualToString:@"send feedback"] ||
+        [lowercaseText isEqualToString:@"home"] || [lowercaseText isEqualToString:@"shorts"] ||
+        [lowercaseText isEqualToString:@"subscriptions"] || [lowercaseText isEqualToString:@"you"] ||
+        [lowercaseText isEqualToString:@"search"] || [lowercaseText isEqualToString:@"notifications"] ||
+        [lowercaseText isEqualToString:@"settings"])
+        return NO;
+
+    static NSRegularExpression *metricsRegex;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        metricsRegex = [NSRegularExpression regularExpressionWithPattern:@"^[0-9][0-9:., ]*[kmb]?$"
+                                                                      options:NSRegularExpressionCaseInsensitive
+                                                                        error:nil];
+    });
+    if ([metricsRegex firstMatchInString:normalizedText
+                                  options:0
+                                    range:NSMakeRange(0, normalizedText.length)])
+        return NO;
+
+    return YES;
+}
+
+static NSString *ChannelTextFromNode(id node, NSString *title) {
+    NSMutableArray<NSString *> *values = [NSMutableArray array];
+    CollectTextNodeValues(node, values, [NSMutableSet set], 0);
+
+    NSUInteger titleIndex = NSNotFound;
+    for (NSUInteger index = 0; index < values.count; index++) {
+        NSString *value = values[index];
+        if ([value isEqualToString:title] || (title.length > 0 && [value containsString:title])) {
+            titleIndex = index;
+            break;
+        }
+    }
+
+    NSUInteger firstCandidate = titleIndex == NSNotFound ? 0 : titleIndex + 1;
+    for (NSUInteger index = firstCandidate; index < values.count; index++) {
+        NSString *candidate = [values[index] stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+        if (IsLikelyChannelText(candidate, title))
+            return candidate;
+    }
+
+    if (firstCandidate > 0) {
+        for (NSString *value in values) {
+            NSString *candidate = [value stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+            if (IsLikelyChannelText(candidate, title))
+                return candidate;
+        }
+    }
+
+    return nil;
+}
+
 static NSString *VideoIdFromText(NSString *text) {
     if (text.length == 0)
         return nil;
@@ -829,6 +939,11 @@ static NSDictionary *VideoInfoFromNode(id node, BOOL bypassCache) {
         CollectInlinePlaybackMetadata(node, result, priorities);
         CollectElementTreeMetadata(node, result, priorities, elementVisited, 0);
         CollectObject(node, result, priorities, visited, &budget, 0);
+        if ([result[@"channel"] length] == 0) {
+            NSString *channel = ChannelTextFromNode(node, result[@"title"]);
+            if (channel.length > 0)
+                RecordField(result, priorities, @"ownerDisplayName", channel);
+        }
     } @catch (__unused NSException *exception) {
     }
 
