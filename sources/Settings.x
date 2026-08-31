@@ -1,13 +1,8 @@
 #import "Settings.h"
 #import "Util.h"
+#import <UIKit/UIKit.h>
 
-static void Toast(UIViewController *viewController, NSString *message) {
-    if (!viewController || message.length == 0)
-        return;
-    Class toastClass = NSClassFromString(@"YTToastResponderEvent");
-    if ([toastClass respondsToSelector:@selector(eventWithMessage:firstResponder:)])
-        [[toastClass eventWithMessage:message firstResponder:viewController] send];
-}
+static void Toast(UIViewController *viewController, NSString *message);
 
 static YTSettingsViewController *SettingsViewControllerForManager(YTSettingsSectionItemManager *manager) {
     if (!manager)
@@ -23,6 +18,10 @@ static YTSettingsViewController *SettingsViewControllerForManager(YTSettingsSect
     } @catch (__unused NSException *exception) {
     }
     return nil;
+}
+
+static void Toast(UIViewController *viewController, NSString *message) {
+    [Util showToast:message fromView:viewController.view];
 }
 
 @interface ListEntry : NSObject
@@ -142,6 +141,7 @@ static YTSettingsViewController *SettingsViewControllerForManager(YTSettingsSect
 @interface SettingsViewController : UITableViewController <UIDocumentPickerDelegate>
 @property(nonatomic, weak) YTSettingsSectionItemManager *settingsManager;
 @property(nonatomic, assign) BOOL importingSettings;
+@property(nonatomic, strong) NSURL *exportFileURL;
 - (instancetype)initWithSettingsManager:(YTSettingsSectionItemManager *)settingsManager;
 @end
 
@@ -463,11 +463,38 @@ static YTSettingsViewController *SettingsViewControllerForManager(YTSettingsSect
 
 - (void)exportSettings {
     NSURL *fileURL = [NSURL fileURLWithPath:[NSTemporaryDirectory() stringByAppendingPathComponent:@"settings.plist"]];
-    [[self settingsDictionary] writeToURL:fileURL atomically:YES];
+    if (![[self settingsDictionary] writeToURL:fileURL atomically:YES]) {
+        Toast(self, @"Could not create settings file");
+        return;
+    }
+
+    self.exportFileURL = fileURL;
     self.importingSettings = NO;
-    UIDocumentPickerViewController *picker = [[UIDocumentPickerViewController alloc] initForExportingURLs:@[fileURL]];
-    picker.delegate = self;
-    [self presentViewController:picker animated:YES completion:nil];
+    UIActivityViewController *activityController = [[UIActivityViewController alloc] initWithActivityItems:@[fileURL]
+                                                                                       applicationActivities:nil];
+    __weak typeof(self) weakSelf = self;
+    activityController.completionWithItemsHandler = ^(__unused UIActivityType activityType,
+                                                       BOOL completed,
+                                                       __unused NSArray *returnedItems,
+                                                       NSError *error) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            __strong typeof(weakSelf) strongSelf = weakSelf;
+            if (!strongSelf)
+                return;
+            if (completed)
+                Toast(strongSelf, @"Settings exported successfully");
+            else if (error)
+                Toast(strongSelf, @"Settings export failed");
+            else
+                Toast(strongSelf, @"Export cancelled");
+            strongSelf.exportFileURL = nil;
+        });
+    };
+    if (activityController.popoverPresentationController) {
+        activityController.popoverPresentationController.sourceView = self.view;
+        activityController.popoverPresentationController.sourceRect = self.view.bounds;
+    }
+    [self presentViewController:activityController animated:YES completion:nil];
 }
 
 - (void)importSettings {
@@ -504,10 +531,10 @@ static YTSettingsViewController *SettingsViewControllerForManager(YTSettingsSect
 }
 
 - (void)documentPicker:(UIDocumentPickerViewController *)controller didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
-    if (!self.importingSettings) {
-        Toast(self, @"Settings exported successfully");
+    if (!self.importingSettings)
         return;
-    }
+
+    self.importingSettings = NO;
     NSURL *url = urls.firstObject;
     if (!url)
         return;
@@ -528,7 +555,10 @@ static YTSettingsViewController *SettingsViewControllerForManager(YTSettingsSect
 }
 
 - (void)documentPickerWasCancelled:(UIDocumentPickerViewController *)controller {
-    Toast(self, self.importingSettings ? @"Import cancelled" : @"Export cancelled");
+    BOOL wasImporting = self.importingSettings;
+    self.importingSettings = NO;
+    if (wasImporting)
+        Toast(self, @"Import cancelled");
 }
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
@@ -579,6 +609,18 @@ static YTSettingsViewController *SettingsViewControllerForManager(YTSettingsSect
 
 %end
 
+static void OpenSettings(YTSettingsSectionItemManager *manager) {
+    YTSettingsViewController *settingsViewController = SettingsViewControllerForManager(manager);
+    UINavigationController *navigationController = settingsViewController.navigationController;
+    if (!settingsViewController || !navigationController)
+        return;
+    if ([navigationController.topViewController isKindOfClass:[SettingsViewController class]])
+        return;
+
+    SettingsViewController *viewController = [[SettingsViewController alloc] initWithSettingsManager:manager];
+    [navigationController pushViewController:viewController animated:YES];
+}
+
 %hook YTSettingsSectionItemManager
 
 %new
@@ -587,19 +629,6 @@ static YTSettingsViewController *SettingsViewControllerForManager(YTSettingsSect
     if (!settingsViewController)
         return;
     NSMutableArray *sectionItems = [NSMutableArray array];
-    SECTION_HEADER(@"Gonerino Settings");
-    __weak typeof(self) weakManager = self;
-    [sectionItems addObject:[%c(YTSettingsSectionItem)
-                  itemWithTitle:@"Open Gonerino Settings"
-               titleDescription:@"Manage filtering, block lists, import/export, and support"
-        accessibilityIdentifier:nil
-                detailTextBlock:nil
-                    selectBlock:^BOOL(__unused YTSettingsCell *cell, __unused NSUInteger index) {
-                        SettingsViewController *viewController =
-                            [[SettingsViewController alloc] initWithSettingsManager:weakManager];
-                        [settingsViewController.navigationController pushViewController:viewController animated:YES];
-                        return YES;
-                    }]];
 
     if ([settingsViewController respondsToSelector:@selector(setSectionItems:forCategory:title:icon:titleDescription:headerHidden:)]) {
         YTIIcon *icon = [%c(YTIIcon) new];
@@ -621,7 +650,7 @@ static YTSettingsViewController *SettingsViewControllerForManager(YTSettingsSect
 
 - (void)updateSectionForCategory:(NSUInteger)category withEntry:(id)entry {
     if (category == Section) {
-        [self updateSectionWithEntry:entry];
+        OpenSettings(self);
         return;
     }
     %orig;

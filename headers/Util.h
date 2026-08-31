@@ -9,7 +9,9 @@ NS_ASSUME_NONNULL_BEGIN
 @interface Util : NSObject
 
 + (nullable NSDictionary<NSString *, NSString *> *)videoInfoFromNode:(nullable id)node;
++ (nullable NSDictionary<NSString *, NSString *> *)freshVideoInfoFromNode:(nullable id)node;
 + (void)refreshFeedViews;
++ (void)showToast:(NSString *)message fromView:(nullable UIView *)view;
 + (void)extractVideoInfoFromNode:(id)node
                       completion:(void (^)(NSString *videoId, NSString *videoTitle, NSString *ownerName))completion;
 
