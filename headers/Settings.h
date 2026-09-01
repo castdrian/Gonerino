@@ -29,8 +29,8 @@ NS_ASSUME_NONNULL_BEGIN
                                                 return NO;                                                             \
                                             }]]
 
-static const NSInteger Section = 2002;
-static const NSInteger Group = 'gnrn';
+static const NSInteger SettingsCategory = 2002;
+static const NSInteger SettingsGroup = 'gnrn';
 
 #define TWEAK_VERSION PACKAGE_VERSION
 
@@ -57,10 +57,8 @@ static BOOL isImportOperation = NO;
 @end
 
 @interface YTSettingsSectionItemManager (SettingsIntegration)<UIDocumentPickerDelegate>
-- (void)updateSectionWithEntry:(nullable id)entry;
-- (void)updateChannelManagementSection:(nonnull YTSettingsViewController *)viewController;
-- (nullable UITableView *)findTableViewInView:(nonnull UIView *)view;
-- (void)reloadSection;
+- (void)settingsIntegrationUpdateSectionWithEntry:(nullable id)entry;
+- (void)settingsIntegrationReloadSection;
 @end
 
 NS_ASSUME_NONNULL_END

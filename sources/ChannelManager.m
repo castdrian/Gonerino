@@ -1,5 +1,10 @@
 #import "ChannelManager.h"
 
+static BOOL IsGeneratedActionLabel(NSString *channel) {
+    NSString *normalized = [[channel stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]] lowercaseString];
+    return [normalized isEqualToString:@"action menu"] || [normalized isEqualToString:@"more actions"];
+}
+
 @interface ChannelManager ()
 @property(nonatomic, strong) NSMutableSet<NSString *> *blockedChannelSet;
 @end
@@ -17,13 +22,18 @@
     self = [super init];
     if (self) {
         _blockedChannelSet = [NSMutableSet set];
+        BOOL removedGeneratedActionLabel = NO;
         for (id value in [[NSUserDefaults standardUserDefaults] arrayForKey:@"GonerinoBlockedChannels"]) {
             if (![value isKindOfClass:[NSString class]])
                 continue;
             NSString *channel = [value stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
-            if (channel.length > 0)
+            if (channel.length > 0 && !IsGeneratedActionLabel(channel))
                 [_blockedChannelSet addObject:channel];
+            else if (channel.length > 0)
+                removedGeneratedActionLabel = YES;
         }
+        if (removedGeneratedActionLabel)
+            [self saveBlockedChannels];
     }
     return self;
 }
@@ -35,7 +45,7 @@
 
 - (void)addBlockedChannel:(NSString *)channelName {
     NSString *channel = [channelName stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
-    if (channel.length > 0) {
+    if (channel.length > 0 && !IsGeneratedActionLabel(channel)) {
         [self.blockedChannelSet addObject:channel];
         [self saveBlockedChannels];
     }
@@ -75,7 +85,7 @@
         if (![value isKindOfClass:[NSString class]])
             continue;
         NSString *channel = [value stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
-        if (channel.length > 0)
+        if (channel.length > 0 && !IsGeneratedActionLabel(channel))
             [self.blockedChannelSet addObject:channel];
     }
     [self saveBlockedChannels];

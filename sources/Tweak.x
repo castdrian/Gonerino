@@ -1,33 +1,6 @@
 #import "Tweak.h"
 #import <objc/runtime.h>
 
-#if 0
-static id ValueForArgumentKey(id object, SEL selector, NSString *key) {
-    if (!object || !selector || key.length == 0 || ![object respondsToSelector:selector])
-        return nil;
-
-    @try {
-        Method method = class_getInstanceMethod(object_getClass(object), selector);
-        const char *returnType = method ? method_getTypeEncoding(method) : NULL;
-        if (!returnType || returnType[0] != '@')
-            return nil;
-        return ((id (*)(id, SEL, id))method_getImplementation(method))(object, selector, key);
-    } @catch (__unused NSException *exception) {
-    }
-
-    return nil;
-}
-
-static id ValueForArgumentKeyName(id object, NSString *key) {
-    for (NSString *selectorName in @[@"propertyForKey:", @"elementForKey:", @"safeSwiftValueForKey:", @"safeSwiftStringForKey:", @"tps_safeValueForKey:", @"valueForKey:"]) {
-        id value = ValueForArgumentKey(object, NSSelectorFromString(selectorName), key);
-        if (value)
-            return value;
-    }
-    return nil;
-}
-#endif
-
 static id ValueForObjectKey(id object, NSString *key) {
     if (!object || key.length == 0)
         return nil;
@@ -49,10 +22,6 @@ static id ValueForObjectKey(id object, NSString *key) {
     } @catch (__unused NSException *exception) {
     }
     return nil;
-}
-
-static NSString * __attribute__((unused)) DebugString(id value) {
-    return [value isKindOfClass:[NSString class]] ? value : @"";
 }
 
 static BOOL NodeLooksLikeVideo(id node) {
@@ -117,163 +86,36 @@ static id VideoNodeFromView(UIView *view, NSUInteger depth) {
     return nil;
 }
 
-#if 0
-static id ObjectIvar(id object, NSString *name) {
-    if (!object || name.length == 0)
+static id ActionMetadataNodeFromObject(id object, NSUInteger depth) {
+    if (!object || depth > 5)
         return nil;
-    Ivar ivar = class_getInstanceVariable([object class], name.UTF8String);
-    return ivar ? object_getIvar(object, ivar) : nil;
-}
 
-static void WriteRuntimeDiagnostics(id node) {
-    if (!node || [[NSUserDefaults standardUserDefaults] objectForKey:@"GonerinoRuntimeDiagnostics4"])
-        return;
+    if (NodeLooksLikeActionVideo(object))
+        return object;
 
-    NSMutableArray *objects = [NSMutableArray array];
-    id element = ValueForObjectKey(node, @"element");
-    id controller = ValueForObjectKey(node, @"controller");
-    id context = ValueForObjectKey(node, @"context");
-    NSArray *candidateObjects = @[node ?: [NSNull null], element ?: [NSNull null], controller ?: [NSNull null],
-                                  context ?: [NSNull null], ObjectIvar(node, @"_context") ?: [NSNull null],
-                                  ObjectIvar(node, @"_nodeContext") ?: [NSNull null],
-                                  ObjectIvar(controller, @"_context") ?: [NSNull null],
-                                  ObjectIvar(controller, @"_treeLocalContext") ?: [NSNull null]];
-    for (id object in candidateObjects) {
-        if (object == [NSNull null])
+    if ([object isKindOfClass:[UIView class]]) {
+        id node = ValueForObjectKey(object, @"asyncdisplaykit_node");
+        if (node && node != object) {
+            id videoNode = ActionMetadataNodeFromObject(node, depth + 1);
+            if (videoNode)
+                return videoNode;
+        }
+    }
+
+    for (NSString *key in @[
+        @"cellNode", @"parentResponder", @"parentNode", @"owningNode", @"supernode", @"superNode",
+        @"containerNode", @"node", @"_node", @"element", @"nodeModel", @"materializedInstance"
+    ]) {
+        id candidate = ValueForObjectKey(object, key);
+        if (!candidate || candidate == object)
             continue;
-
-        NSMutableArray *ivars = [NSMutableArray array];
-        Class currentClass = [object class];
-        while (currentClass) {
-            unsigned int ivarCount = 0;
-            Ivar *classIvars = class_copyIvarList(currentClass, &ivarCount);
-            for (unsigned int index = 0; index < ivarCount; index++) {
-                Ivar ivar = classIvars[index];
-                const char *type = ivar_getTypeEncoding(ivar);
-                if (!type || type[0] != '@')
-                    continue;
-                id value = object_getIvar(object, ivar);
-                if (!value)
-                    continue;
-                NSString *description = @"";
-                @try {
-                    description = [value debugDescription] ?: [value description] ?: @"";
-                } @catch (__unused NSException *exception) {
-                }
-                if (description.length > 2000)
-                    description = [description substringToIndex:2000];
-                [ivars addObject:@{
-                    @"name": [NSString stringWithUTF8String:ivar_getName(ivar)] ?: @"",
-                    @"class": NSStringFromClass([value class]) ?: @"",
-                    @"description": description
-                }];
-            }
-            free(classIvars);
-            currentClass = class_getSuperclass(currentClass);
-        }
-
-        NSMutableArray *methods = [NSMutableArray array];
-        for (NSString *name in @[@"instance", @"cxxSharedElement", @"viewController", @"currentVideo", @"videoId", @"videoIdentifier", @"playerResponse"]) {
-            SEL selector = NSSelectorFromString(name);
-            Method method = class_getInstanceMethod([object class], selector);
-            if (method)
-                [methods addObject:@{ @"name": name, @"encoding": [NSString stringWithUTF8String:method_getTypeEncoding(method)] ?: @"" }];
-        }
-        NSMutableDictionary *diagnostic = [@{
-            @"class": NSStringFromClass([object class]) ?: @"",
-            @"ivars": ivars,
-            @"methods": methods,
-            @"instanceBytes": @[]
-        } mutableCopy];
-        [objects addObject:diagnostic];
-        if ([NSStringFromClass([object class]) isEqualToString:@"ELMElement"]) {
-            SEL selector = NSSelectorFromString(@"instance");
-            Method method = class_getInstanceMethod([object class], selector);
-            void *instance = method ? ((void *(*)(id, SEL))method_getImplementation(method))(object, selector) : NULL;
-            if (instance) {
-                uint8_t bytes[4096] = {0};
-                vm_size_t size = sizeof(bytes);
-                if (vm_read_overwrite(mach_task_self(), (vm_address_t)instance, sizeof(bytes),
-                                      (vm_address_t)bytes, &size) == KERN_SUCCESS) {
-                    diagnostic[@"instanceBytes"] = [[NSData dataWithBytes:bytes length:(NSUInteger)size] base64EncodedStringWithOptions:0] ?: @"";
-                    NSMutableArray *addresses = [NSMutableArray arrayWithObject:[NSValue valueWithPointer:instance]];
-                    NSMutableSet *visitedAddresses = [NSMutableSet set];
-                    NSMutableArray *videoIds = [NSMutableArray array];
-                    for (NSUInteger addressIndex = 0; addressIndex < addresses.count && addressIndex < 192; addressIndex++) {
-                        NSValue *addressValue = addresses[addressIndex];
-                        void *address = addressValue.pointerValue;
-                        if (!address || [visitedAddresses containsObject:addressValue])
-                            continue;
-                        [visitedAddresses addObject:addressValue];
-                        uint8_t page[4096] = {0};
-                        vm_size_t pageSize = sizeof(page);
-                        if (vm_read_overwrite(mach_task_self(), (vm_address_t)address, sizeof(page),
-                                              (vm_address_t)page, &pageSize) != KERN_SUCCESS)
-                            continue;
-                        for (NSUInteger byteIndex = 0; byteIndex + 11 <= pageSize; byteIndex++) {
-                            NSUInteger end = byteIndex;
-                            while (end < pageSize && ((page[end] >= 'a' && page[end] <= 'z') ||
-                                                      (page[end] >= 'A' && page[end] <= 'Z') ||
-                                                      (page[end] >= '0' && page[end] <= '9') ||
-                                                      page[end] == '_' || page[end] == '-'))
-                                end++;
-                            if (end - byteIndex == 11) {
-                                NSString *candidate = [[NSString alloc] initWithBytes:page + byteIndex length:11 encoding:NSUTF8StringEncoding];
-                                if (candidate.length == 11 && ![videoIds containsObject:candidate])
-                                    [videoIds addObject:candidate];
-                            }
-                            byteIndex = end > byteIndex ? end - 1 : byteIndex;
-                        }
-                        for (NSUInteger byteIndex = 0; byteIndex + sizeof(uintptr_t) <= pageSize; byteIndex += sizeof(uintptr_t)) {
-                            uintptr_t pointer = 0;
-                            memcpy(&pointer, page + byteIndex, sizeof(pointer));
-                            if (pointer > 0x100000000ULL && pointer < 0x2000000000ULL)
-                                [addresses addObject:[NSValue valueWithPointer:(void *)pointer]];
-                        }
-                    }
-                    diagnostic[@"memoryVideoIds"] = videoIds;
-                }
-            }
-        }
+        id videoNode = ActionMetadataNodeFromObject(candidate, depth + 1);
+        if (videoNode)
+            return videoNode;
     }
-    [[NSUserDefaults standardUserDefaults] setObject:objects forKey:@"GonerinoRuntimeDiagnostics4"];
-    [[NSUserDefaults standardUserDefaults] synchronize];
+
+    return nil;
 }
-
-static void __attribute__((unused)) CollectSheetDiagnostics(UIView *view, NSMutableArray *entries, NSUInteger depth) {
-    if (!view || depth > 30 || entries.count >= 4096)
-        return;
-
-    id node = ValueForObjectKey(view, @"asyncdisplaykit_node");
-    NSString *nodeDescription = @"";
-    @try {
-        nodeDescription = [node debugDescription] ?: @"";
-    } @catch (__unused NSException *exception) {
-    }
-    if (nodeDescription.length > 1500)
-        nodeDescription = [nodeDescription substringToIndex:1500];
-
-    NSMutableArray *subnodeClasses = [NSMutableArray array];
-    for (id subnode in ValueForObjectKey(node, @"subnodes")) {
-        if (subnodeClasses.count >= 16)
-            break;
-        [subnodeClasses addObject:NSStringFromClass([subnode class]) ?: @""];
-    }
-
-    [entries addObject:@{
-        @"viewClass": NSStringFromClass([view class]) ?: @"",
-        @"nodeClass": NSStringFromClass([node class]) ?: @"",
-        @"nodeDescription": nodeDescription,
-        @"subnodeClasses": subnodeClasses,
-        @"elementClass": NSStringFromClass([ValueForObjectKey(node, @"element") class]) ?: @"",
-        @"contextClass": NSStringFromClass([ValueForObjectKey(node, @"context") class]) ?: @"",
-        @"controllerClass": NSStringFromClass([ValueForObjectKey(node, @"controller") class]) ?: @""
-    }];
-
-    for (UIView *subview in view.subviews)
-        CollectSheetDiagnostics(subview, entries, depth + 1);
-}
-#endif
 
 static UIView *ActionSheetSourceView(id sheet) {
     id source = ValueForObjectKey(sheet, @"sourceView");
@@ -289,13 +131,22 @@ static UIView *ActionSheetSourceView(id sheet) {
 static id ActionSheetNodeCandidate(id candidate) {
     if (!candidate)
         return nil;
-    if ([candidate isKindOfClass:[UIView class]])
-        return VideoNodeFromView(candidate, 0);
+    if ([candidate isKindOfClass:[UIView class]]) {
+        id node = VideoNodeFromView(candidate, 0);
+        if (node)
+            return node;
+        return ActionMetadataNodeFromObject(candidate, 0);
+    }
     if ([candidate isKindOfClass:[UIViewController class]]) {
         id node = VideoNodeFromView(((UIViewController *)candidate).view, 0);
         if (node)
             return node;
+        return ActionMetadataNodeFromObject(candidate, 0);
     }
+
+    id node = ActionMetadataNodeFromObject(candidate, 0);
+    if (node)
+        return node;
 
     NSString *className = NSStringFromClass([candidate class]).lowercaseString;
     if (NodeLooksLikeActionVideo(candidate) ||
@@ -354,32 +205,18 @@ static void SendToast(id object, NSString *message) {
     [Util showToast:message fromView:view];
 }
 
-#if 0
-static void __attribute__((unused)) ShowMetadataAlert(UIViewController *viewController, NSDictionary *info) {
-    if (!viewController) {
-        for (UIWindow *window in [UIApplication sharedApplication].windows) {
-            if (!window.isKeyWindow)
-                continue;
-            viewController = window.rootViewController;
-            while (viewController.presentedViewController)
-                viewController = viewController.presentedViewController;
-            break;
-        }
+static YTAsyncCollectionView *AsyncCollectionViewInView(UIView *view, NSUInteger depth) {
+    if (![view isKindOfClass:[UIView class]] || depth > 10)
+        return nil;
+    if ([view isKindOfClass:NSClassFromString(@"YTAsyncCollectionView")])
+        return (YTAsyncCollectionView *)view;
+    for (UIView *subview in view.subviews) {
+        YTAsyncCollectionView *collectionView = AsyncCollectionViewInView(subview, depth + 1);
+        if (collectionView)
+            return collectionView;
     }
-    if (!viewController)
-        return;
-
-    NSString *message = [NSString stringWithFormat:@"id=%@\ntitle=%@\nchannel=%@",
-                         info[@"id"] ?: @"<missing>",
-                         info[@"title"] ?: @"<missing>",
-                         info[@"channel"] ?: @"<missing>"];
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Gonerino metadata"
-                                                                     message:message
-                                                              preferredStyle:UIAlertControllerStyleAlert];
-    [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
-    [viewController presentViewController:alert animated:YES completion:nil];
+    return nil;
 }
-#endif
 
 static NSDictionary *MergedVideoInfo(NSDictionary *current, NSDictionary *fallback) {
     NSMutableDictionary *result = [fallback mutableCopy] ?: [NSMutableDictionary dictionary];
@@ -392,20 +229,34 @@ static NSDictionary *MergedVideoInfo(NSDictionary *current, NSDictionary *fallba
 
 static NSDictionary *ActionVideoInfo(id presentationNode, id presentationSourceNode, UIView *sourceView) {
     @try {
-        NSDictionary *info = MergedVideoInfo([Util freshVideoInfoFromNode:presentationNode], nil);
-        if (presentationSourceNode && presentationSourceNode != presentationNode)
-            info = MergedVideoInfo([Util freshVideoInfoFromNode:presentationSourceNode], info);
+        NSDictionary *presentationInfo = [Util freshVideoInfoFromNode:presentationNode];
+        NSDictionary *info = MergedVideoInfo(presentationInfo, nil);
+        NSDictionary *sourceInfo = nil;
+        if (presentationSourceNode && presentationSourceNode != presentationNode) {
+            sourceInfo = [Util freshVideoInfoFromNode:presentationSourceNode];
+            info = MergedVideoInfo(sourceInfo, info);
+
+            id sourceMetadataNode = ActionMetadataNodeFromObject(presentationSourceNode, 0);
+            if (sourceMetadataNode && sourceMetadataNode != presentationNode && sourceMetadataNode != presentationSourceNode) {
+                NSDictionary *sourceMetadataInfo = [Util freshVideoInfoFromNode:sourceMetadataNode];
+                sourceInfo = MergedVideoInfo(sourceMetadataInfo, sourceInfo);
+                info = MergedVideoInfo(sourceMetadataInfo, info);
+            }
+        }
 
         id fallbackNode = VideoNodeFromView(sourceView, 0);
-        if (fallbackNode && fallbackNode != presentationNode && fallbackNode != presentationSourceNode)
-            info = MergedVideoInfo([Util freshVideoInfoFromNode:fallbackNode], info);
+        NSDictionary *fallbackInfo = nil;
+        if (fallbackNode && fallbackNode != presentationNode && fallbackNode != presentationSourceNode) {
+            fallbackInfo = [Util freshVideoInfoFromNode:fallbackNode];
+            info = MergedVideoInfo(fallbackInfo, info);
+        }
         return info;
     } @catch (__unused NSException *exception) {
         return @{};
     }
 }
 
-static void RefreshCollectionViewForSourceView(UIView *sourceView);
+static void RemoveBlockedFeedItem(UIView *sourceView, NSString *videoId);
 
 static void ResolveActionVideoInfo(id presentationNode,
                                    id presentationSourceNode,
@@ -475,8 +326,14 @@ static void AddBlockingActions(id sheet, YTActionSheetAction *originalAction) {
                                                      }
 
                                                      [[ChannelManager sharedInstance] addBlockedChannel:channel];
+                                                     if (![[ChannelManager sharedInstance] isChannelBlocked:channel]) {
+                                                         SendToast(weakSheet, @"Could not read a valid channel for this video");
+                                                         return;
+                                                     }
                                                      SendToast(weakSheet, [NSString stringWithFormat:@"Blocked %@", channel]);
-                                                     RefreshCollectionViewForSourceView(sourceView);
+                                                     RemoveBlockedFeedItem(sourceView, info[@"id"]);
+                                                     if ([weakSheet respondsToSelector:@selector(dismiss)])
+                                                         [weakSheet dismiss];
                                                  } @catch (__unused NSException *exception) {
                                                      SendToast(weakSheet, @"Could not block this channel");
                                                  }
@@ -508,9 +365,9 @@ static void AddBlockingActions(id sheet, YTActionSheetAction *originalAction) {
                                                      SendToast(weakSheet,
                                                                [NSString stringWithFormat:@"Blocked video: %@",
                                                                                           info[@"title"] ?: videoId]);
+                                                     RemoveBlockedFeedItem(sourceView, videoId);
                                                      if ([weakSheet respondsToSelector:@selector(dismiss)])
                                                          [weakSheet dismiss];
-                                                     RefreshCollectionViewForSourceView(sourceView);
                                                  } @catch (__unused NSException *exception) {
                                                      SendToast(weakSheet, @"Could not block this video");
                                                  }
@@ -532,181 +389,8 @@ static void AddBlockingActions(id sheet, YTActionSheetAction *originalAction) {
     }
 }
 
-#if 0
-static void __attribute__((unused)) WriteDebugMetadata(NSString *stage, id node, NSDictionary *info) {
-    NSString *description = @"";
-    NSMutableArray *subviewDescriptions = [NSMutableArray array];
-    NSMutableArray *subnodeDescriptions = [NSMutableArray array];
-    NSMutableArray *playbackDiagnostics = [NSMutableArray array];
-    NSMutableArray *objectDiagnostics = [NSMutableArray array];
-    @try {
-        description = [node debugDescription] ?: [node description] ?: @"";
-        id rootElement = ValueForObjectKey(node, @"element");
-        for (NSString *key in @[@"videoId", @"video_id", @"videoIdentifier", @"contentVideoId", @"contentId", @"id", @"url", @"navigationEndpoint", @"watchEndpoint", @"endpoint", @"command", @"title", @"channelName", @"ownerName"]) {
-            id value = ValueForArgumentKeyName(rootElement, key);
-            if (!value)
-                continue;
-            NSString *valueDescription = @"";
-            @try {
-                valueDescription = [value debugDescription] ?: [value description] ?: @"";
-            } @catch (__unused NSException *exception) {
-            }
-            if (valueDescription.length > 5000)
-                valueDescription = [valueDescription substringToIndex:5000];
-            [objectDiagnostics addObject:@{
-                @"objectClass": NSStringFromClass([rootElement class]) ?: @"",
-                @"argumentKey": key,
-                @"class": NSStringFromClass([value class]) ?: @"",
-                @"description": valueDescription
-            }];
-        }
-        id playbackView = ValueForObjectKey(node, @"playbackView");
-        id nodeView = ValueForObjectKey(node, @"view");
-        NSMutableArray *playbackCandidates = [NSMutableArray array];
-        if (playbackView)
-            [playbackCandidates addObject:playbackView];
-        if (nodeView)
-            [playbackCandidates addObjectsFromArray:[nodeView subviews]];
-        for (id candidate in playbackCandidates) {
-            id playableEntry = ValueForObjectKey(candidate, @"asdPlayableEntry");
-            id navigationEndpoint = ValueForObjectKey(playableEntry, @"navigationEndpoint");
-            [playbackDiagnostics addObject:@{
-                @"class": NSStringFromClass([candidate class]) ?: @"",
-                @"hasEntry": @(playableEntry != nil),
-                @"entryClass": NSStringFromClass([playableEntry class]) ?: @"",
-                @"entryDescription": DebugString(ValueForObjectKey(playableEntry, @"description")),
-                @"endpointClass": NSStringFromClass([navigationEndpoint class]) ?: @"",
-                @"endpointDescription": DebugString(ValueForObjectKey(navigationEndpoint, @"description"))
-            }];
-        }
-        UIView *view = ValueForObjectKey(node, @"view");
-        for (UIView *subview in view.subviews) {
-            NSString *subviewDescription = [NSString stringWithFormat:@"%@ %@",
-                                            NSStringFromClass([subview class]),
-                                            [subview debugDescription] ?: @""];
-            [subviewDescriptions addObject:subviewDescription];
-        }
-        NSArray *subnodes = ValueForObjectKey(node, @"subnodes");
-        for (id subnode in subnodes) {
-            NSString *subnodeDescription = [NSString stringWithFormat:@"%@ %@",
-                                            NSStringFromClass([subnode class]),
-                                            [subnode debugDescription] ?: @""];
-            [subnodeDescriptions addObject:subnodeDescription];
-        }
-        NSMutableArray *objects = [NSMutableArray arrayWithObject:node];
-        NSMutableSet *visitedObjects = [NSMutableSet set];
-        while (objects.count > 0 && objectDiagnostics.count < 1000) {
-            id object = objects.lastObject;
-            [objects removeLastObject];
-            NSValue *identity = [NSValue valueWithNonretainedObject:object];
-            if (!object || [visitedObjects containsObject:identity])
-                continue;
-            [visitedObjects addObject:identity];
-            for (NSString *key in @[@"element", @"context", @"controller", @"viewController", @"navigationEndpoint", @"videoDetails", @"playerResponse", @"subnodes", @"allProperties", @"properties", @"description", @"text", @"attributedText", @"protoText", @"childElements", @"instance", @"cxxSharedElement", @"currentVideo", @"videoController", @"watchController", @"playbackController", @"videoData", @"response", @"renderer", @"content", @"data", @"model", @"media"]) {
-                id value = ValueForObjectKey(object, key);
-                if (!value)
-                    continue;
-                NSString *valueDescription = @"";
-                @try {
-                    valueDescription = [value debugDescription] ?: [value description] ?: @"";
-                } @catch (__unused NSException *exception) {
-                }
-                if (valueDescription.length > 5000)
-                    valueDescription = [valueDescription substringToIndex:5000];
-                [objectDiagnostics addObject:@{
-                    @"objectClass": NSStringFromClass([object class]) ?: @"",
-                    @"key": key,
-                    @"class": NSStringFromClass([value class]) ?: @"",
-                    @"description": valueDescription
-                }];
-                if ([key isEqualToString:@"attributedText"]) {
-                    if ([value isKindOfClass:[NSAttributedString class]]) {
-                        NSRange attributeRange = NSMakeRange(0, 0);
-                        NSDictionary *attributes = [value attributesAtIndex:0 effectiveRange:&attributeRange];
-                        for (id attributeKey in attributes) {
-                            id attributeValue = attributes[attributeKey];
-                            NSString *attributeDescription = @"";
-                            @try {
-                                attributeDescription = [attributeValue debugDescription] ?: [attributeValue description] ?: @"";
-                            } @catch (__unused NSException *exception) {
-                            }
-                            if ([attributeValue isKindOfClass:[NSData class]])
-                                attributeDescription = [attributeValue base64EncodedStringWithOptions:0] ?: @"";
-                            if (attributeDescription.length > 12000)
-                                attributeDescription = [attributeDescription substringToIndex:12000];
-                            [objectDiagnostics addObject:@{
-                                @"objectClass": NSStringFromClass([object class]) ?: @"",
-                                @"key": @"attributedStringAttribute",
-                                @"attributeKey": [attributeKey description] ?: @"",
-                                @"class": NSStringFromClass([attributeValue class]) ?: @"",
-                                @"description": attributeDescription
-                            }];
-                        }
-                    }
-                }
-                if ([key isEqualToString:@"subnodes"] && [value isKindOfClass:[NSArray class]])
-                    [objects addObjectsFromArray:value];
-                if (([key isEqualToString:@"element"] || [key isEqualToString:@"context"] ||
-                     [key isEqualToString:@"controller"] || [key isEqualToString:@"viewController"] ||
-                     [key isEqualToString:@"instance"] || [key isEqualToString:@"cxxSharedElement"] ||
-                     [key isEqualToString:@"childElements"]) && value != object)
-                    [objects addObject:value];
-            }
-            NSString *objectClassName = NSStringFromClass([object class]).lowercaseString;
-            if ([objectClassName containsString:@"contextimpl"] || [objectClassName containsString:@"nodecontroller"]) {
-                NSMutableArray *methodNames = [NSMutableArray array];
-                Class currentClass = [object class];
-                while (currentClass && methodNames.count < 120) {
-                    unsigned int methodCount = 0;
-                    Method *methods = class_copyMethodList(currentClass, &methodCount);
-                    for (unsigned int methodIndex = 0; methodIndex < methodCount && methodNames.count < 120; methodIndex++)
-                        [methodNames addObject:NSStringFromSelector(method_getName(methods[methodIndex])) ?: @""];
-                    free(methods);
-                    currentClass = class_getSuperclass(currentClass);
-                }
-                [objectDiagnostics addObject:@{
-                    @"objectClass": NSStringFromClass([object class]) ?: @"",
-                    @"methods": methodNames
-                }];
-                for (NSString *key in @[@"videoId", @"video_id", @"videoIdentifier", @"contentVideoId", @"contentId", @"id", @"url", @"navigationEndpoint", @"watchEndpoint", @"endpoint", @"command", @"title", @"channelName", @"ownerName"]) {
-                    id value = ValueForArgumentKeyName(object, key);
-                    if (!value)
-                        continue;
-                    NSString *valueDescription = @"";
-                    @try {
-                        valueDescription = [value debugDescription] ?: [value description] ?: @"";
-                    } @catch (__unused NSException *exception) {
-                    }
-                    if (valueDescription.length > 5000)
-                        valueDescription = [valueDescription substringToIndex:5000];
-                    [objectDiagnostics addObject:@{
-                        @"objectClass": NSStringFromClass([object class]) ?: @"",
-                        @"argumentKey": key,
-                        @"class": NSStringFromClass([value class]) ?: @"",
-                        @"description": valueDescription
-                    }];
-                }
-            }
-        }
-    } @catch (__unused NSException *exception) {
-    }
-    if (description.length > 12000)
-        description = [description substringToIndex:12000];
-    [[NSUserDefaults standardUserDefaults] setObject:@{
-        @"stage": stage ?: @"",
-        @"nodeClass": NSStringFromClass([node class]) ?: @"",
-        @"nodeDescription": description,
-        @"playbackDiagnostics": playbackDiagnostics,
-        @"objectDiagnostics": objectDiagnostics,
-        @"subviewDescriptions": subviewDescriptions,
-        @"subnodeDescriptions": subnodeDescriptions,
-        @"id": info[@"id"] ?: @"",
-        @"title": info[@"title"] ?: @"",
-        @"channel": info[@"channel"] ?: @""
-    } forKey:@"GonerinoDebugMetadata"];
-    [[NSUserDefaults standardUserDefaults] synchronize];
-}
-#endif
+static id MetadataNodeForView(UIView *view, NSUInteger depth);
+static void FilterVisibleCells(YTAsyncCollectionView *collectionView);
 
 static void RefreshVisibleFeeds(void) {
     dispatch_async(dispatch_get_main_queue(), ^{
@@ -728,23 +412,26 @@ static void RefreshVisibleFeeds(void) {
                 continue;
 
             UIView *view = object;
-            if ([view isKindOfClass:NSClassFromString(@"YTAsyncCollectionView")])
+            if ([view isKindOfClass:NSClassFromString(@"YTAsyncCollectionView")]) {
                 [view setNeedsLayout];
+                FilterVisibleCells((YTAsyncCollectionView *)view);
+            }
             [pendingViews addObjectsFromArray:view.subviews];
         }
     });
 }
 
 static void RefreshCollectionViewForSourceView(UIView *sourceView) {
-    if (![sourceView isKindOfClass:[UIView class]])
-        return;
-
     dispatch_async(dispatch_get_main_queue(), ^{
         UIView *view = sourceView;
         while (view && ![view isKindOfClass:NSClassFromString(@"YTAsyncCollectionView")])
             view = view.superview;
-        if ([view isKindOfClass:NSClassFromString(@"YTAsyncCollectionView")])
+        if ([view isKindOfClass:NSClassFromString(@"YTAsyncCollectionView")]) {
             [view setNeedsLayout];
+            FilterVisibleCells((YTAsyncCollectionView *)view);
+        } else {
+            RefreshVisibleFeeds();
+        }
     });
 }
 
@@ -753,51 +440,7 @@ static BOOL CollectionViewIsScrolling(YTAsyncCollectionView *collectionView) {
 }
 
 static void *BlockedCellKey = &BlockedCellKey;
-static void *CollapsedLayoutKey = &CollapsedLayoutKey;
-
-static void CollapseBlockedCellGaps(YTAsyncCollectionView *collectionView) {
-    if (objc_getAssociatedObject(collectionView, CollapsedLayoutKey))
-        return;
-
-    UICollectionViewLayout *layout = collectionView.collectionViewLayout;
-    if ([layout isKindOfClass:[UICollectionViewFlowLayout class]] &&
-        [(UICollectionViewFlowLayout *)layout scrollDirection] != UICollectionViewScrollDirectionVertical)
-        return;
-
-    NSMutableArray<UICollectionViewCell *> *cells = [NSMutableArray array];
-    NSMutableArray<NSValue *> *blockedFrames = [NSMutableArray array];
-    for (UICollectionViewCell *cell in collectionView.visibleCells) {
-        if (![cell isKindOfClass:NSClassFromString(@"_ASCollectionViewCell")])
-            continue;
-        [cells addObject:cell];
-        if (objc_getAssociatedObject(cell, BlockedCellKey))
-            [blockedFrames addObject:[NSValue valueWithCGRect:cell.frame]];
-    }
-    if (blockedFrames.count == 0)
-        return;
-
-    for (UICollectionViewCell *cell in cells) {
-        if (objc_getAssociatedObject(cell, BlockedCellKey))
-            continue;
-
-        CGRect frame = cell.frame;
-        CGFloat offset = 0.0;
-        for (NSValue *value in blockedFrames) {
-            CGRect blockedFrame = value.CGRectValue;
-            BOOL below = CGRectGetMinY(frame) >= CGRectGetMaxY(blockedFrame) - 1.0;
-            BOOL overlapsHorizontally = CGRectGetMinX(frame) < CGRectGetMaxX(blockedFrame) &&
-                                         CGRectGetMaxX(frame) > CGRectGetMinX(blockedFrame);
-            if (below && overlapsHorizontally)
-                offset += CGRectGetHeight(blockedFrame);
-        }
-        if (offset > 0.0) {
-            frame.origin.y -= offset;
-            cell.frame = frame;
-        }
-    }
-    objc_setAssociatedObject(collectionView, CollapsedLayoutKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-}
-
+static void *DirectBlockedVideoIDKey = &DirectBlockedVideoIDKey;
 static void FilterVisibleCells(YTAsyncCollectionView *collectionView) {
     if (!collectionView || CollectionViewIsScrolling(collectionView))
         return;
@@ -809,30 +452,185 @@ static void FilterVisibleCells(YTAsyncCollectionView *collectionView) {
     collectionView.lastFilterTime = CFAbsoluteTimeGetCurrent();
     @try {
         for (UICollectionViewCell *cell in collectionView.visibleCells) {
-            if (![cell isKindOfClass:NSClassFromString(@"_ASCollectionViewCell")])
+            id node = nil;
+            if ([cell isKindOfClass:NSClassFromString(@"_ASCollectionViewCell")]) {
+                _ASCollectionViewCell *asCell = (_ASCollectionViewCell *)cell;
+                node = [asCell respondsToSelector:@selector(node)] ? [asCell node] : nil;
+            } else if (collectionView.pagingEnabled) {
+                node = MetadataNodeForView(cell, 0);
+            }
+            if (!node)
                 continue;
 
-            objc_setAssociatedObject(cell, BlockedCellKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-            cell.hidden = NO;
-            cell.alpha = 1.0;
-            cell.userInteractionEnabled = YES;
-            cell.accessibilityElementsHidden = NO;
-            _ASCollectionViewCell *asCell = (_ASCollectionViewCell *)cell;
-            id node = [asCell respondsToSelector:@selector(node)] ? [asCell node] : nil;
-            if (!NodeLooksLikeActionVideo(node))
+            NSDictionary *info = [Util videoInfoFromNode:node];
+            if (!NodeLooksLikeActionVideo(node) && !(collectionView.pagingEnabled && info.count > 0)) {
+                objc_setAssociatedObject(cell, BlockedCellKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+                objc_setAssociatedObject(cell, DirectBlockedVideoIDKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+                cell.hidden = NO;
+                cell.alpha = 1.0;
+                cell.userInteractionEnabled = YES;
+                cell.accessibilityElementsHidden = NO;
                 continue;
+            }
 
+            NSString *directVideoId = objc_getAssociatedObject(cell, DirectBlockedVideoIDKey);
+            NSString *currentVideoId = info[@"id"];
+            if (directVideoId.length > 0 && currentVideoId.length > 0 &&
+                ![directVideoId isEqualToString:currentVideoId]) {
+                objc_setAssociatedObject(cell, DirectBlockedVideoIDKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+                directVideoId = nil;
+            }
             BOOL blocked = [Util nodeContainsBlockedVideo:node];
+            if (directVideoId.length > 0)
+                blocked = YES;
             objc_setAssociatedObject(cell, BlockedCellKey, blocked ? @YES : nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
             cell.hidden = blocked;
             cell.alpha = blocked ? 0.0 : 1.0;
             cell.userInteractionEnabled = !blocked;
             cell.accessibilityElementsHidden = blocked;
         }
-        CollapseBlockedCellGaps(collectionView);
     } @catch (__unused NSException *exception) {
     }
     collectionView.filtering = NO;
+}
+
+static UICollectionViewCell *FeedCellForSourceView(UIView *sourceView) {
+    UIView *view = sourceView;
+    while (view) {
+        if ([view isKindOfClass:[UICollectionViewCell class]])
+            return (UICollectionViewCell *)view;
+        view = view.superview;
+    }
+    return nil;
+}
+
+static YTAsyncCollectionView *CollectionViewForFeedCell(UICollectionViewCell *cell) {
+    UIView *view = cell;
+    while (view) {
+        if ([view isKindOfClass:NSClassFromString(@"YTAsyncCollectionView")])
+            return (YTAsyncCollectionView *)view;
+        view = view.superview;
+    }
+    return nil;
+}
+
+static id MetadataNodeForView(UIView *view, NSUInteger depth) {
+    if (![view isKindOfClass:[UIView class]] || depth > 20)
+        return nil;
+
+    id node = ValueForObjectKey(view, @"asyncdisplaykit_node");
+    if (node) {
+        NSDictionary *info = [Util videoInfoFromNode:node];
+        if (info[@"id"] || info[@"title"] || info[@"channel"])
+            return node;
+    }
+
+    for (UIView *subview in view.subviews) {
+        node = MetadataNodeForView(subview, depth + 1);
+        if (node)
+            return node;
+    }
+
+    return nil;
+}
+
+static UICollectionViewCell *CellForVideoID(YTAsyncCollectionView *collectionView, NSString *videoId) {
+    if (!collectionView)
+        return nil;
+
+    for (UICollectionViewCell *cell in collectionView.visibleCells) {
+        if (videoId.length == 0)
+            return cell;
+        id node = MetadataNodeForView(cell, 0);
+        NSDictionary *info = [Util freshVideoInfoFromNode:node];
+        if ([info[@"id"] isEqualToString:videoId])
+            return cell;
+    }
+
+    return nil;
+}
+
+static BOOL IsShortsCollectionView(YTAsyncCollectionView *collectionView) {
+    return collectionView.pagingEnabled && collectionView.bounds.size.height > 0;
+}
+
+static void AdvanceShortsCollection(YTAsyncCollectionView *collectionView, NSString *videoId) {
+    if (!IsShortsCollectionView(collectionView))
+        return;
+
+    UICollectionViewCell *cell = CellForVideoID(collectionView, videoId);
+    NSIndexPath *indexPath = cell ? [collectionView indexPathForCell:cell] : nil;
+    if (indexPath && indexPath.section < [collectionView numberOfSections]) {
+        NSInteger nextItem = indexPath.item + 1;
+        if (nextItem < [collectionView numberOfItemsInSection:indexPath.section]) {
+            NSIndexPath *nextIndexPath = [NSIndexPath indexPathForItem:nextItem inSection:indexPath.section];
+            [collectionView scrollToItemAtIndexPath:nextIndexPath
+                                   atScrollPosition:UICollectionViewScrollPositionTop
+                                           animated:YES];
+            return;
+        }
+    }
+
+    CGFloat pageHeight = MAX(collectionView.bounds.size.height, 1.0);
+    CGFloat maximumOffset = MAX(collectionView.contentSize.height - pageHeight, 0.0);
+    CGFloat targetOffset = MIN(collectionView.contentOffset.y + pageHeight, maximumOffset);
+    [collectionView setContentOffset:CGPointMake(collectionView.contentOffset.x, targetOffset) animated:YES];
+}
+
+static void DeleteFeedCell(UICollectionViewCell *cell, YTAsyncCollectionView *collectionView) {
+    if (!cell || !collectionView)
+        return;
+
+    NSIndexPath *indexPath = [collectionView indexPathForCell:cell];
+    if (!indexPath || indexPath.section >= [collectionView numberOfSections] ||
+        indexPath.item >= [collectionView numberOfItemsInSection:indexPath.section])
+        return;
+
+    @try {
+        [collectionView performBatchUpdates:^{
+            [collectionView deleteItemsAtIndexPaths:@[indexPath]];
+        } completion:nil];
+    } @catch (__unused NSException *exception) {
+    }
+}
+
+static void RemoveBlockedFeedItem(UIView *sourceView, NSString *videoId) {
+    void (^remove)(void) = ^{
+        UICollectionViewCell *cell = FeedCellForSourceView(sourceView);
+        YTAsyncCollectionView *collectionView = CollectionViewForFeedCell(cell);
+        if (!collectionView) {
+            UIView *rootView = sourceView;
+            while (rootView.superview) {
+                NSString *className = NSStringFromClass([rootView class]).lowercaseString;
+                if ([className containsString:@"reelwatchrootview"])
+                    break;
+                rootView = rootView.superview;
+            }
+            collectionView = AsyncCollectionViewInView(rootView, 0);
+        }
+        if (IsShortsCollectionView(collectionView)) {
+            AdvanceShortsCollection(collectionView, videoId);
+            return;
+        }
+        if (cell && collectionView) {
+            if (videoId.length > 0)
+                objc_setAssociatedObject(cell, DirectBlockedVideoIDKey, videoId, OBJC_ASSOCIATION_COPY_NONATOMIC);
+            objc_setAssociatedObject(cell, BlockedCellKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            cell.hidden = YES;
+            cell.alpha = 0.0;
+            cell.userInteractionEnabled = NO;
+            cell.accessibilityElementsHidden = YES;
+            DeleteFeedCell(cell, collectionView);
+            [collectionView setNeedsLayout];
+        }
+        RefreshCollectionViewForSourceView(sourceView);
+        RefreshVisibleFeeds();
+    };
+
+    if (NSThread.isMainThread)
+        remove();
+    else
+        dispatch_async(dispatch_get_main_queue(), remove);
 }
 
 %hook YTAsyncCollectionView
@@ -867,13 +665,11 @@ static void FilterVisibleCells(YTAsyncCollectionView *collectionView) {
 }
 
 - (void)layoutSubviews {
-    objc_setAssociatedObject(self, CollapsedLayoutKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     %orig;
     [self scheduleFiltering];
 }
 
 - (void)reloadData {
-    objc_setAssociatedObject(self, CollapsedLayoutKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     %orig;
     [self scheduleFiltering];
 }
@@ -981,9 +777,5 @@ static void FilterVisibleCells(YTAsyncCollectionView *collectionView) {
 %end
 
 %ctor {
-    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-    for (NSString *key in @[@"GonerinoDebugMetadata", @"GonerinoSheetDiagnostics", @"GonerinoRuntimeDiagnostics", @"GonerinoRuntimeDiagnostics2", @"GonerinoRuntimeDiagnostics3", @"GonerinoRuntimeDiagnostics4", @"GonerinoActionDiagnostics"])
-        [defaults removeObjectForKey:key];
-    [defaults synchronize];
     %init;
 }

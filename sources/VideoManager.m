@@ -1,5 +1,16 @@
 #import "VideoManager.h"
 
+static NSString *CleanChannelName(id value) {
+    if (![value isKindOfClass:[NSString class]])
+        return @"";
+
+    NSString *channel = [value stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    NSString *normalized = channel.lowercaseString;
+    if ([normalized isEqualToString:@"action menu"] || [normalized isEqualToString:@"more actions"])
+        return @"";
+    return channel;
+}
+
 @interface VideoManager ()
 @property(nonatomic, strong) NSMutableArray<NSDictionary *> *blockedVideoArray;
 @end
@@ -16,8 +27,33 @@
 - (instancetype)init {
     self = [super init];
     if (self) {
-        _blockedVideoArray = [[[NSUserDefaults standardUserDefaults] arrayForKey:@"GonerinoBlockedVideos"] mutableCopy]
-                                 ?: [NSMutableArray array];
+        NSArray *storedVideos = [[NSUserDefaults standardUserDefaults] arrayForKey:@"GonerinoBlockedVideos"];
+        NSMutableArray *cleanedVideos = [NSMutableArray array];
+        BOOL changed = ![storedVideos isKindOfClass:[NSArray class]];
+        for (id value in storedVideos) {
+            if (![value isKindOfClass:[NSDictionary class]]) {
+                changed = YES;
+                continue;
+            }
+
+            NSString *videoId = value[@"id"];
+            if (![videoId isKindOfClass:[NSString class]] || videoId.length == 0) {
+                changed = YES;
+                continue;
+            }
+
+            NSDictionary *video = @{
+                @"id": videoId,
+                @"title": [value[@"title"] isKindOfClass:[NSString class]] ? value[@"title"] : @"",
+                @"channel": CleanChannelName(value[@"channel"])
+            };
+            [cleanedVideos addObject:video];
+            if (![video isEqual:value])
+                changed = YES;
+        }
+        _blockedVideoArray = cleanedVideos;
+        if (changed)
+            [self saveBlockedVideos];
     }
     return self;
 }
@@ -30,7 +66,7 @@
     if (!videoId.length)
         return;
 
-    NSDictionary *videoInfo = @{@"id": videoId, @"title": title ?: @"", @"channel": channel ?: @""};
+    NSDictionary *videoInfo = @{@"id": videoId, @"title": title ?: @"", @"channel": CleanChannelName(channel)};
 
     NSInteger existingIndex =
         [self.blockedVideoArray indexOfObjectPassingTest:^BOOL(NSDictionary *obj, NSUInteger idx, BOOL *stop) {
@@ -80,7 +116,7 @@
         [validVideos addObject:@{
             @"id": videoId,
             @"title": [value[@"title"] isKindOfClass:[NSString class]] ? value[@"title"] : @"",
-            @"channel": [value[@"channel"] isKindOfClass:[NSString class]] ? value[@"channel"] : @""
+            @"channel": CleanChannelName(value[@"channel"])
         }];
     }
 

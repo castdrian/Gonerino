@@ -1,671 +1,62 @@
 #import "Settings.h"
 #import "Util.h"
-#import <UIKit/UIKit.h>
 
-static void Toast(UIViewController *viewController, NSString *message);
+#import "ChannelManager.h"
+#import "VideoManager.h"
+#import "WordManager.h"
+
+#import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
+#import <YouTubeHeader/YTSettingsPickerViewController.h>
+#import <YouTubeHeader/YTSettingsSectionItem.h>
+#import <YouTubeHeader/YTSettingsSectionItemManager.h>
+#import <YouTubeHeader/YTSettingsViewController.h>
+#import <YouTubeHeader/YTUIUtils.h>
+
+#define TWEAK_VERSION PACKAGE_VERSION
+
+#define SECTION_HEADER(s)                                                                                              \
+    [sectionItems addObject:[objc_getClass("YTSettingsSectionItem")                                                    \
+                                          itemWithTitle:@"\t"                                                          \
+                                       titleDescription:s                                                              \
+                                accessibilityIdentifier:nil                                                            \
+                                        detailTextBlock:nil                                                            \
+                                            selectBlock:^BOOL(YTSettingsCell *cell, NSUInteger sectionItemIndex) {     \
+                                                return NO;                                                             \
+                                            }]]
+
+static BOOL BooleanPreference(NSString *key, BOOL fallback) {
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    return [defaults objectForKey:key] == nil ? fallback : [defaults boolForKey:key];
+}
+
+static void SaveBooleanPreference(NSString *key, BOOL value) {
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    [defaults setBool:value forKey:key];
+    [defaults synchronize];
+}
 
 static YTSettingsViewController *SettingsViewControllerForManager(YTSettingsSectionItemManager *manager) {
-    if (!manager)
-        return nil;
-
-    @try {
-        id delegate = [manager valueForKey:@"_dataDelegate"];
-        if ([delegate isKindOfClass:%c(YTSettingsViewController)])
-            return delegate;
-        delegate = [manager valueForKey:@"_settingsViewControllerDelegate"];
-        if ([delegate isKindOfClass:%c(YTSettingsViewController)])
-            return delegate;
-    } @catch (__unused NSException *exception) {
-    }
-    return nil;
+    id delegate = [manager valueForKey:@"_settingsViewControllerDelegate"];
+    return [delegate isKindOfClass:%c(YTSettingsViewController)] ? delegate : nil;
 }
 
-static void Toast(UIViewController *viewController, NSString *message) {
-    [Util showToast:message fromView:viewController.view];
+static void ShowToastMessage(YTSettingsViewController *viewController, NSString *message) {
+    [[%c(YTToastResponderEvent) eventWithMessage:message firstResponder:viewController] send];
 }
-
-@interface ListEntry : NSObject
-@property(nonatomic, copy) NSString *title;
-@property(nonatomic, copy) NSString *subtitle;
-@property(nonatomic, copy) dispatch_block_t action;
-+ (instancetype)entryWithTitle:(NSString *)title subtitle:(NSString *)subtitle action:(dispatch_block_t)action;
-@end
-
-@implementation ListEntry
-
-+ (instancetype)entryWithTitle:(NSString *)title subtitle:(NSString *)subtitle action:(dispatch_block_t)action {
-    ListEntry *entry = [self new];
-    entry.title = title ?: @"";
-    entry.subtitle = subtitle;
-    entry.action = action;
-    return entry;
-}
-
-@end
-
-@interface ListViewController : UITableViewController <UISearchResultsUpdating>
-@property(nonatomic, copy) NSArray<ListEntry *> *(^entriesProvider)(void);
-@property(nonatomic, copy) NSString *searchPlaceholder;
-@property(nonatomic, copy) NSArray<ListEntry *> *entries;
-@property(nonatomic, copy) NSArray<ListEntry *> *filteredEntries;
-- (instancetype)initWithTitle:(NSString *)title
-             searchPlaceholder:(NSString *)searchPlaceholder
-              entriesProvider:(NSArray<ListEntry *> *(^)(void))entriesProvider;
-- (void)refreshEntries;
-@end
-
-@implementation ListViewController
-
-- (instancetype)initWithTitle:(NSString *)title
-             searchPlaceholder:(NSString *)searchPlaceholder
-              entriesProvider:(NSArray<ListEntry *> *(^)(void))entriesProvider {
-    self = [super initWithStyle:UITableViewStyleInsetGrouped];
-    if (self) {
-        self.title = title;
-        _searchPlaceholder = [searchPlaceholder copy];
-        _entriesProvider = [entriesProvider copy];
-        _entries = @[];
-        _filteredEntries = @[];
-    }
-    return self;
-}
-
-- (void)viewDidLoad {
-    [super viewDidLoad];
-    self.tableView.keyboardDismissMode = UIScrollViewKeyboardDismissModeOnDrag;
-    self.tableView.rowHeight = UITableViewAutomaticDimension;
-    self.tableView.estimatedRowHeight = 56.0;
-
-    UISearchController *searchController = [[UISearchController alloc] initWithSearchResultsController:nil];
-    searchController.searchResultsUpdater = self;
-    searchController.obscuresBackgroundDuringPresentation = NO;
-    searchController.searchBar.placeholder = self.searchPlaceholder;
-    self.navigationItem.searchController = searchController;
-    self.navigationItem.hidesSearchBarWhenScrolling = NO;
-    self.definesPresentationContext = YES;
-    [self refreshEntries];
-}
-
-- (void)viewWillAppear:(BOOL)animated {
-    [super viewWillAppear:animated];
-    [self refreshEntries];
-}
-
-- (void)refreshEntries {
-    self.entries = self.entriesProvider ? self.entriesProvider() : @[];
-    NSString *query = self.navigationItem.searchController.searchBar.text;
-    if (query.length == 0) {
-        self.filteredEntries = self.entries;
-    } else {
-        NSString *normalizedQuery = query.lowercaseString;
-        self.filteredEntries = [self.entries filteredArrayUsingPredicate:
-            [NSPredicate predicateWithBlock:^BOOL(ListEntry *entry, NSDictionary *bindings) {
-                return [entry.title.lowercaseString containsString:normalizedQuery] ||
-                       [entry.subtitle.lowercaseString containsString:normalizedQuery];
-            }]];
-    }
-    [self.tableView reloadData];
-}
-
-- (void)updateSearchResultsForSearchController:(UISearchController *)searchController {
-    [self refreshEntries];
-}
-
-- (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
-    return self.filteredEntries.count;
-}
-
-- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
-    static NSString *cellIdentifier = @"ListCell";
-    UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:cellIdentifier];
-    if (!cell)
-        cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:cellIdentifier];
-
-    ListEntry *entry = self.filteredEntries[indexPath.row];
-    cell.textLabel.text = entry.title;
-    cell.detailTextLabel.text = entry.subtitle;
-    cell.accessoryType = entry.action ? UITableViewCellAccessoryDisclosureIndicator : UITableViewCellAccessoryNone;
-    cell.selectionStyle = entry.action ? UITableViewCellSelectionStyleDefault : UITableViewCellSelectionStyleNone;
-    return cell;
-}
-
-- (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
-    ListEntry *entry = self.filteredEntries[indexPath.row];
-    [tableView deselectRowAtIndexPath:indexPath animated:YES];
-    if (entry.action)
-        entry.action();
-}
-
-@end
-
-@interface SettingsViewController : UITableViewController <UIDocumentPickerDelegate>
-@property(nonatomic, weak) YTSettingsSectionItemManager *settingsManager;
-@property(nonatomic, assign) BOOL importingSettings;
-@property(nonatomic, strong) NSURL *exportFileURL;
-- (instancetype)initWithSettingsManager:(YTSettingsSectionItemManager *)settingsManager;
-@end
-
-@implementation SettingsViewController
-
-- (instancetype)initWithSettingsManager:(YTSettingsSectionItemManager *)settingsManager {
-    self = [super initWithStyle:UITableViewStyleInsetGrouped];
-    if (self) {
-        self.title = @"Gonerino";
-        _settingsManager = settingsManager;
-    }
-    return self;
-}
-
-- (void)viewDidLoad {
-    [super viewDidLoad];
-    self.tableView.rowHeight = UITableViewAutomaticDimension;
-    self.tableView.estimatedRowHeight = 56.0;
-    self.navigationItem.largeTitleDisplayMode = UINavigationItemLargeTitleDisplayModeNever;
-}
-
-- (void)viewWillAppear:(BOOL)animated {
-    [super viewWillAppear:animated];
-    [self.tableView reloadData];
-}
-
-- (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
-    return 4;
-}
-
-- (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
-    switch (section) {
-        case 0:
-            return 4;
-        case 1:
-            return 3;
-        case 2:
-            return 2;
-        default:
-            return 3;
-    }
-}
-
-- (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
-    switch (section) {
-        case 0:
-            return @"Filtering";
-        case 1:
-            return @"Blocked Content";
-        case 2:
-            return @"Settings";
-        default:
-            return @"About";
-    }
-}
-
-- (NSString *)titleForRow:(NSIndexPath *)indexPath {
-    if (indexPath.section == 0)
-        return @[@"Enable Gonerino", @"Show Gonerino Button", @"Block 'People also watched'", @"Block 'You might also like'"][indexPath.row];
-    if (indexPath.section == 1)
-        return @[@"Channels", @"Videos", @"Words"][indexPath.row];
-    if (indexPath.section == 2)
-        return @[@"Export Settings", @"Import Settings"][indexPath.row];
-    return @[@"GitHub", @"Donate", @"Version"][indexPath.row];
-}
-
-- (NSString *)subtitleForRow:(NSIndexPath *)indexPath {
-    if (indexPath.section == 0) {
-        return @[@"Remove blocked content from YouTube feeds",
-                 @"Display the quick toggle in the top navigation bar",
-                 @"Remove this recommendation section",
-                 @"Remove this recommendation section"][indexPath.row];
-    }
-    if (indexPath.section == 1) {
-        if (indexPath.row == 0)
-            return [NSString stringWithFormat:@"%lu blocked channel%@", (unsigned long)[[ChannelManager sharedInstance] blockedChannels].count,
-                                              [[ChannelManager sharedInstance] blockedChannels].count == 1 ? @"" : @"s"];
-        if (indexPath.row == 1)
-            return [NSString stringWithFormat:@"%lu blocked video%@", (unsigned long)[[VideoManager sharedInstance] blockedVideos].count,
-                                              [[VideoManager sharedInstance] blockedVideos].count == 1 ? @"" : @"s"];
-        return [NSString stringWithFormat:@"%lu blocked word%@", (unsigned long)[[WordManager sharedInstance] blockedWords].count,
-                                          [[WordManager sharedInstance] blockedWords].count == 1 ? @"" : @"s"];
-    }
-    if (indexPath.section == 2)
-        return indexPath.row == 0 ? @"Save your block lists and preferences" : @"Restore your block lists and preferences";
-    if (indexPath.row == 0)
-        return @"View source code and report issues";
-    if (indexPath.row == 1)
-        return @"Support Gonerino development";
-    return [NSString stringWithFormat:@"v%@", TWEAK_VERSION];
-}
-
-- (BOOL)valueForSwitchRow:(NSInteger)row {
-    switch (row) {
-        case 0:
-            return [[NSUserDefaults standardUserDefaults] objectForKey:@"GonerinoEnabled"] == nil
-                       ? YES
-                       : [[NSUserDefaults standardUserDefaults] boolForKey:@"GonerinoEnabled"];
-        case 1:
-            return [[NSUserDefaults standardUserDefaults] objectForKey:@"GonerinoShowButton"] == nil
-                       ? YES
-                       : [[NSUserDefaults standardUserDefaults] boolForKey:@"GonerinoShowButton"];
-        case 2:
-            return [[NSUserDefaults standardUserDefaults] boolForKey:@"GonerinoPeopleWatched"];
-        default:
-            return [[NSUserDefaults standardUserDefaults] boolForKey:@"GonerinoMightLike"];
-    }
-}
-
-- (void)switchChanged:(UISwitch *)sender {
-    NSArray *keys = @[@"GonerinoEnabled", @"GonerinoShowButton", @"GonerinoPeopleWatched", @"GonerinoMightLike"];
-    [[NSUserDefaults standardUserDefaults] setBool:sender.isOn forKey:keys[sender.tag]];
-    [[NSUserDefaults standardUserDefaults] synchronize];
-    [Util refreshFeedViews];
-}
-
-- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
-    NSString *identifier = indexPath.section == 0 ? @"SwitchCell" : @"ActionCell";
-    UITableViewCellStyle style = indexPath.section == 0 ? UITableViewCellStyleDefault : UITableViewCellStyleSubtitle;
-    UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:identifier];
-    if (!cell)
-        cell = [[UITableViewCell alloc] initWithStyle:style reuseIdentifier:identifier];
-
-    cell.textLabel.text = [self titleForRow:indexPath];
-    cell.detailTextLabel.text = indexPath.section == 0 ? nil : [self subtitleForRow:indexPath];
-    if (indexPath.section == 0) {
-        UISwitch *control = [UISwitch new];
-        control.tag = indexPath.row;
-        control.on = [self valueForSwitchRow:indexPath.row];
-        [control addTarget:self action:@selector(switchChanged:) forControlEvents:UIControlEventValueChanged];
-        cell.accessoryView = control;
-        cell.selectionStyle = UITableViewCellSelectionStyleNone;
-    } else {
-        cell.accessoryView = nil;
-        cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
-        cell.selectionStyle = UITableViewCellSelectionStyleDefault;
-    }
-    return cell;
-}
-
-- (void)openChannels {
-    __weak __block ListViewController *weakList;
-    __weak typeof(self) weakSelf = self;
-    ListViewController *list = [[ListViewController alloc]
-           initWithTitle:@"Blocked Channels"
-        searchPlaceholder:@"Search channels"
-         entriesProvider:^NSArray<ListEntry *> *{
-             NSMutableArray *entries = [NSMutableArray array];
-             [entries addObject:[ListEntry entryWithTitle:@"Add Channel"
-                                                           subtitle:@"Block a new channel"
-                                                             action:^{
-                                                                 UIAlertController *alert =
-                                                                     [UIAlertController alertControllerWithTitle:@"Add Channel"
-                                                                                                          message:@"Enter the channel name to block"
-                                                                                                   preferredStyle:UIAlertControllerStyleAlert];
-                                                                 [alert addTextFieldWithConfigurationHandler:^(UITextField *textField) {
-                                                                     textField.placeholder = @"Channel Name";
-                                                                 }];
-                                                                 [alert addAction:[UIAlertAction actionWithTitle:@"Add"
-                                                                                                           style:UIAlertActionStyleDefault
-                                                                                                         handler:^(__unused UIAlertAction *action) {
-                                                                                                             NSString *channel = alert.textFields.firstObject.text;
-                                                                                                             if (channel.length == 0)
-                                                                                                                 return;
-                                                                                                             [[ChannelManager sharedInstance] addBlockedChannel:channel];
-                                                                                                             [weakList refreshEntries];
-                                                                                                             [weakSelf.settingsManager reloadSection];
-                                                                                                         }]];
-                                                                 [alert addAction:[UIAlertAction actionWithTitle:@"Cancel"
-                                                                                                           style:UIAlertActionStyleCancel
-                                                                                                         handler:nil]];
-                                                                 [weakSelf presentViewController:alert animated:YES completion:nil];
-                                                             }]];
-             for (NSString *channel in [[ChannelManager sharedInstance] blockedChannels]) {
-                 [entries addObject:[ListEntry entryWithTitle:channel
-                                                               subtitle:nil
-                                                                 action:^{
-                                                                     UIAlertController *alert =
-                                                                         [UIAlertController alertControllerWithTitle:@"Delete Channel"
-                                                                                                              message:[NSString stringWithFormat:@"Are you sure you want to delete '%@'?", channel]
-                                                                                                       preferredStyle:UIAlertControllerStyleAlert];
-                                                                     [alert addAction:[UIAlertAction actionWithTitle:@"Delete"
-                                                                                                               style:UIAlertActionStyleDestructive
-                                                                                                             handler:^(__unused UIAlertAction *action) {
-                                                                                                                 [[ChannelManager sharedInstance] removeBlockedChannel:channel];
-                                                                                                                 [weakList refreshEntries];
-                                                                                                                 [weakSelf.settingsManager reloadSection];
-                                                                                                             }]];
-                                                                     [alert addAction:[UIAlertAction actionWithTitle:@"Cancel"
-                                                                                                               style:UIAlertActionStyleCancel
-                                                                                                             handler:nil]];
-                                                                     [weakSelf presentViewController:alert animated:YES completion:nil];
-                                                                 }]];
-             }
-             return entries;
-         }];
-    weakList = list;
-    [self.navigationController pushViewController:list animated:YES];
-}
-
-- (void)openVideos {
-    __weak __block ListViewController *weakList;
-    __weak typeof(self) weakSelf = self;
-    ListViewController *list = [[ListViewController alloc]
-           initWithTitle:@"Blocked Videos"
-        searchPlaceholder:@"Search videos"
-         entriesProvider:^NSArray<ListEntry *> *{
-             NSMutableArray *entries = [NSMutableArray array];
-             NSArray *videos = [[VideoManager sharedInstance] blockedVideos];
-             if (videos.count == 0) {
-                 [entries addObject:[ListEntry entryWithTitle:@"No blocked videos" subtitle:nil action:nil]];
-                 return entries;
-             }
-             for (NSDictionary *video in videos) {
-                 NSString *videoId = video[@"id"];
-                 NSString *title = [(NSString *)video[@"title"] length] > 0 ? video[@"title"] : videoId;
-                 NSString *channel = [(NSString *)video[@"channel"] length] > 0 ? video[@"channel"] : @"Unknown Channel";
-                 [entries addObject:[ListEntry entryWithTitle:title
-                                                               subtitle:channel
-                                                                 action:^{
-                                                                     UIAlertController *alert =
-                                                                         [UIAlertController alertControllerWithTitle:@"Delete Video"
-                                                                                                              message:[NSString stringWithFormat:@"Are you sure you want to delete '%@'?", title]
-                                                                                                       preferredStyle:UIAlertControllerStyleAlert];
-                                                                     [alert addAction:[UIAlertAction actionWithTitle:@"Delete"
-                                                                                                               style:UIAlertActionStyleDestructive
-                                                                                                             handler:^(__unused UIAlertAction *action) {
-                                                                                                                 [[VideoManager sharedInstance] removeBlockedVideo:videoId];
-                                                                                                                 [weakList refreshEntries];
-                                                                                                                 [weakSelf.settingsManager reloadSection];
-                                                                                                             }]];
-                                                                     [alert addAction:[UIAlertAction actionWithTitle:@"Cancel"
-                                                                                                               style:UIAlertActionStyleCancel
-                                                                                                             handler:nil]];
-                                                                     [weakSelf presentViewController:alert animated:YES completion:nil];
-                                                                 }]];
-             }
-             return entries;
-         }];
-    weakList = list;
-    [self.navigationController pushViewController:list animated:YES];
-}
-
-- (void)openWords {
-    __weak __block ListViewController *weakList;
-    __weak typeof(self) weakSelf = self;
-    ListViewController *list = [[ListViewController alloc]
-           initWithTitle:@"Blocked Words"
-        searchPlaceholder:@"Search words"
-         entriesProvider:^NSArray<ListEntry *> *{
-             NSMutableArray *entries = [NSMutableArray array];
-             [entries addObject:[ListEntry entryWithTitle:@"Add Word"
-                                                           subtitle:@"Block a new word or phrase"
-                                                             action:^{
-                                                                 UIAlertController *alert =
-                                                                     [UIAlertController alertControllerWithTitle:@"Add Word"
-                                                                                                          message:@"Enter a word or phrase to block"
-                                                                                                   preferredStyle:UIAlertControllerStyleAlert];
-                                                                 [alert addTextFieldWithConfigurationHandler:^(UITextField *textField) {
-                                                                     textField.placeholder = @"Word or phrase";
-                                                                 }];
-                                                                 [alert addAction:[UIAlertAction actionWithTitle:@"Add"
-                                                                                                           style:UIAlertActionStyleDefault
-                                                                                                         handler:^(__unused UIAlertAction *action) {
-                                                                                                             NSString *word = alert.textFields.firstObject.text;
-                                                                                                             if (word.length == 0)
-                                                                                                                 return;
-                                                                                                             [[WordManager sharedInstance] addBlockedWord:word];
-                                                                                                             [weakList refreshEntries];
-                                                                                                             [weakSelf.settingsManager reloadSection];
-                                                                                                         }]];
-                                                                 [alert addAction:[UIAlertAction actionWithTitle:@"Cancel"
-                                                                                                           style:UIAlertActionStyleCancel
-                                                                                                         handler:nil]];
-                                                                 [weakSelf presentViewController:alert animated:YES completion:nil];
-                                                             }]];
-             for (NSString *word in [[WordManager sharedInstance] blockedWords]) {
-                 [entries addObject:[ListEntry entryWithTitle:word
-                                                               subtitle:nil
-                                                                 action:^{
-                                                                     UIAlertController *alert =
-                                                                         [UIAlertController alertControllerWithTitle:@"Delete Word"
-                                                                                                              message:[NSString stringWithFormat:@"Are you sure you want to delete '%@'?", word]
-                                                                                                       preferredStyle:UIAlertControllerStyleAlert];
-                                                                     [alert addAction:[UIAlertAction actionWithTitle:@"Delete"
-                                                                                                               style:UIAlertActionStyleDestructive
-                                                                                                             handler:^(__unused UIAlertAction *action) {
-                                                                                                                 [[WordManager sharedInstance] removeBlockedWord:word];
-                                                                                                                 [weakList refreshEntries];
-                                                                                                                 [weakSelf.settingsManager reloadSection];
-                                                                                                             }]];
-                                                                     [alert addAction:[UIAlertAction actionWithTitle:@"Cancel"
-                                                                                                               style:UIAlertActionStyleCancel
-                                                                                                             handler:nil]];
-                                                                     [weakSelf presentViewController:alert animated:YES completion:nil];
-                                                                 }]];
-             }
-             return entries;
-         }];
-    weakList = list;
-    [self.navigationController pushViewController:list animated:YES];
-}
-
-- (NSDictionary *)settingsDictionary {
-    return @{
-        @"blockedChannels": [[ChannelManager sharedInstance] blockedChannels],
-        @"blockedVideos": [[VideoManager sharedInstance] blockedVideos],
-        @"blockedWords": [[WordManager sharedInstance] blockedWords],
-        @"gonerinoEnabled": @([[NSUserDefaults standardUserDefaults] objectForKey:@"GonerinoEnabled"] == nil
-                                  ? YES
-                                  : [[NSUserDefaults standardUserDefaults] boolForKey:@"GonerinoEnabled"]),
-        @"showButton": @([[NSUserDefaults standardUserDefaults] objectForKey:@"GonerinoShowButton"] == nil
-                             ? YES
-                             : [[NSUserDefaults standardUserDefaults] boolForKey:@"GonerinoShowButton"]),
-        @"blockPeopleWatched": @([[NSUserDefaults standardUserDefaults] boolForKey:@"GonerinoPeopleWatched"]),
-        @"blockMightLike": @([[NSUserDefaults standardUserDefaults] boolForKey:@"GonerinoMightLike"])
-    };
-}
-
-- (void)exportSettings {
-    NSURL *fileURL = [NSURL fileURLWithPath:[NSTemporaryDirectory() stringByAppendingPathComponent:@"settings.plist"]];
-    if (![[self settingsDictionary] writeToURL:fileURL atomically:YES]) {
-        Toast(self, @"Could not create settings file");
-        return;
-    }
-
-    self.exportFileURL = fileURL;
-    self.importingSettings = NO;
-    UIActivityViewController *activityController = [[UIActivityViewController alloc] initWithActivityItems:@[fileURL]
-                                                                                       applicationActivities:nil];
-    __weak typeof(self) weakSelf = self;
-    activityController.completionWithItemsHandler = ^(__unused UIActivityType activityType,
-                                                       BOOL completed,
-                                                       __unused NSArray *returnedItems,
-                                                       NSError *error) {
-        dispatch_async(dispatch_get_main_queue(), ^{
-            __strong typeof(weakSelf) strongSelf = weakSelf;
-            if (!strongSelf)
-                return;
-            if (completed)
-                Toast(strongSelf, @"Settings exported successfully");
-            else if (error)
-                Toast(strongSelf, @"Settings export failed");
-            else
-                Toast(strongSelf, @"Export cancelled");
-            strongSelf.exportFileURL = nil;
-        });
-    };
-    if (activityController.popoverPresentationController) {
-        activityController.popoverPresentationController.sourceView = self.view;
-        activityController.popoverPresentationController.sourceRect = self.view.bounds;
-    }
-    [self presentViewController:activityController animated:YES completion:nil];
-}
-
-- (void)importSettings {
-    self.importingSettings = YES;
-    UIDocumentPickerViewController *picker = [[UIDocumentPickerViewController alloc]
-        initForOpeningContentTypes:@[[UTType typeWithIdentifier:@"com.apple.property-list"]]];
-    picker.delegate = self;
-    [self presentViewController:picker animated:YES completion:nil];
-}
-
-- (void)applyImportedSettings:(NSDictionary *)settings {
-    if ([settings[@"blockedChannels"] isKindOfClass:[NSArray class]])
-        [[ChannelManager sharedInstance] setBlockedChannels:settings[@"blockedChannels"]];
-    if ([settings[@"blockedWords"] isKindOfClass:[NSArray class]])
-        [[WordManager sharedInstance] setBlockedWords:settings[@"blockedWords"]];
-    if ([settings[@"blockedVideos"] isKindOfClass:[NSArray class]])
-        [[VideoManager sharedInstance] setBlockedVideos:settings[@"blockedVideos"]];
-
-    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-    NSDictionary *defaultKeys = @{
-        @"gonerinoEnabled": @"GonerinoEnabled",
-        @"showButton": @"GonerinoShowButton",
-        @"blockPeopleWatched": @"GonerinoPeopleWatched",
-        @"blockMightLike": @"GonerinoMightLike"
-    };
-    for (NSString *settingsKey in defaultKeys) {
-        if ([settings[settingsKey] isKindOfClass:[NSNumber class]])
-            [defaults setBool:[settings[settingsKey] boolValue] forKey:defaultKeys[settingsKey]];
-    }
-    [defaults synchronize];
-    [self.tableView reloadData];
-    [self.settingsManager reloadSection];
-    [Util refreshFeedViews];
-}
-
-- (void)documentPicker:(UIDocumentPickerViewController *)controller didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
-    if (!self.importingSettings)
-        return;
-
-    self.importingSettings = NO;
-    NSURL *url = urls.firstObject;
-    if (!url)
-        return;
-    [url startAccessingSecurityScopedResource];
-    NSData *data = [NSData dataWithContentsOfURL:url options:0 error:nil];
-    [url stopAccessingSecurityScopedResource];
-    NSDictionary *settings = data ? [NSPropertyListSerialization propertyListWithData:data
-                                                                                  options:NSPropertyListImmutable
-                                                                                   format:NULL
-                                                                                    error:nil]
-                                  : nil;
-    if (![settings isKindOfClass:[NSDictionary class]]) {
-        Toast(self, @"Invalid settings file format");
-        return;
-    }
-    [self applyImportedSettings:settings];
-    Toast(self, @"Settings imported successfully");
-}
-
-- (void)documentPickerWasCancelled:(UIDocumentPickerViewController *)controller {
-    BOOL wasImporting = self.importingSettings;
-    self.importingSettings = NO;
-    if (wasImporting)
-        Toast(self, @"Import cancelled");
-}
-
-- (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
-    [tableView deselectRowAtIndexPath:indexPath animated:YES];
-    if (indexPath.section == 1) {
-        if (indexPath.row == 0)
-            [self openChannels];
-        else if (indexPath.row == 1)
-            [self openVideos];
-        else
-            [self openWords];
-        return;
-    }
-    if (indexPath.section == 2) {
-        if (indexPath.row == 0)
-            [self exportSettings];
-        else
-            [self importSettings];
-        return;
-    }
-    if (indexPath.section == 3) {
-        NSArray *urls = @[
-            @"https://github.com/castdrian/Gonerino",
-            @"https://ko-fi.com/castdrian",
-            @"https://github.com/castdrian/Gonerino/releases"
-        ];
-        [[UIApplication sharedApplication] openURL:[NSURL URLWithString:urls[indexPath.row]] options:@{} completionHandler:nil];
-    }
-}
-
-@end
 
 %hook YTAppSettingsPresentationData
 
 + (NSArray *)settingsCategoryOrder {
     NSArray *order = %orig;
-    if ([order containsObject:@(Section)])
-        return order;
-
-    NSMutableArray *mutableOrder = [order mutableCopy];
-    NSUInteger insertIndex = [order indexOfObject:@(1)];
-    if (insertIndex == NSNotFound)
-        [mutableOrder addObject:@(Section)];
-    else
-        [mutableOrder insertObject:@(Section) atIndex:insertIndex + 1];
-    return mutableOrder;
-}
-
-%end
-
-static void OpenSettings(YTSettingsSectionItemManager *manager) {
-    YTSettingsViewController *settingsViewController = SettingsViewControllerForManager(manager);
-    UINavigationController *navigationController = settingsViewController.navigationController;
-    if (!settingsViewController || !navigationController)
-        return;
-    if ([navigationController.topViewController isKindOfClass:[SettingsViewController class]])
-        return;
-
-    SettingsViewController *viewController = [[SettingsViewController alloc] initWithSettingsManager:manager];
-    [navigationController pushViewController:viewController animated:YES];
-}
-
-%hook YTSettingsSectionItemManager
-
-%new
-- (void)updateSectionWithEntry:(id)entry {
-    YTSettingsViewController *settingsViewController = SettingsViewControllerForManager(self);
-    if (!settingsViewController)
-        return;
-    NSMutableArray *sectionItems = [NSMutableArray array];
-
-    if ([settingsViewController respondsToSelector:@selector(setSectionItems:forCategory:title:icon:titleDescription:headerHidden:)]) {
-        YTIIcon *icon = [%c(YTIIcon) new];
-        icon.iconType = YT_FILTER;
-        [settingsViewController setSectionItems:sectionItems
-                                    forCategory:Section
-                                          title:@"Gonerino"
-                                           icon:icon
-                               titleDescription:nil
-                                   headerHidden:NO];
-    } else {
-        [settingsViewController setSectionItems:sectionItems
-                                    forCategory:Section
-                                          title:@"Gonerino"
-                               titleDescription:nil
-                                   headerHidden:NO];
+    NSMutableArray *categories = [order mutableCopy];
+    if (![categories containsObject:@(SettingsCategory)]) {
+        NSUInteger insertIndex = [categories indexOfObject:@(1)];
+        if (insertIndex == NSNotFound)
+            [categories addObject:@(SettingsCategory)];
+        else
+            [categories insertObject:@(SettingsCategory) atIndex:insertIndex + 1];
     }
-}
-
-- (void)updateSectionForCategory:(NSUInteger)category withEntry:(id)entry {
-    if (category == Section) {
-        OpenSettings(self);
-        return;
-    }
-    %orig;
-}
-
-%new
-- (void)reloadSection {
-    dispatch_async(dispatch_get_main_queue(), ^{
-        YTSettingsViewController *settingsViewController = SettingsViewControllerForManager(self);
-        if (![settingsViewController isKindOfClass:%c(YTSettingsViewController)])
-            return;
-        [self updateSectionWithEntry:nil];
-        if ([settingsViewController respondsToSelector:@selector(reloadData)])
-            [settingsViewController reloadData];
-    });
+    return categories.copy;
 }
 
 %end
@@ -675,12 +66,13 @@ static void OpenSettings(YTSettingsSectionItemManager *manager) {
 + (NSArray *)orderedGroups {
     NSArray *groups = %orig;
     for (YTSettingsGroupData *group in groups) {
-        if (group.type == Group)
+        if (group.type == SettingsGroup)
             return groups;
     }
 
     NSMutableArray *mutableGroups = groups.mutableCopy ?: [NSMutableArray array];
-    [mutableGroups insertObject:[[%c(YTSettingsGroupData) alloc] initWithGroupType:Group] atIndex:0];
+    YTSettingsGroupData *settingsGroup = [[%c(YTSettingsGroupData) alloc] initWithGroupType:SettingsGroup];
+    [mutableGroups insertObject:settingsGroup atIndex:0];
     return mutableGroups.copy;
 }
 
@@ -689,30 +81,448 @@ static void OpenSettings(YTSettingsSectionItemManager *manager) {
 %hook YTSettingsGroupData
 
 - (NSString *)titleForSettingGroupType:(NSUInteger)type {
-    if (type == Group)
+    if (type == SettingsGroup)
         return @"Gonerino";
     return %orig;
 }
 
-- (NSArray *)orderedCategoriesForGroupType:(NSUInteger)type {
-    if (type == Group)
-        return @[@(Section)];
+- (NSArray<NSNumber *> *)orderedCategoriesForGroupType:(NSUInteger)type {
+    if (type == SettingsGroup)
+        return @[@(SettingsCategory)];
     return %orig;
 }
 
 %end
 
-%hook YTSettingsViewController
+%hook YTSettingsSectionItemManager
 
-- (void)loadWithModel:(id)model {
+%new
+- (void)settingsIntegrationUpdateSectionWithEntry:(id)entry {
+    YTSettingsViewController *settingsViewController = SettingsViewControllerForManager(self);
+    if (!settingsViewController)
+        return;
+
+    NSMutableArray *sectionItems = [NSMutableArray array];
+
+    SECTION_HEADER(@"Filtering");
+
+    [sectionItems addObject:[%c(YTSettingsSectionItem)
+            switchItemWithTitle:@"Enable Gonerino"
+               titleDescription:@"Remove blocked content from YouTube feeds"
+        accessibilityIdentifier:nil
+                       switchOn:BooleanPreference(@"GonerinoEnabled", YES)
+                    switchBlock:^BOOL(YTSettingsCell *cell, BOOL enabled) {
+                        SaveBooleanPreference(@"GonerinoEnabled", enabled);
+                        [Util refreshFeedViews];
+                        return YES;
+                    }
+                  settingItemId:0]];
+
+    [sectionItems addObject:[%c(YTSettingsSectionItem)
+            switchItemWithTitle:@"Show Gonerino Button"
+               titleDescription:@"Display the quick toggle in the top navigation bar"
+        accessibilityIdentifier:nil
+                       switchOn:BooleanPreference(@"GonerinoShowButton", YES)
+                    switchBlock:^BOOL(YTSettingsCell *cell, BOOL enabled) {
+                        SaveBooleanPreference(@"GonerinoShowButton", enabled);
+                        ShowToastMessage(settingsViewController, [NSString stringWithFormat:@"Gonerino button %@",
+                                                                            enabled ? @"shown" : @"hidden"]);
+                        return YES;
+                    }
+                  settingItemId:0]];
+
+    [sectionItems addObject:[%c(YTSettingsSectionItem)
+            switchItemWithTitle:@"Block 'People also watched this video'"
+               titleDescription:@"Remove 'People also watched' suggestions"
+        accessibilityIdentifier:nil
+                       switchOn:BooleanPreference(@"GonerinoPeopleWatched", NO)
+                    switchBlock:^BOOL(YTSettingsCell *cell, BOOL enabled) {
+                        SaveBooleanPreference(@"GonerinoPeopleWatched", enabled);
+                        [Util refreshFeedViews];
+                        return YES;
+                    }
+                  settingItemId:0]];
+
+    [sectionItems addObject:[%c(YTSettingsSectionItem)
+            switchItemWithTitle:@"Block 'You might also like this'"
+               titleDescription:@"Remove 'You might also like this' suggestions"
+        accessibilityIdentifier:nil
+                       switchOn:BooleanPreference(@"GonerinoMightLike", NO)
+                    switchBlock:^BOOL(YTSettingsCell *cell, BOOL enabled) {
+                        SaveBooleanPreference(@"GonerinoMightLike", enabled);
+                        [Util refreshFeedViews];
+                        return YES;
+                    }
+                  settingItemId:0]];
+
+    SECTION_HEADER(@"Blocked Content");
+
+    NSUInteger channelCount = [ChannelManager sharedInstance].blockedChannels.count;
+    [sectionItems addObject:[%c(YTSettingsSectionItem)
+                  itemWithTitle:@"Manage Channels"
+               titleDescription:[NSString stringWithFormat:@"%lu blocked channel%@", (unsigned long)channelCount,
+                                                           channelCount == 1 ? @"" : @"s"]
+        accessibilityIdentifier:nil
+                detailTextBlock:nil
+                    selectBlock:^BOOL(YTSettingsCell *cell, NSUInteger index) {
+                        YTSettingsViewController *viewController = SettingsViewControllerForManager(self);
+                        NSMutableArray *rows = [NSMutableArray array];
+                        [rows addObject:[%c(YTSettingsSectionItem)
+                                      itemWithTitle:@"Add Channel"
+                                   titleDescription:@"Block a new channel"
+                            accessibilityIdentifier:nil
+                                    detailTextBlock:nil
+                                        selectBlock:^BOOL(YTSettingsCell *cell, NSUInteger index) {
+                                            UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Add Channel"
+                                                                                                           message:@"Enter the channel name to block"
+                                                                                                    preferredStyle:UIAlertControllerStyleAlert];
+                                            [alert addTextFieldWithConfigurationHandler:^(UITextField *textField) {
+                                                textField.placeholder = @"Channel Name";
+                                            }];
+                                            [alert addAction:[UIAlertAction actionWithTitle:@"Add"
+                                                                                       style:UIAlertActionStyleDefault
+                                                                                     handler:^(UIAlertAction *action) {
+                                                NSString *channel = [alert.textFields.firstObject.text
+                                                    stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+                                                if (channel.length == 0)
+                                                    return;
+                                                [[ChannelManager sharedInstance] addBlockedChannel:channel];
+                                                [self settingsIntegrationReloadSection];
+                                                ShowToastMessage(viewController, [NSString stringWithFormat:@"Added %@", channel]);
+                                            }]];
+                                            [alert addAction:[UIAlertAction actionWithTitle:@"Cancel"
+                                                                                       style:UIAlertActionStyleCancel
+                                                                                     handler:nil]];
+                                            [viewController presentViewController:alert animated:YES completion:nil];
+                                            return YES;
+                                        }]];
+                        for (NSString *channel in [ChannelManager sharedInstance].blockedChannels) {
+                            [rows addObject:[%c(YTSettingsSectionItem)
+                                          itemWithTitle:channel
+                                       titleDescription:nil
+                                accessibilityIdentifier:nil
+                                        detailTextBlock:nil
+                                            selectBlock:^BOOL(YTSettingsCell *cell, NSUInteger index) {
+                                                UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Delete Channel"
+                                                                                                               message:[NSString stringWithFormat:@"Delete '%@'?", channel]
+                                                                                                        preferredStyle:UIAlertControllerStyleAlert];
+                                                [alert addAction:[UIAlertAction actionWithTitle:@"Delete"
+                                                                                           style:UIAlertActionStyleDestructive
+                                                                                         handler:^(UIAlertAction *action) {
+                                                    [[ChannelManager sharedInstance] removeBlockedChannel:channel];
+                                                    [self settingsIntegrationReloadSection];
+                                                    ShowToastMessage(viewController, [NSString stringWithFormat:@"Deleted %@", channel]);
+                                                }]];
+                                                [alert addAction:[UIAlertAction actionWithTitle:@"Cancel"
+                                                                                           style:UIAlertActionStyleCancel
+                                                                                         handler:nil]];
+                                                [viewController presentViewController:alert animated:YES completion:nil];
+                                                return YES;
+                                            }]];
+                        }
+                        YTSettingsPickerViewController *picker = [[%c(YTSettingsPickerViewController) alloc]
+                              initWithNavTitle:@"Manage Channels"
+                            pickerSectionTitle:nil
+                                          rows:rows
+                             selectedItemIndex:0
+                               parentResponder:[self parentResponder]];
+                        [viewController pushViewController:picker];
+                        return YES;
+                    }]];
+
+    NSUInteger videoCount = [VideoManager sharedInstance].blockedVideos.count;
+    [sectionItems addObject:[%c(YTSettingsSectionItem)
+                  itemWithTitle:@"Manage Videos"
+               titleDescription:[NSString stringWithFormat:@"%lu blocked video%@", (unsigned long)videoCount,
+                                                           videoCount == 1 ? @"" : @"s"]
+        accessibilityIdentifier:nil
+                detailTextBlock:nil
+                    selectBlock:^BOOL(YTSettingsCell *cell, NSUInteger index) {
+                        YTSettingsViewController *viewController = SettingsViewControllerForManager(self);
+                        NSMutableArray *rows = [NSMutableArray array];
+                        for (NSDictionary *video in [VideoManager sharedInstance].blockedVideos) {
+                            NSString *videoTitle = video[@"title"] ?: @"Untitled video";
+                            [rows addObject:[%c(YTSettingsSectionItem)
+                                          itemWithTitle:videoTitle
+                                       titleDescription:video[@"channel"]
+                                accessibilityIdentifier:nil
+                                        detailTextBlock:nil
+                                            selectBlock:^BOOL(YTSettingsCell *cell, NSUInteger index) {
+                                                UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Delete Video"
+                                                                                                               message:[NSString stringWithFormat:@"Delete '%@'?", videoTitle]
+                                                                                                        preferredStyle:UIAlertControllerStyleAlert];
+                                                [alert addAction:[UIAlertAction actionWithTitle:@"Delete"
+                                                                                           style:UIAlertActionStyleDestructive
+                                                                                         handler:^(UIAlertAction *action) {
+                                                    [[VideoManager sharedInstance] removeBlockedVideo:video[@"id"]];
+                                                    [self settingsIntegrationReloadSection];
+                                                    ShowToastMessage(viewController, [NSString stringWithFormat:@"Deleted %@", videoTitle]);
+                                                }]];
+                                                [alert addAction:[UIAlertAction actionWithTitle:@"Cancel"
+                                                                                           style:UIAlertActionStyleCancel
+                                                                                         handler:nil]];
+                                                [viewController presentViewController:alert animated:YES completion:nil];
+                                                return YES;
+                                            }]];
+                        }
+                        YTSettingsPickerViewController *picker = [[%c(YTSettingsPickerViewController) alloc]
+                              initWithNavTitle:@"Manage Videos"
+                            pickerSectionTitle:nil
+                                          rows:rows
+                             selectedItemIndex:0
+                               parentResponder:[self parentResponder]];
+                        [viewController pushViewController:picker];
+                        return YES;
+                    }]];
+
+    NSUInteger wordCount = [WordManager sharedInstance].blockedWords.count;
+    [sectionItems addObject:[%c(YTSettingsSectionItem)
+                  itemWithTitle:@"Manage Words"
+               titleDescription:[NSString stringWithFormat:@"%lu blocked word%@", (unsigned long)wordCount,
+                                                           wordCount == 1 ? @"" : @"s"]
+        accessibilityIdentifier:nil
+                detailTextBlock:nil
+                    selectBlock:^BOOL(YTSettingsCell *cell, NSUInteger index) {
+                        YTSettingsViewController *viewController = SettingsViewControllerForManager(self);
+                        NSMutableArray *rows = [NSMutableArray array];
+                        [rows addObject:[%c(YTSettingsSectionItem)
+                                      itemWithTitle:@"Add Word"
+                                   titleDescription:@"Block a new word or phrase"
+                            accessibilityIdentifier:nil
+                                    detailTextBlock:nil
+                                        selectBlock:^BOOL(YTSettingsCell *cell, NSUInteger index) {
+                                            UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Add Word"
+                                                                                                           message:@"Enter a word or phrase to block"
+                                                                                                    preferredStyle:UIAlertControllerStyleAlert];
+                                            [alert addTextFieldWithConfigurationHandler:^(UITextField *textField) {
+                                                textField.placeholder = @"Word or phrase";
+                                            }];
+                                            [alert addAction:[UIAlertAction actionWithTitle:@"Add"
+                                                                                       style:UIAlertActionStyleDefault
+                                                                                     handler:^(UIAlertAction *action) {
+                                                NSString *word = [alert.textFields.firstObject.text
+                                                    stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+                                                if (word.length == 0)
+                                                    return;
+                                                [[WordManager sharedInstance] addBlockedWord:word];
+                                                [self settingsIntegrationReloadSection];
+                                                ShowToastMessage(viewController, [NSString stringWithFormat:@"Added %@", word]);
+                                            }]];
+                                            [alert addAction:[UIAlertAction actionWithTitle:@"Cancel"
+                                                                                       style:UIAlertActionStyleCancel
+                                                                                     handler:nil]];
+                                            [viewController presentViewController:alert animated:YES completion:nil];
+                                            return YES;
+                                        }]];
+                        for (NSString *word in [WordManager sharedInstance].blockedWords) {
+                            [rows addObject:[%c(YTSettingsSectionItem)
+                                          itemWithTitle:word
+                                       titleDescription:nil
+                                accessibilityIdentifier:nil
+                                        detailTextBlock:nil
+                                            selectBlock:^BOOL(YTSettingsCell *cell, NSUInteger index) {
+                                                UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Delete Word"
+                                                                                                               message:[NSString stringWithFormat:@"Delete '%@'?", word]
+                                                                                                        preferredStyle:UIAlertControllerStyleAlert];
+                                                [alert addAction:[UIAlertAction actionWithTitle:@"Delete"
+                                                                                           style:UIAlertActionStyleDestructive
+                                                                                         handler:^(UIAlertAction *action) {
+                                                    [[WordManager sharedInstance] removeBlockedWord:word];
+                                                    [self settingsIntegrationReloadSection];
+                                                    ShowToastMessage(viewController, [NSString stringWithFormat:@"Deleted %@", word]);
+                                                }]];
+                                                [alert addAction:[UIAlertAction actionWithTitle:@"Cancel"
+                                                                                           style:UIAlertActionStyleCancel
+                                                                                         handler:nil]];
+                                                [viewController presentViewController:alert animated:YES completion:nil];
+                                                return YES;
+                                            }]];
+                        }
+                        YTSettingsPickerViewController *picker = [[%c(YTSettingsPickerViewController) alloc]
+                              initWithNavTitle:@"Manage Words"
+                            pickerSectionTitle:nil
+                                          rows:rows
+                             selectedItemIndex:0
+                               parentResponder:[self parentResponder]];
+                        [viewController pushViewController:picker];
+                        return YES;
+                    }]];
+
+    SECTION_HEADER(@"Manage Settings");
+
+    [sectionItems addObject:[%c(YTSettingsSectionItem)
+                  itemWithTitle:@"Export Settings"
+               titleDescription:@"Export your block lists and preferences"
+        accessibilityIdentifier:nil
+                detailTextBlock:nil
+                    selectBlock:^BOOL(YTSettingsCell *cell, NSUInteger index) {
+                        NSDictionary *settings = @{
+                            @"blockedChannels": [ChannelManager sharedInstance].blockedChannels,
+                            @"blockedVideos": [VideoManager sharedInstance].blockedVideos,
+                            @"blockedWords": [WordManager sharedInstance].blockedWords,
+                            @"gonerinoEnabled": @(BooleanPreference(@"GonerinoEnabled", YES)),
+                            @"showButton": @(BooleanPreference(@"GonerinoShowButton", YES)),
+                            @"blockPeopleWatched": @([NSUserDefaults.standardUserDefaults boolForKey:@"GonerinoPeopleWatched"]),
+                            @"blockMightLike": @([NSUserDefaults.standardUserDefaults boolForKey:@"GonerinoMightLike"])
+                        };
+                        NSURL *url = [NSURL fileURLWithPath:[NSTemporaryDirectory() stringByAppendingPathComponent:@"gonerino_settings.plist"]];
+                        if (![settings writeToURL:url atomically:YES]) {
+                            ShowToastMessage(settingsViewController, @"Failed to prepare settings export");
+                            return NO;
+                        }
+                        isImportOperation = NO;
+                        UIDocumentPickerViewController *picker = [[UIDocumentPickerViewController alloc] initForExportingURLs:@[url]];
+                        picker.delegate = (id<UIDocumentPickerDelegate>)self;
+                        [settingsViewController presentViewController:picker animated:YES completion:nil];
+                        return YES;
+                    }]];
+
+    [sectionItems addObject:[%c(YTSettingsSectionItem)
+                  itemWithTitle:@"Import Settings"
+               titleDescription:@"Restore your block lists and preferences"
+        accessibilityIdentifier:nil
+                detailTextBlock:nil
+                    selectBlock:^BOOL(YTSettingsCell *cell, NSUInteger index) {
+                        isImportOperation = YES;
+                        UIDocumentPickerViewController *picker = [[UIDocumentPickerViewController alloc]
+                            initForOpeningContentTypes:@[[UTType typeWithIdentifier:@"com.apple.property-list"]]];
+                        picker.delegate = (id<UIDocumentPickerDelegate>)self;
+                        [settingsViewController presentViewController:picker animated:YES completion:nil];
+                        return YES;
+                    }]];
+
+    SECTION_HEADER(@"About");
+
+    [sectionItems addObject:[%c(YTSettingsSectionItem)
+                  itemWithTitle:@"GitHub"
+               titleDescription:@"View source code and report issues"
+        accessibilityIdentifier:nil
+                detailTextBlock:nil
+                    selectBlock:^BOOL(YTSettingsCell *cell, NSUInteger index) {
+                        return [%c(YTUIUtils) openURL:[NSURL URLWithString:@"https://github.com/castdrian/Gonerino"]];
+                    }]];
+
+    [sectionItems addObject:[%c(YTSettingsSectionItem)
+                  itemWithTitle:@"Donate"
+               titleDescription:@"Support Gonerino development"
+        accessibilityIdentifier:nil
+                detailTextBlock:nil
+                    selectBlock:^BOOL(YTSettingsCell *cell, NSUInteger index) {
+                        return [%c(YTUIUtils) openURL:[NSURL URLWithString:@"https://ko-fi.com/castdrian"]];
+                    }]];
+
+    [sectionItems addObject:[%c(YTSettingsSectionItem)
+                  itemWithTitle:@"Version"
+               titleDescription:nil
+        accessibilityIdentifier:nil
+                detailTextBlock:^NSString * { return [NSString stringWithFormat:@"v%@", TWEAK_VERSION]; }
+                    selectBlock:^BOOL(YTSettingsCell *cell, NSUInteger index) {
+                        return [%c(YTUIUtils) openURL:[NSURL URLWithString:@"https://github.com/castdrian/Gonerino/releases"]];
+                    }]];
+
+    YTIIcon *icon = [%c(YTIIcon) new];
+    icon.iconType = YT_FILTER;
+    [settingsViewController setSectionItems:sectionItems
+                                forCategory:SettingsCategory
+                                      title:@"Gonerino"
+                                       icon:icon
+                           titleDescription:nil
+                               headerHidden:NO];
+}
+
+- (void)updateSectionForCategory:(NSUInteger)category withEntry:(id)entry {
+    if (category == SettingsCategory) {
+        [self settingsIntegrationUpdateSectionWithEntry:entry];
+        return;
+    }
     %orig;
-    YTSettingsSectionItemManager *manager = [self valueForKey:@"_sectionItemManager"];
-    if ([manager respondsToSelector:@selector(updateSectionWithEntry:)])
-        [manager updateSectionWithEntry:nil];
+}
+
+%new
+- (void)settingsIntegrationReloadSection {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        YTSettingsViewController *settingsViewController = SettingsViewControllerForManager(self);
+        if (!settingsViewController)
+            return;
+        [self settingsIntegrationUpdateSectionWithEntry:nil];
+        if ([settingsViewController respondsToSelector:@selector(reloadData)])
+            [settingsViewController reloadData];
+    });
+}
+
+%new
+- (void)documentPicker:(UIDocumentPickerViewController *)controller didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
+    if (urls.count == 0)
+        return;
+
+    BOOL importing = isImportOperation;
+    isImportOperation = NO;
+    YTSettingsViewController *settingsViewController = SettingsViewControllerForManager(self);
+    NSURL *url = urls.firstObject;
+
+    if (!importing) {
+        NSMutableDictionary *settings = [NSMutableDictionary dictionary];
+        settings[@"blockedChannels"] = [ChannelManager sharedInstance].blockedChannels;
+        settings[@"blockedVideos"] = [VideoManager sharedInstance].blockedVideos;
+        settings[@"blockedWords"] = [WordManager sharedInstance].blockedWords;
+        settings[@"gonerinoEnabled"] = @(BooleanPreference(@"GonerinoEnabled", YES));
+        settings[@"showButton"] = @(BooleanPreference(@"GonerinoShowButton", YES));
+        settings[@"blockPeopleWatched"] = @([NSUserDefaults.standardUserDefaults boolForKey:@"GonerinoPeopleWatched"]);
+        settings[@"blockMightLike"] = @([NSUserDefaults.standardUserDefaults boolForKey:@"GonerinoMightLike"]);
+        if ([settings writeToURL:url atomically:YES])
+            ShowToastMessage(settingsViewController, @"Settings exported successfully");
+        else
+            ShowToastMessage(settingsViewController, @"Failed to export settings");
+        return;
+    }
+
+    [url startAccessingSecurityScopedResource];
+    NSData *data = [NSData dataWithContentsOfURL:url];
+    [url stopAccessingSecurityScopedResource];
+    NSError *error = nil;
+    NSDictionary *settings = data ? [NSPropertyListSerialization propertyListWithData:data
+                                                                                options:NSPropertyListImmutable
+                                                                                 format:nil
+                                                                                   error:&error]
+                                   : nil;
+    if (![settings isKindOfClass:[NSDictionary class]]) {
+        ShowToastMessage(settingsViewController, @"Invalid settings file");
+        return;
+    }
+
+    NSArray *channels = settings[@"blockedChannels"];
+    if ([channels isKindOfClass:[NSArray class]])
+        [[ChannelManager sharedInstance] setBlockedChannels:channels];
+    NSArray *videos = settings[@"blockedVideos"];
+    if ([videos isKindOfClass:[NSArray class]])
+        [[VideoManager sharedInstance] setBlockedVideos:videos];
+    NSArray *words = settings[@"blockedWords"];
+    if ([words isKindOfClass:[NSArray class]])
+        [[WordManager sharedInstance] setBlockedWords:words];
+
+    NSNumber *enabled = settings[@"gonerinoEnabled"];
+    if ([enabled isKindOfClass:[NSNumber class]])
+        SaveBooleanPreference(@"GonerinoEnabled", enabled.boolValue);
+    NSNumber *showButton = settings[@"showButton"];
+    if ([showButton isKindOfClass:[NSNumber class]])
+        SaveBooleanPreference(@"GonerinoShowButton", showButton.boolValue);
+    NSNumber *peopleWatched = settings[@"blockPeopleWatched"];
+    if ([peopleWatched isKindOfClass:[NSNumber class]])
+        SaveBooleanPreference(@"GonerinoPeopleWatched", peopleWatched.boolValue);
+    NSNumber *mightLike = settings[@"blockMightLike"];
+    if ([mightLike isKindOfClass:[NSNumber class]])
+        SaveBooleanPreference(@"GonerinoMightLike", mightLike.boolValue);
+
+    [self settingsIntegrationReloadSection];
+    [Util refreshFeedViews];
+    ShowToastMessage(settingsViewController, @"Settings imported successfully");
+}
+
+%new
+- (void)documentPickerWasCancelled:(UIDocumentPickerViewController *)controller {
+    YTSettingsViewController *settingsViewController = SettingsViewControllerForManager(self);
+    ShowToastMessage(settingsViewController, isImportOperation ? @"Import cancelled" : @"Export cancelled");
+    isImportOperation = NO;
 }
 
 %end
-
-%ctor {
-    %init;
-}
