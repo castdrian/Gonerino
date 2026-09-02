@@ -1,5 +1,8 @@
 #import "Tweak.h"
+#import "Localization.h"
 #import <objc/runtime.h>
+
+static id ValueForObjectKey(id object, NSString *key);
 
 static id ValueForObjectKey(id object, NSString *key) {
     if (!object || key.length == 0)
@@ -87,7 +90,7 @@ static id VideoNodeFromView(UIView *view, NSUInteger depth) {
 }
 
 static id ActionMetadataNodeFromObject(id object, NSUInteger depth) {
-    if (!object || depth > 5)
+    if (!object || depth > 8)
         return nil;
 
     if (NodeLooksLikeActionVideo(object))
@@ -104,7 +107,11 @@ static id ActionMetadataNodeFromObject(id object, NSUInteger depth) {
 
     for (NSString *key in @[
         @"cellNode", @"parentResponder", @"parentNode", @"owningNode", @"supernode", @"superNode",
-        @"containerNode", @"node", @"_node", @"element", @"nodeModel", @"materializedInstance"
+        @"containerNode", @"node", @"_node", @"element", @"nodeModel", @"materializedInstance",
+        @"elementEntry", @"controller", @"viewController", @"closestViewController", @"context",
+        @"instance", @"properties", @"allProperties", @"model", @"data", @"item", @"entry",
+        @"renderer", @"videoRenderer", @"compactVideoRenderer", @"richItemRenderer", @"reelItemRenderer",
+        @"player", @"activeVideo", @"currentPlayer", @"videoPlayer", @"navigationEndpoint", @"watchEndpoint"
     ]) {
         id candidate = ValueForObjectKey(object, key);
         if (!candidate || candidate == object)
@@ -171,7 +178,8 @@ static id VideoNodeForSheet(id sheet) {
     for (NSString *key in @[
         @"sourceNode", @"_sourceNode", @"videoNode", @"_videoNode", @"playerNode", @"_playerNode",
         @"node", @"_node", @"playerViewController", @"shortsPlayerViewController", @"currentVideo",
-        @"videoController", @"watchController", @"parentResponder"
+        @"videoController", @"watchController", @"parentResponder", @"cellNode", @"elementEntry",
+        @"controller", @"viewController", @"model", @"data", @"item", @"entry", @"renderer"
     ]) {
         id node = ActionSheetNodeCandidate(ValueForObjectKey(sheet, key));
         if (node)
@@ -179,6 +187,62 @@ static id VideoNodeForSheet(id sheet) {
     }
 
     return nil;
+}
+
+static void AppendActionCandidate(NSMutableArray *candidates, NSMutableSet *visited, id candidate) {
+    if (!candidate || candidate == [NSNull null] || candidates.count >= 24)
+        return;
+
+    NSValue *identity = [NSValue valueWithNonretainedObject:candidate];
+    if ([visited containsObject:identity])
+        return;
+    [visited addObject:identity];
+    [candidates addObject:candidate];
+}
+
+static UICollectionViewCell *FeedCellForSourceView(UIView *sourceView);
+
+static NSArray *ActionVideoCandidates(id sheet,
+                                      id presentationNode,
+                                      id presentationSourceNode,
+                                      UIView *sourceView) {
+    NSMutableArray *candidates = [NSMutableArray array];
+    NSMutableSet *visited = [NSMutableSet set];
+    AppendActionCandidate(candidates, visited, presentationNode);
+    AppendActionCandidate(candidates, visited, presentationSourceNode);
+
+    id presentationMetadataNode = ActionMetadataNodeFromObject(presentationNode, 0);
+    AppendActionCandidate(candidates, visited, presentationMetadataNode);
+    id sourceMetadataNode = ActionMetadataNodeFromObject(presentationSourceNode, 0);
+    AppendActionCandidate(candidates, visited, sourceMetadataNode);
+
+    UIView *view = sourceView;
+    NSUInteger depth = 0;
+    while (view && depth++ < 8 && candidates.count < 24) {
+        id node = ValueForObjectKey(view, @"asyncdisplaykit_node");
+        AppendActionCandidate(candidates, visited, node);
+        view = view.superview;
+    }
+
+    UICollectionViewCell *sourceCell = FeedCellForSourceView(sourceView);
+    if (sourceCell) {
+        id cellNode = ValueForObjectKey(sourceCell, @"node");
+        AppendActionCandidate(candidates, visited, ActionSheetNodeCandidate(cellNode) ?: cellNode);
+        id cellAsyncNode = ValueForObjectKey(sourceCell, @"asyncdisplaykit_node");
+        AppendActionCandidate(candidates, visited, ActionSheetNodeCandidate(cellAsyncNode) ?: cellAsyncNode);
+        id cellVideoNode = VideoNodeFromView(sourceCell, 0);
+        AppendActionCandidate(candidates, visited, cellVideoNode);
+    }
+
+    for (NSString *key in @[
+        @"sourceNode", @"_sourceNode", @"videoNode", @"_videoNode", @"playerNode", @"_playerNode",
+        @"currentVideo", @"playerViewController", @"shortsPlayerViewController", @"currentPlayer"
+    ]) {
+        id candidate = ValueForObjectKey(sheet, key);
+        id node = ActionSheetNodeCandidate(candidate);
+        AppendActionCandidate(candidates, visited, node ?: candidate);
+    }
+    return candidates;
 }
 
 static UIViewController *ViewControllerForObject(id object) {
@@ -218,47 +282,46 @@ static YTAsyncCollectionView *AsyncCollectionViewInView(UIView *view, NSUInteger
     return nil;
 }
 
-static NSDictionary *MergedVideoInfo(NSDictionary *current, NSDictionary *fallback) {
-    NSMutableDictionary *result = [fallback mutableCopy] ?: [NSMutableDictionary dictionary];
-    [current enumerateKeysAndObjectsUsingBlock:^(NSString *key, NSString *value, __unused BOOL *stop) {
-        if ([value isKindOfClass:[NSString class]] && value.length > 0)
+static void MergeAvailableVideoInfo(NSMutableDictionary *result, NSDictionary *candidate) {
+    for (NSString *key in @[@"id", @"title", @"channel"]) {
+        NSString *value = candidate[key];
+        if ([value isKindOfClass:[NSString class]] && value.length > 0 && [result[key] length] == 0)
             result[key] = value;
-    }];
-    return [result copy];
+    }
 }
 
-static NSDictionary *ActionVideoInfo(id presentationNode, id presentationSourceNode, UIView *sourceView) {
+static NSDictionary *ActionVideoInfo(id sheet,
+                                     id presentationNode,
+                                     id presentationSourceNode,
+                                     UIView *sourceView,
+                                     BOOL requiresChannel) {
     @try {
-        NSDictionary *presentationInfo = [Util freshVideoInfoFromNode:presentationNode];
-        NSDictionary *info = MergedVideoInfo(presentationInfo, nil);
-        NSDictionary *sourceInfo = nil;
-        if (presentationSourceNode && presentationSourceNode != presentationNode) {
-            sourceInfo = [Util freshVideoInfoFromNode:presentationSourceNode];
-            info = MergedVideoInfo(sourceInfo, info);
-
-            id sourceMetadataNode = ActionMetadataNodeFromObject(presentationSourceNode, 0);
-            if (sourceMetadataNode && sourceMetadataNode != presentationNode && sourceMetadataNode != presentationSourceNode) {
-                NSDictionary *sourceMetadataInfo = [Util freshVideoInfoFromNode:sourceMetadataNode];
-                sourceInfo = MergedVideoInfo(sourceMetadataInfo, sourceInfo);
-                info = MergedVideoInfo(sourceMetadataInfo, info);
-            }
+        NSMutableDictionary *info = [NSMutableDictionary dictionary];
+        UICollectionViewCell *sourceCell = FeedCellForSourceView(sourceView);
+        for (id candidate in ActionVideoCandidates(sheet, presentationNode, presentationSourceNode, sourceView)) {
+            NSDictionary *candidateInfo = [Util freshVideoInfoFromNode:candidate
+                                                              sourceView:sourceCell ?: sourceView];
+            if (![candidateInfo isKindOfClass:[NSDictionary class]])
+                continue;
+            MergeAvailableVideoInfo(info, candidateInfo);
+            if (requiresChannel ? [info[@"channel"] length] > 0 : [info[@"id"] length] > 0)
+                break;
         }
-
-        id fallbackNode = VideoNodeFromView(sourceView, 0);
-        NSDictionary *fallbackInfo = nil;
-        if (fallbackNode && fallbackNode != presentationNode && fallbackNode != presentationSourceNode) {
-            fallbackInfo = [Util freshVideoInfoFromNode:fallbackNode];
-            info = MergedVideoInfo(fallbackInfo, info);
-        }
-        return info;
+        return [info copy];
     } @catch (__unused NSException *exception) {
         return @{};
     }
 }
 
-static void RemoveBlockedFeedItem(UIView *sourceView, NSString *videoId);
+static void RemoveBlockedFeedItem(UIView *sourceView,
+                                  UICollectionViewCell *knownCell,
+                                  YTAsyncCollectionView *knownCollectionView,
+                                  NSString *videoId);
+static UICollectionViewCell *FeedCellForMetadataObject(id object);
+static YTAsyncCollectionView *CollectionViewForFeedCell(UICollectionViewCell *cell);
 
-static void ResolveActionVideoInfo(id presentationNode,
+static void ResolveActionVideoInfo(id sheet,
+                                   id presentationNode,
                                    id presentationSourceNode,
                                    UIView *sourceView,
                                    BOOL requiresChannel,
@@ -267,15 +330,21 @@ static void ResolveActionVideoInfo(id presentationNode,
     if (!completion)
         return;
 
-    NSDictionary *info = ActionVideoInfo(presentationNode, presentationSourceNode, sourceView);
+    UIView *currentSourceView = sourceView ?: ActionSheetSourceView(sheet);
+    NSDictionary *info = ActionVideoInfo(sheet,
+                                         presentationNode,
+                                         presentationSourceNode,
+                                         currentSourceView,
+                                         requiresChannel);
     BOOL resolved = requiresChannel ? [info[@"channel"] length] > 0 : [info[@"id"] length] > 0;
-    if (resolved || attempt >= 2) {
+    if (resolved || attempt >= 7) {
         completion(info);
         return;
     }
 
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.12 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        ResolveActionVideoInfo(presentationNode,
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.10 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        ResolveActionVideoInfo(sheet,
+                               presentationNode,
                                presentationSourceNode,
                                sourceView,
                                requiresChannel,
@@ -304,15 +373,28 @@ static void AddBlockingActions(id sheet, YTActionSheetAction *originalAction) {
         __weak id weakSheet = sheet;
         id presentationNode = node;
         id presentationSourceNode = sourceNode;
+        UICollectionViewCell *sourceCell = FeedCellForSourceView(sourceView);
+        if (!sourceCell)
+            sourceCell = FeedCellForMetadataObject(node);
+        UIView *feedSourceView = sourceView;
+        if (!sourceCell) {
+            id nodeView = ValueForObjectKey(node, @"view");
+            if ([nodeView isKindOfClass:[UIView class]]) {
+                sourceCell = FeedCellForSourceView(nodeView);
+                if (sourceCell)
+                    feedSourceView = nodeView;
+            }
+        }
+        YTAsyncCollectionView *sourceCollectionView = CollectionViewForFeedCell(sourceCell);
         CGSize iconSize = CGSizeMake(24.0, 24.0);
 
         YTActionSheetAction *blockChannelAction = [%c(YTActionSheetAction)
-            actionWithTitle:@"Block channel"
+            actionWithTitle:LocalizedString(@"Block channel")
                   iconImage:[Util createBlockChannelIconWithSize:iconSize]
-             secondaryIconImage:nil
-         accessibilityIdentifier:nil
-                  handler:^{
-                      ResolveActionVideoInfo(presentationNode,
+                          style:0
+                         handler:^(__unused YTActionSheetAction *selectedAction) {
+                      ResolveActionVideoInfo(weakSheet,
+                                             presentationNode,
                                              presentationSourceNode,
                                              sourceView,
                                              YES,
@@ -321,32 +403,30 @@ static void AddBlockingActions(id sheet, YTActionSheetAction *originalAction) {
                                                  @try {
                                                      NSString *channel = info[@"channel"];
                                                      if (channel.length == 0) {
-                                                         SendToast(weakSheet, @"Could not read the channel for this video");
+                                                         SendToast(weakSheet, LocalizedString(@"Could not read the channel for this video"));
                                                          return;
                                                      }
 
                                                      [[ChannelManager sharedInstance] addBlockedChannel:channel];
                                                      if (![[ChannelManager sharedInstance] isChannelBlocked:channel]) {
-                                                         SendToast(weakSheet, @"Could not read a valid channel for this video");
+                                                         SendToast(weakSheet, LocalizedString(@"Could not read a valid channel for this video"));
                                                          return;
                                                      }
-                                                     SendToast(weakSheet, [NSString stringWithFormat:@"Blocked %@", channel]);
-                                                     RemoveBlockedFeedItem(sourceView, info[@"id"]);
-                                                     if ([weakSheet respondsToSelector:@selector(dismiss)])
-                                                         [weakSheet dismiss];
+                                                     SendToast(weakSheet, [NSString stringWithFormat:LocalizedString(@"Blocked %@"), channel]);
+                                                     RemoveBlockedFeedItem(feedSourceView, sourceCell, sourceCollectionView, info[@"id"]);
                                                  } @catch (__unused NSException *exception) {
-                                                     SendToast(weakSheet, @"Could not block this channel");
+                                                     SendToast(weakSheet, LocalizedString(@"Could not block this channel"));
                                                  }
                                              });
                   }];
 
         YTActionSheetAction *blockVideoAction = [%c(YTActionSheetAction)
-            actionWithTitle:@"Block video"
+            actionWithTitle:LocalizedString(@"Block video")
                   iconImage:[Util createBlockVideoIconWithSize:iconSize]
-             secondaryIconImage:nil
-         accessibilityIdentifier:nil
-                  handler:^{
-                      ResolveActionVideoInfo(presentationNode,
+                          style:0
+                         handler:^(__unused YTActionSheetAction *selectedAction) {
+                      ResolveActionVideoInfo(weakSheet,
+                                             presentationNode,
                                              presentationSourceNode,
                                              sourceView,
                                              NO,
@@ -355,7 +435,7 @@ static void AddBlockingActions(id sheet, YTActionSheetAction *originalAction) {
                                                  @try {
                                                      NSString *videoId = info[@"id"];
                                                      if (videoId.length == 0) {
-                                                         SendToast(weakSheet, @"Could not read the video for this item");
+                                                         SendToast(weakSheet, LocalizedString(@"Could not read the video for this item"));
                                                          return;
                                                      }
 
@@ -363,13 +443,11 @@ static void AddBlockingActions(id sheet, YTActionSheetAction *originalAction) {
                                                                                                title:info[@"title"]
                                                                                              channel:info[@"channel"]];
                                                      SendToast(weakSheet,
-                                                               [NSString stringWithFormat:@"Blocked video: %@",
+                                                               [NSString stringWithFormat:LocalizedString(@"Blocked video: %@"),
                                                                                           info[@"title"] ?: videoId]);
-                                                     RemoveBlockedFeedItem(sourceView, videoId);
-                                                     if ([weakSheet respondsToSelector:@selector(dismiss)])
-                                                         [weakSheet dismiss];
+                                                     RemoveBlockedFeedItem(feedSourceView, sourceCell, sourceCollectionView, videoId);
                                                  } @catch (__unused NSException *exception) {
-                                                     SendToast(weakSheet, @"Could not block this video");
+                                                     SendToast(weakSheet, LocalizedString(@"Could not block this video"));
                                                  }
                                              });
                   }];
@@ -380,6 +458,8 @@ static void AddBlockingActions(id sheet, YTActionSheetAction *originalAction) {
             return;
         }
 
+        blockChannelAction.shouldDismissOnAction = YES;
+        blockVideoAction.shouldDismissOnAction = YES;
         [sheet addAction:blockChannelAction];
         [sheet addAction:blockVideoAction];
         objc_setAssociatedObject(sheet, injectionInProgressKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
@@ -391,6 +471,7 @@ static void AddBlockingActions(id sheet, YTActionSheetAction *originalAction) {
 
 static id MetadataNodeForView(UIView *view, NSUInteger depth);
 static void FilterVisibleCells(YTAsyncCollectionView *collectionView);
+static void CollapseBlockedCellGaps(YTAsyncCollectionView *collectionView);
 
 static void RefreshVisibleFeeds(void) {
     dispatch_async(dispatch_get_main_queue(), ^{
@@ -421,28 +502,63 @@ static void RefreshVisibleFeeds(void) {
     });
 }
 
-static void RefreshCollectionViewForSourceView(UIView *sourceView) {
-    dispatch_async(dispatch_get_main_queue(), ^{
-        UIView *view = sourceView;
-        while (view && ![view isKindOfClass:NSClassFromString(@"YTAsyncCollectionView")])
-            view = view.superview;
-        if ([view isKindOfClass:NSClassFromString(@"YTAsyncCollectionView")]) {
-            [view setNeedsLayout];
-            FilterVisibleCells((YTAsyncCollectionView *)view);
-        } else {
-            RefreshVisibleFeeds();
-        }
-    });
-}
-
 static BOOL CollectionViewIsScrolling(YTAsyncCollectionView *collectionView) {
     return collectionView.isDragging || collectionView.isDecelerating || collectionView.isTracking;
 }
 
 static void *BlockedCellKey = &BlockedCellKey;
 static void *DirectBlockedVideoIDKey = &DirectBlockedVideoIDKey;
+static void *CollapsedLayoutKey = &CollapsedLayoutKey;
+static void *ShortsTransitionKey = &ShortsTransitionKey;
+
+static void CollapseBlockedCellGaps(YTAsyncCollectionView *collectionView) {
+    if (!collectionView || objc_getAssociatedObject(collectionView, CollapsedLayoutKey))
+        return;
+
+    if (collectionView.bounds.size.height <= 0.0 ||
+        collectionView.contentSize.height <= collectionView.bounds.size.height)
+        return;
+
+    NSMutableArray<UICollectionViewCell *> *cells = [NSMutableArray array];
+    NSMutableArray<NSValue *> *blockedFrames = [NSMutableArray array];
+    for (UICollectionViewCell *cell in collectionView.visibleCells) {
+        if (![cell isKindOfClass:[UICollectionViewCell class]])
+            continue;
+        [cells addObject:cell];
+        if (objc_getAssociatedObject(cell, BlockedCellKey))
+            [blockedFrames addObject:[NSValue valueWithCGRect:cell.frame]];
+    }
+    if (blockedFrames.count == 0)
+        return;
+
+    for (UICollectionViewCell *cell in cells) {
+        if (objc_getAssociatedObject(cell, BlockedCellKey))
+            continue;
+
+        CGRect frame = cell.frame;
+        CGFloat offset = 0.0;
+        for (NSValue *value in blockedFrames) {
+            CGRect blockedFrame = value.CGRectValue;
+            BOOL below = CGRectGetMinY(frame) >= CGRectGetMaxY(blockedFrame) - 1.0;
+            BOOL overlapsHorizontally = CGRectGetMinX(frame) < CGRectGetMaxX(blockedFrame) &&
+                                         CGRectGetMaxX(frame) > CGRectGetMinX(blockedFrame);
+            if (below && overlapsHorizontally)
+                offset += CGRectGetHeight(blockedFrame);
+        }
+        if (offset > 0.0) {
+            frame.origin.y -= offset;
+            cell.frame = frame;
+        }
+    }
+    objc_setAssociatedObject(collectionView, CollapsedLayoutKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+}
+
 static void FilterVisibleCells(YTAsyncCollectionView *collectionView) {
     if (!collectionView || CollectionViewIsScrolling(collectionView))
+        return;
+
+    if (collectionView.pagingEnabled && collectionView.bounds.size.height > 0.0 &&
+        objc_getAssociatedObject(collectionView, ShortsTransitionKey))
         return;
 
     if (collectionView.filtering)
@@ -452,6 +568,8 @@ static void FilterVisibleCells(YTAsyncCollectionView *collectionView) {
     collectionView.lastFilterTime = CFAbsoluteTimeGetCurrent();
     @try {
         for (UICollectionViewCell *cell in collectionView.visibleCells) {
+            NSString *directVideoId = objc_getAssociatedObject(cell, DirectBlockedVideoIDKey);
+            BOOL directlyBlocked = objc_getAssociatedObject(cell, BlockedCellKey) != nil;
             id node = nil;
             if ([cell isKindOfClass:NSClassFromString(@"_ASCollectionViewCell")]) {
                 _ASCollectionViewCell *asCell = (_ASCollectionViewCell *)cell;
@@ -459,11 +577,25 @@ static void FilterVisibleCells(YTAsyncCollectionView *collectionView) {
             } else if (collectionView.pagingEnabled) {
                 node = MetadataNodeForView(cell, 0);
             }
-            if (!node)
+            if (!node) {
+                if (directlyBlocked || directVideoId.length > 0) {
+                    cell.hidden = YES;
+                    cell.alpha = 0.0;
+                    cell.userInteractionEnabled = NO;
+                    cell.accessibilityElementsHidden = YES;
+                }
                 continue;
+            }
 
             NSDictionary *info = [Util videoInfoFromNode:node];
             if (!NodeLooksLikeActionVideo(node) && !(collectionView.pagingEnabled && info.count > 0)) {
+                if (directlyBlocked || directVideoId.length > 0) {
+                    cell.hidden = YES;
+                    cell.alpha = 0.0;
+                    cell.userInteractionEnabled = NO;
+                    cell.accessibilityElementsHidden = YES;
+                    continue;
+                }
                 objc_setAssociatedObject(cell, BlockedCellKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
                 objc_setAssociatedObject(cell, DirectBlockedVideoIDKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
                 cell.hidden = NO;
@@ -473,14 +605,15 @@ static void FilterVisibleCells(YTAsyncCollectionView *collectionView) {
                 continue;
             }
 
-            NSString *directVideoId = objc_getAssociatedObject(cell, DirectBlockedVideoIDKey);
             NSString *currentVideoId = info[@"id"];
             if (directVideoId.length > 0 && currentVideoId.length > 0 &&
                 ![directVideoId isEqualToString:currentVideoId]) {
                 objc_setAssociatedObject(cell, DirectBlockedVideoIDKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+                objc_setAssociatedObject(cell, BlockedCellKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
                 directVideoId = nil;
+                directlyBlocked = NO;
             }
-            BOOL blocked = [Util nodeContainsBlockedVideo:node];
+            BOOL blocked = directlyBlocked || [Util nodeContainsBlockedVideo:node];
             if (directVideoId.length > 0)
                 blocked = YES;
             objc_setAssociatedObject(cell, BlockedCellKey, blocked ? @YES : nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
@@ -489,6 +622,7 @@ static void FilterVisibleCells(YTAsyncCollectionView *collectionView) {
             cell.userInteractionEnabled = !blocked;
             cell.accessibilityElementsHidden = blocked;
         }
+        CollapseBlockedCellGaps(collectionView);
     } @catch (__unused NSException *exception) {
     }
     collectionView.filtering = NO;
@@ -500,6 +634,16 @@ static UICollectionViewCell *FeedCellForSourceView(UIView *sourceView) {
         if ([view isKindOfClass:[UICollectionViewCell class]])
             return (UICollectionViewCell *)view;
         view = view.superview;
+    }
+    return nil;
+}
+
+static UICollectionViewCell *FeedCellForMetadataObject(id object) {
+    for (NSString *key in @[@"view", @"displayView", @"_view"]) {
+        id view = ValueForObjectKey(object, key);
+        UICollectionViewCell *cell = FeedCellForSourceView(view);
+        if (cell)
+            return cell;
     }
     return nil;
 }
@@ -554,11 +698,35 @@ static BOOL IsShortsCollectionView(YTAsyncCollectionView *collectionView) {
     return collectionView.pagingEnabled && collectionView.bounds.size.height > 0;
 }
 
+static __weak YTShortsPlayerViewController *CurrentShortsPlayer;
+
+static BOOL AdvanceShortsPlayer(void) {
+    YTShortsPlayerViewController *player = CurrentShortsPlayer;
+    if (!player || ![player respondsToSelector:@selector(reelContentViewRequestsAdvanceToNextVideo:)])
+        return NO;
+
+    @try {
+        id contentView = ValueForObjectKey(player, @"shortsContentView");
+        if (!contentView)
+            contentView = ValueForObjectKey(player, @"contentView");
+        [player reelContentViewRequestsAdvanceToNextVideo:contentView];
+        return YES;
+    } @catch (__unused NSException *exception) {
+        return NO;
+    }
+}
+
 static void AdvanceShortsCollection(YTAsyncCollectionView *collectionView, NSString *videoId) {
     if (!IsShortsCollectionView(collectionView))
         return;
 
+    [collectionView layoutIfNeeded];
+    if (AdvanceShortsPlayer())
+        return;
+
     UICollectionViewCell *cell = CellForVideoID(collectionView, videoId);
+    if (!cell)
+        cell = collectionView.visibleCells.firstObject;
     NSIndexPath *indexPath = cell ? [collectionView indexPathForCell:cell] : nil;
     if (indexPath && indexPath.section < [collectionView numberOfSections]) {
         NSInteger nextItem = indexPath.item + 1;
@@ -572,32 +740,17 @@ static void AdvanceShortsCollection(YTAsyncCollectionView *collectionView, NSStr
     }
 
     CGFloat pageHeight = MAX(collectionView.bounds.size.height, 1.0);
-    CGFloat maximumOffset = MAX(collectionView.contentSize.height - pageHeight, 0.0);
-    CGFloat targetOffset = MIN(collectionView.contentOffset.y + pageHeight, maximumOffset);
+    CGFloat targetOffset = collectionView.contentOffset.y + pageHeight;
     [collectionView setContentOffset:CGPointMake(collectionView.contentOffset.x, targetOffset) animated:YES];
 }
 
-static void DeleteFeedCell(UICollectionViewCell *cell, YTAsyncCollectionView *collectionView) {
-    if (!cell || !collectionView)
-        return;
-
-    NSIndexPath *indexPath = [collectionView indexPathForCell:cell];
-    if (!indexPath || indexPath.section >= [collectionView numberOfSections] ||
-        indexPath.item >= [collectionView numberOfItemsInSection:indexPath.section])
-        return;
-
-    @try {
-        [collectionView performBatchUpdates:^{
-            [collectionView deleteItemsAtIndexPaths:@[indexPath]];
-        } completion:nil];
-    } @catch (__unused NSException *exception) {
-    }
-}
-
-static void RemoveBlockedFeedItem(UIView *sourceView, NSString *videoId) {
+static void RemoveBlockedFeedItem(UIView *sourceView,
+                                  UICollectionViewCell *knownCell,
+                                  YTAsyncCollectionView *knownCollectionView,
+                                  NSString *videoId) {
     void (^remove)(void) = ^{
-        UICollectionViewCell *cell = FeedCellForSourceView(sourceView);
-        YTAsyncCollectionView *collectionView = CollectionViewForFeedCell(cell);
+        UICollectionViewCell *cell = knownCell ?: FeedCellForSourceView(sourceView);
+        YTAsyncCollectionView *collectionView = knownCollectionView ?: CollectionViewForFeedCell(cell);
         if (!collectionView) {
             UIView *rootView = sourceView;
             while (rootView.superview) {
@@ -609,7 +762,13 @@ static void RemoveBlockedFeedItem(UIView *sourceView, NSString *videoId) {
             collectionView = AsyncCollectionViewInView(rootView, 0);
         }
         if (IsShortsCollectionView(collectionView)) {
+            objc_setAssociatedObject(collectionView, ShortsTransitionKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
             AdvanceShortsCollection(collectionView, videoId);
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.90 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                objc_setAssociatedObject(collectionView, ShortsTransitionKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+                [collectionView setNeedsLayout];
+                FilterVisibleCells(collectionView);
+            });
             return;
         }
         if (cell && collectionView) {
@@ -620,11 +779,11 @@ static void RemoveBlockedFeedItem(UIView *sourceView, NSString *videoId) {
             cell.alpha = 0.0;
             cell.userInteractionEnabled = NO;
             cell.accessibilityElementsHidden = YES;
-            DeleteFeedCell(cell, collectionView);
+            [collectionView.collectionViewLayout invalidateLayout];
             [collectionView setNeedsLayout];
+            FilterVisibleCells(collectionView);
+            CollapseBlockedCellGaps(collectionView);
         }
-        RefreshCollectionViewForSourceView(sourceView);
-        RefreshVisibleFeeds();
     };
 
     if (NSThread.isMainThread)
@@ -665,11 +824,13 @@ static void RemoveBlockedFeedItem(UIView *sourceView, NSString *videoId) {
 }
 
 - (void)layoutSubviews {
+    objc_setAssociatedObject(self, CollapsedLayoutKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     %orig;
     [self scheduleFiltering];
 }
 
 - (void)reloadData {
+    objc_setAssociatedObject(self, CollapsedLayoutKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     %orig;
     [self scheduleFiltering];
 }
@@ -697,6 +858,25 @@ static void RemoveBlockedFeedItem(UIView *sourceView, NSString *videoId) {
 - (void)addAction:(YTActionSheetAction *)action {
     %orig;
     AddBlockingActions(self, action);
+}
+
+%end
+
+%hook YTShortsPlayerViewController
+
+- (void)viewWillAppear:(BOOL)animated {
+    CurrentShortsPlayer = self;
+    %orig;
+}
+
+- (void)viewDidAppear:(BOOL)animated {
+    CurrentShortsPlayer = self;
+    %orig;
+}
+
+- (id)shortsContentView {
+    CurrentShortsPlayer = self;
+    return %orig;
 }
 
 %end

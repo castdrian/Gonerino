@@ -10,6 +10,8 @@ NS_ASSUME_NONNULL_BEGIN
 
 + (nullable NSDictionary<NSString *, NSString *> *)videoInfoFromNode:(nullable id)node;
 + (nullable NSDictionary<NSString *, NSString *> *)freshVideoInfoFromNode:(nullable id)node;
++ (nullable NSDictionary<NSString *, NSString *> *)freshVideoInfoFromNode:(nullable id)node
+                                                               sourceView:(nullable UIView *)sourceView;
 + (void)refreshFeedViews;
 + (void)showToast:(NSString *)message fromView:(nullable UIView *)view;
 + (void)extractVideoInfoFromNode:(id)node

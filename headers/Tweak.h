@@ -18,6 +18,7 @@
 @class YTToastResponderEvent;
 @class YTSettingsCell;
 @class YTQTMButton;
+@class YTShortsPlayerViewController;
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -200,6 +201,11 @@ NS_ASSUME_NONNULL_BEGIN
 
 @interface YTAppViewControllerImpl : NSObject
 - (NSInteger)pageStyle;
+@end
+
+@interface YTShortsPlayerViewController : UIViewController
+- (nullable id)shortsContentView;
+- (void)reelContentViewRequestsAdvanceToNextVideo:(nullable id)contentView;
 @end
 
 NS_ASSUME_NONNULL_END

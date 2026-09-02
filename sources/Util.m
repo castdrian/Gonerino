@@ -207,20 +207,28 @@ static void CollectTextNodeValues(id object,
                         [className containsString:@"buttonlabel"];
     if (isTextObject) {
         for (NSString *key in @[@"text", @"attributedText", @"currentTitle", @"accessibilityLabel"]) {
-            NSString *text = TextFromValue(ValueForKey(object, key), 0);
+            NSString *text = TextFromValue(ValueForNamedKey(object, key), 0);
             if (text.length > 0 && ![values containsObject:text])
                 [values addObject:text];
         }
     }
 
+    NSString *accessibilityLabel = TextFromValue(ValueForNamedKey(object, @"accessibilityLabel"), 0);
+    if (accessibilityLabel.length > 0 && ![values containsObject:accessibilityLabel])
+        [values addObject:accessibilityLabel];
+
     for (NSString *key in @[@"ownerText", @"shortBylineText", @"longBylineText"]) {
-        NSString *text = TextFromValue(ValueForKey(object, key), 0);
+        NSString *text = TextFromValue(ValueForNamedKey(object, key), 0);
         if (text.length > 0 && ![values containsObject:text])
             [values addObject:text];
     }
 
-    for (NSString *key in @[@"element", @"instance", @"childElements", @"subnodes", @"view", @"subviews", @"asyncdisplaykit_node", @"node"]) {
-        id value = ValueForKey(object, key);
+    for (NSString *key in @[
+        @"element", @"instance", @"childElements", @"subnodes", @"view", @"subviews", @"asyncdisplaykit_node", @"node",
+        @"parentResponder", @"controller", @"viewController", @"closestViewController", @"context", @"properties",
+        @"allProperties", @"elementEntry", @"navigationEndpoint", @"watchEndpoint", @"ownerText", @"shortBylineText", @"longBylineText"
+    ]) {
+        id value = ValueForNamedKey(object, key);
         if (!value || value == object)
             continue;
         if ([value isKindOfClass:[NSArray class]]) {
@@ -283,7 +291,6 @@ static NSString *ChannelTextFromNode(id node, NSString *title) {
 
     NSMutableArray<NSString *> *values = [NSMutableArray array];
     CollectTextNodeValues(node, values, [NSMutableSet set], 0);
-
     NSUInteger titleIndex = NSNotFound;
     for (NSUInteger index = 0; index < values.count; index++) {
         NSString *value = values[index];
@@ -381,6 +388,156 @@ static NSString *ShortsTitleTextFromNode(id node, NSString *channel) {
     }
 
     return nil;
+}
+
+static NSArray<NSString *> *ChannelAccessibilityMarkers(void) {
+    static NSArray<NSString *> *markers;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        markers = @[
+            @"go to channel ", @"go to channel:", @"zum kanal ", @"zum kanal:",
+            @"kanal öffnen ", @"kanal öffnen:", @"ir al canal ", @"ir al canal:",
+            @"aller à la chaîne ", @"aller à la chaîne:", @"vai al canale ", @"vai al canale:",
+            @"ir para o canal ", @"ir para o canal:", @"naar kanaal ", @"naar kanaal:",
+            @"kanala git ", @"kanala git:", @"перейти на канал ", @"перейти на канал:",
+            @"チャンネルに移動 ", @"チャンネルに移動:", @"채널로 이동 ", @"채널로 이동:",
+            @"转到频道 ", @"转到频道:", @"前往频道 ", @"前往频道:"
+        ];
+    });
+    return markers;
+}
+
+static NSString *ChannelFromAccessibleText(NSString *text) {
+    if (text.length == 0)
+        return nil;
+
+    for (NSString *marker in ChannelAccessibilityMarkers()) {
+        NSRange range = [text rangeOfString:marker options:NSCaseInsensitiveSearch];
+        if (range.location == NSNotFound)
+            continue;
+
+        NSUInteger start = NSMaxRange(range);
+        if (start >= text.length)
+            continue;
+        NSString *candidate = [text substringFromIndex:start];
+        NSRange separator = [candidate rangeOfString:@" - "];
+        if (separator.location != NSNotFound)
+            candidate = [candidate substringToIndex:separator.location];
+        candidate = [candidate stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+        if (IsLikelyChannelText(candidate, nil))
+            return candidate;
+    }
+
+    NSArray<NSString *> *liveSuffixes = @[
+        @" channel", @" kanal", @" canal", @" chaîne", @" canale", @" kanaal"
+    ];
+    for (NSString *suffix in liveSuffixes) {
+        NSRange suffixRange = [text rangeOfString:suffix options:NSCaseInsensitiveSearch | NSBackwardsSearch];
+        if (suffixRange.location == NSNotFound || NSMaxRange(suffixRange) != text.length)
+            continue;
+
+        NSString *prefix = [text substringToIndex:suffixRange.location];
+        NSRange separator = [prefix rangeOfString:@"," options:NSBackwardsSearch];
+        if (separator.location == NSNotFound)
+            continue;
+
+        NSString *candidate = [[prefix substringFromIndex:NSMaxRange(separator)]
+                               stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+        if (IsLikelyChannelText(candidate, nil))
+            return candidate;
+    }
+
+    return nil;
+}
+
+static BOOL IsFeedDurationText(NSString *text) {
+    NSString *candidate = [text stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]].lowercaseString;
+    if (candidate.length == 0)
+        return NO;
+
+    static NSRegularExpression *durationRegex;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        durationRegex = [NSRegularExpression regularExpressionWithPattern:
+                         @"^[0-9][0-9:., ]*(seconds?|minutes?|hours?|sekunden?|minuten?|stunden?|segundos?|minutos?|horas?|秒|分|時間)"
+                                                                           options:NSRegularExpressionCaseInsensitive
+                                                                             error:nil];
+    });
+    if ([durationRegex firstMatchInString:candidate options:0 range:NSMakeRange(0, candidate.length)])
+        return YES;
+
+    static NSRegularExpression *clockRegex;
+    static dispatch_once_t clockOnceToken;
+    dispatch_once(&clockOnceToken, ^{
+        clockRegex = [NSRegularExpression regularExpressionWithPattern:@"^[0-9]+(?::[0-9]{2}){1,2}$"
+                                                                    options:0
+                                                                      error:nil];
+    });
+    return [clockRegex firstMatchInString:candidate options:0 range:NSMakeRange(0, candidate.length)] != nil;
+}
+
+static NSString *TitleFromAccessibleText(NSString *text) {
+    if (text.length == 0)
+        return nil;
+
+    NSRange liveSeparator = [text rangeOfString:@" -  -  - "];
+    if (liveSeparator.location != NSNotFound) {
+        NSString *liveTitle = [[text substringToIndex:liveSeparator.location]
+                               stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+        if (liveTitle.length > 0)
+            return liveTitle;
+    }
+
+    NSArray<NSString *> *components = [text componentsSeparatedByString:@" - "];
+    if (components.count < 2)
+        return nil;
+
+    for (NSUInteger index = 1; index < components.count; index++) {
+        if (!IsFeedDurationText(components[index]))
+            continue;
+
+        NSMutableArray<NSString *> *titleComponents = [NSMutableArray arrayWithCapacity:index];
+        for (NSUInteger titleIndex = 0; titleIndex < index; titleIndex++)
+            [titleComponents addObject:components[titleIndex]];
+        NSString *title = [titleComponents componentsJoinedByString:@" - "];
+        if (title.length > 0)
+            return [title stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    }
+
+    return nil;
+}
+
+static NSDictionary *FeedMetadataFromView(UIView *view) {
+    if (![view isKindOfClass:[UIView class]])
+        return nil;
+
+    NSMutableArray<NSString *> *values = [NSMutableArray array];
+    CollectTextNodeValues(view, values, [NSMutableSet set], 0);
+    NSString *title = nil;
+    NSString *channel = nil;
+    for (NSString *value in values) {
+        if (channel.length == 0)
+            channel = ChannelFromAccessibleText(value);
+        if (title.length == 0)
+            title = TitleFromAccessibleText(value);
+        if (title.length > 0 && channel.length > 0)
+            break;
+    }
+
+    if (channel.length == 0 && title.length > 0) {
+        NSString *fallback = ChannelTextFromNode(view, title);
+        if (IsLikelyChannelText(fallback, title))
+            channel = fallback;
+        else
+            channel = ChannelFromAccessibleText(fallback);
+    }
+
+    NSMutableDictionary *metadata = [NSMutableDictionary dictionary];
+    if (title.length > 0)
+        metadata[@"title"] = title;
+    if (channel.length > 0)
+        metadata[@"channel"] = channel;
+    return metadata.count > 0 ? metadata : nil;
 }
 
 static NSString *VideoIdFromText(NSString *text) {
@@ -778,6 +935,7 @@ static NSArray<NSString *> *MetadataChildKeys(void) {
             @"elementEntry", @"collectionElement", @"controller", @"viewController", @"closestViewController", @"playbackView", @"asdPlayableEntry",
             @"playerViewController", @"shortsPlayerViewController", @"currentReel", @"reel", @"reelItem", @"reelPlayer",
             @"player", @"activeVideo", @"currentPlayer", @"videoPlayer", @"navigationEndpoint", @"watchEndpoint", @"browseEndpoint",
+            @"store", @"fromView", @"rangedDataCellContext", @"byteStore",
             @"proto", @"protobuf", @"message", @"payload", @"rawValue", @"value", @"object", @"contents", @"yogaChildren",
             @"attributedText", @"accessibilityLabel",
             @"videoRenderer", @"compactVideoRenderer", @"richItemRenderer", @"reelItemRenderer",
@@ -1100,6 +1258,18 @@ static NSDictionary *VideoInfoFromNode(id node, BOOL bypassCache) {
         CollectElementRendererMetadata(elementEntry, result, priorities);
         CollectElementTreeMetadata(node, result, priorities, elementVisited, 0);
         CollectObject(node, result, priorities, visited, &budget, 0);
+        id context = ValueForNamedKey(node, @"context");
+        if (context) {
+            NSUInteger contextBudget = 48;
+            CollectObject(context, result, priorities, [NSMutableSet set], &contextBudget, 0);
+        }
+        id store = ValueForNamedKey(context, @"store");
+        if (store) {
+            for (NSString *key in MetadataFieldKeys())
+                RecordField(result, priorities, key, ValueForNamedKey(store, key));
+            NSUInteger storeBudget = 96;
+            CollectObject(store, result, priorities, [NSMutableSet set], &storeBudget, 0);
+        }
         NSString *nodeClassName = NSStringFromClass([node class]).lowercaseString;
         if ([nodeClassName containsString:@"short"] || [nodeClassName containsString:@"reel"]) {
             UIView *nodeView = ValueForNamedKey(node, @"view");
@@ -1118,8 +1288,7 @@ static NSDictionary *VideoInfoFromNode(id node, BOOL bypassCache) {
         NSString *lowercaseChannel = channel.lowercaseString;
         if (title.length > 0 && channel.length > 0 &&
             ([channel isEqualToString:title] ||
-             [lowercaseChannel containsString:lowercaseTitle] ||
-             [lowercaseTitle containsString:lowercaseChannel])) {
+             [lowercaseChannel containsString:lowercaseTitle])) {
             [result removeObjectForKey:@"channel"];
             [priorities removeObjectForKey:@"channel"];
         }
@@ -1247,6 +1416,21 @@ static NSDictionary *VideoInfoFromNode(id node, BOOL bypassCache) {
         return nil;
     [MetadataAttemptCache() removeObjectForKey:node];
     return VideoInfoFromNode(node, YES);
+}
+
++ (NSDictionary *)freshVideoInfoFromNode:(id)node sourceView:(UIView *)sourceView {
+    NSMutableDictionary *metadata = [[VideoInfoFromNode(node, YES) mutableCopy] ?: [NSMutableDictionary dictionary] mutableCopy];
+    NSDictionary *feedMetadata = FeedMetadataFromView(sourceView);
+    for (NSString *key in @[@"title", @"channel"]) {
+        NSString *value = feedMetadata[key];
+        if ([metadata[key] length] == 0 && value.length > 0)
+            metadata[key] = value;
+    }
+    if (metadata.count == 0)
+        return nil;
+    if (MetadataComplete(metadata))
+        [MetadataCache() setObject:[metadata copy] forKey:node];
+    return [metadata copy];
 }
 
 + (void)extractVideoInfoFromNode:(id)node
