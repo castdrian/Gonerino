@@ -12,12 +12,15 @@ NS_ASSUME_NONNULL_BEGIN
 + (nullable NSDictionary<NSString *, NSString *> *)freshVideoInfoFromNode:(nullable id)node;
 + (nullable NSDictionary<NSString *, NSString *> *)freshVideoInfoFromNode:(nullable id)node
                                                                sourceView:(nullable UIView *)sourceView;
++ (BOOL)isUsableVideoTitle:(nullable NSString *)title;
 + (void)refreshFeedViews;
 + (void)showToast:(NSString *)message fromView:(nullable UIView *)view;
 + (void)extractVideoInfoFromNode:(id)node
                       completion:(void (^)(NSString *videoId, NSString *videoTitle, NSString *ownerName))completion;
 
 + (BOOL)nodeContainsBlockedVideo:(id)node;
++ (BOOL)nodeContainsBlockedVideo:(id)node
+                        videoInfo:(nullable NSDictionary<NSString *, NSString *> *)videoInfo;
 
 + (UIImage *)createBlockChannelIconWithSize:(CGSize)size;
 + (UIImage *)createBlockVideoIconWithSize:(CGSize)size;

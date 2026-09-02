@@ -14,45 +14,23 @@ static YTSettingsViewController *SettingsViewControllerForManager(YTSettingsSect
         } @catch (__unused NSException *exception) {
         }
     }
+
+    id responder = nil;
+    @try {
+        responder = [manager parentResponder];
+    } @catch (__unused NSException *exception) {
+    }
+    for (NSUInteger depth = 0; responder && depth < 8; depth++) {
+        if ([responder isKindOfClass:%c(YTSettingsViewController)])
+            return responder;
+        if (![responder respondsToSelector:@selector(nextResponder)])
+            break;
+        responder = [responder nextResponder];
+    }
     return nil;
 }
 
-static BOOL GonerinoCategoryIsVisible(YTSettingsSectionItemManager *manager) {
-    YTSettingsViewController *settingsViewController = SettingsViewControllerForManager(manager);
-    UIViewController *topViewController = settingsViewController.navigationController.topViewController;
-    return [topViewController.title isEqualToString:LocalizedString(@"Gonerino")];
-}
-
-static void OpenCustomSettingsWhenCategoryIsVisible(YTSettingsSectionItemManager *manager, NSUInteger attempt) {
-    if (GonerinoCategoryIsVisible(manager)) {
-        OpenCustomSettings(manager);
-        return;
-    }
-
-    if (attempt < 12) {
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.05 * NSEC_PER_SEC)),
-                       dispatch_get_main_queue(), ^{
-                           OpenCustomSettingsWhenCategoryIsVisible(manager, attempt + 1);
-                       });
-    }
-}
-
-%hook YTAppSettingsPresentationData
-
-+ (NSArray *)settingsCategoryOrder {
-    NSArray *order = %orig;
-    NSMutableArray *categories = [order mutableCopy] ?: [NSMutableArray array];
-    if (![categories containsObject:@(SettingsCategory)]) {
-        NSUInteger insertIndex = [categories indexOfObject:@(1)];
-        if (insertIndex == NSNotFound)
-            [categories addObject:@(SettingsCategory)];
-        else
-            [categories insertObject:@(SettingsCategory) atIndex:insertIndex + 1];
-    }
-    return categories.copy;
-}
-
-%end
+static const NSUInteger SettingsGroup = 0x67726e72;
 
 %hook YTAppSettingsGroupPresentationData
 
@@ -62,26 +40,31 @@ static void OpenCustomSettingsWhenCategoryIsVisible(YTSettingsSectionItemManager
         if (group.type == SettingsGroup)
             return groups;
     }
-
-    NSMutableArray *mutableGroups = groups.mutableCopy ?: [NSMutableArray array];
-    YTSettingsGroupData *settingsGroup = [[%c(YTSettingsGroupData) alloc] initWithGroupType:SettingsGroup];
-    [mutableGroups addObject:settingsGroup];
-    return mutableGroups.copy;
+    NSMutableArray *result = groups.mutableCopy ?: [NSMutableArray array];
+    YTSettingsGroupData *group = [[%c(YTSettingsGroupData) alloc] initWithGroupType:SettingsGroup];
+    [result insertObject:group atIndex:0];
+    return result.copy;
 }
 
 %end
 
 %hook YTSettingsGroupData
 
-- (NSString *)titleForSettingGroupType:(NSUInteger)type {
-    if (type == SettingsGroup)
-        return @"Gonerino";
+- (NSArray<NSNumber *> *)orderedCategories {
+    if (self.type == SettingsGroup)
+        return @[@(SettingsCategory)];
     return %orig;
 }
 
 - (NSArray<NSNumber *> *)orderedCategoriesForGroupType:(NSUInteger)type {
     if (type == SettingsGroup)
         return @[@(SettingsCategory)];
+    return %orig;
+}
+
+- (NSString *)titleForSettingGroupType:(NSUInteger)type {
+    if (type == SettingsGroup)
+        return nil;
     return %orig;
 }
 
@@ -108,7 +91,7 @@ static void OpenCustomSettingsWhenCategoryIsVisible(YTSettingsSectionItemManager
 - (void)updateSectionForCategory:(NSUInteger)category withEntry:(id)entry {
     if (category == SettingsCategory) {
         [self settingsIntegrationUpdateSectionWithEntry:entry];
-        OpenCustomSettingsWhenCategoryIsVisible(self, 0);
+        OpenCustomSettings(self);
         return;
     }
     %orig;

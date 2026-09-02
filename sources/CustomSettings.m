@@ -36,30 +36,73 @@ static void ShowToast(UIViewController *viewController, NSString *message) {
     [Util showToast:message fromView:viewController.view];
 }
 
+static UIButton *NavigationBackButton(NSString *title, id target, SEL action) {
+    UIButton *button = [UIButton buttonWithType:UIButtonTypeSystem];
+    if (@available(iOS 15.0, *)) {
+        UIButtonConfiguration *configuration = [UIButtonConfiguration plainButtonConfiguration];
+        configuration.image = [UIImage systemImageNamed:@"chevron.backward"];
+        configuration.title = title;
+        configuration.imagePadding = 4.0;
+        configuration.contentInsets = NSDirectionalEdgeInsetsMake(0.0, 8.0, 0.0, 12.0);
+        button.configuration = configuration;
+    } else {
+        [button setImage:[UIImage systemImageNamed:@"chevron.backward"] forState:UIControlStateNormal];
+        [button setTitle:title forState:UIControlStateNormal];
+        button.imageEdgeInsets = UIEdgeInsetsMake(0.0, 0.0, 0.0, 4.0);
+        button.contentEdgeInsets = UIEdgeInsetsMake(0.0, 8.0, 0.0, 12.0);
+    }
+    button.accessibilityLabel = title;
+    [button addTarget:target action:action forControlEvents:UIControlEventTouchUpInside];
+    return button;
+}
+
 @interface SettingsEntry : NSObject
 @property(nonatomic, copy) NSString *title;
 @property(nonatomic, copy) NSString *subtitle;
 @property(nonatomic, copy) dispatch_block_t action;
+@property(nonatomic, copy) dispatch_block_t deleteAction;
 + (instancetype)entryWithTitle:(NSString *)title subtitle:(NSString *)subtitle action:(dispatch_block_t)action;
++ (instancetype)entryWithTitle:(NSString *)title subtitle:(NSString *)subtitle deleteAction:(dispatch_block_t)deleteAction;
++ (instancetype)entryWithTitle:(NSString *)title
+                       subtitle:(NSString *)subtitle
+                         action:(dispatch_block_t)action
+                    deleteAction:(dispatch_block_t)deleteAction;
 @end
 
 @implementation SettingsEntry
 
 + (instancetype)entryWithTitle:(NSString *)title subtitle:(NSString *)subtitle action:(dispatch_block_t)action {
+    return [self entryWithTitle:title subtitle:subtitle action:action deleteAction:nil];
+}
+
++ (instancetype)entryWithTitle:(NSString *)title subtitle:(NSString *)subtitle deleteAction:(dispatch_block_t)deleteAction {
+    SettingsEntry *entry = [self new];
+    entry.title = title ?: @"";
+    entry.subtitle = subtitle;
+    entry.deleteAction = deleteAction;
+    return entry;
+}
+
++ (instancetype)entryWithTitle:(NSString *)title
+                       subtitle:(NSString *)subtitle
+                         action:(dispatch_block_t)action
+                    deleteAction:(dispatch_block_t)deleteAction {
     SettingsEntry *entry = [self new];
     entry.title = title ?: @"";
     entry.subtitle = subtitle;
     entry.action = action;
+    entry.deleteAction = deleteAction;
     return entry;
 }
 
 @end
 
-@interface SettingsListViewController : UITableViewController <UISearchResultsUpdating>
+@interface SettingsListViewController : UITableViewController <UISearchBarDelegate>
 @property(nonatomic, copy) NSArray<SettingsEntry *> *(^entriesProvider)(void);
 @property(nonatomic, copy) NSString *searchPlaceholder;
 @property(nonatomic, copy) NSArray<SettingsEntry *> *entries;
 @property(nonatomic, copy) NSArray<SettingsEntry *> *filteredEntries;
+@property(nonatomic, strong) UISearchBar *searchBar;
 - (instancetype)initWithTitle:(NSString *)title
              searchPlaceholder:(NSString *)searchPlaceholder
               entriesProvider:(NSArray<SettingsEntry *> *(^)(void))entriesProvider;
@@ -88,14 +131,33 @@ static void ShowToast(UIViewController *viewController, NSString *message) {
     self.tableView.rowHeight = UITableViewAutomaticDimension;
     self.tableView.estimatedRowHeight = 56.0;
 
-    UISearchController *searchController = [[UISearchController alloc] initWithSearchResultsController:nil];
-    searchController.searchResultsUpdater = self;
-    searchController.obscuresBackgroundDuringPresentation = NO;
-    searchController.searchBar.placeholder = self.searchPlaceholder;
-    self.navigationItem.searchController = searchController;
-    self.navigationItem.hidesSearchBarWhenScrolling = NO;
-    self.definesPresentationContext = YES;
+    self.navigationItem.largeTitleDisplayMode = UINavigationItemLargeTitleDisplayModeNever;
+    self.navigationItem.hidesBackButton = YES;
+    self.navigationItem.leftBarButtonItem = [[UIBarButtonItem alloc]
+        initWithCustomView:NavigationBackButton(LocalizedString(@"Gonerino"), self, @selector(returnToSettingsPage))];
+    self.searchBar = [UISearchBar new];
+    self.searchBar.placeholder = self.searchPlaceholder;
+    self.searchBar.searchBarStyle = UISearchBarStyleMinimal;
+    self.searchBar.delegate = self;
+    self.searchBar.frame = CGRectMake(0.0, 0.0, self.tableView.bounds.size.width, 56.0);
+    self.searchBar.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+    self.tableView.tableHeaderView = self.searchBar;
     [self refreshEntries];
+}
+
+- (void)viewDidLayoutSubviews {
+    [super viewDidLayoutSubviews];
+    CGRect frame = self.searchBar.frame;
+    frame.size.width = self.tableView.bounds.size.width;
+    frame.size.height = 56.0;
+    if (!CGRectEqualToRect(frame, self.searchBar.frame)) {
+        self.searchBar.frame = frame;
+        self.tableView.tableHeaderView = self.searchBar;
+    }
+}
+
+- (void)returnToSettingsPage {
+    [self.navigationController popViewControllerAnimated:YES];
 }
 
 - (void)viewWillAppear:(BOOL)animated {
@@ -105,7 +167,7 @@ static void ShowToast(UIViewController *viewController, NSString *message) {
 
 - (void)refreshEntries {
     self.entries = self.entriesProvider ? self.entriesProvider() : @[];
-    NSString *query = self.navigationItem.searchController.searchBar.text;
+    NSString *query = self.searchBar.text;
     if (query.length == 0) {
         self.filteredEntries = self.entries;
     } else {
@@ -119,7 +181,7 @@ static void ShowToast(UIViewController *viewController, NSString *message) {
     [self.tableView reloadData];
 }
 
-- (void)updateSearchResultsForSearchController:(UISearchController *)searchController {
+- (void)searchBar:(UISearchBar *)searchBar textDidChange:(NSString *)searchText {
     [self refreshEntries];
 }
 
@@ -139,6 +201,29 @@ static void ShowToast(UIViewController *viewController, NSString *message) {
     cell.accessoryType = entry.action ? UITableViewCellAccessoryDisclosureIndicator : UITableViewCellAccessoryNone;
     cell.selectionStyle = entry.action ? UITableViewCellSelectionStyleDefault : UITableViewCellSelectionStyleNone;
     return cell;
+}
+
+- (BOOL)tableView:(UITableView *)tableView canEditRowAtIndexPath:(NSIndexPath *)indexPath {
+    return self.filteredEntries[indexPath.row].deleteAction != nil;
+}
+
+- (UISwipeActionsConfiguration *)tableView:(UITableView *)tableView
+    trailingSwipeActionsConfigurationForRowAtIndexPath:(NSIndexPath *)indexPath {
+    SettingsEntry *entry = self.filteredEntries[indexPath.row];
+    if (!entry.deleteAction)
+        return nil;
+
+    UIContextualAction *deleteAction = [UIContextualAction contextualActionWithStyle:UIContextualActionStyleDestructive
+                                                                                 title:LocalizedString(@"Delete")
+                                                                               handler:^(__unused UIContextualAction *action,
+                                                                                         __unused UIView *sourceView,
+                                                                                         void (^completionHandler)(BOOL)) {
+        entry.deleteAction();
+        [self refreshEntries];
+        completionHandler(YES);
+    }];
+    deleteAction.image = [UIImage systemImageNamed:@"trash"];
+    return [UISwipeActionsConfiguration configurationWithActions:@[deleteAction]];
 }
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
@@ -162,7 +247,7 @@ static void ShowToast(UIViewController *viewController, NSString *message) {
 - (instancetype)initWithSettingsManager:(YTSettingsSectionItemManager *)settingsManager {
     self = [super initWithStyle:UITableViewStyleInsetGrouped];
     if (self) {
-        self.title = @"Gonerino";
+        self.title = LocalizedString(@"Gonerino");
         _settingsManager = settingsManager;
     }
     return self;
@@ -183,10 +268,7 @@ static void ShowToast(UIViewController *viewController, NSString *message) {
     self.navigationItem.largeTitleDisplayMode = UINavigationItemLargeTitleDisplayModeNever;
     self.navigationItem.hidesBackButton = YES;
     self.navigationItem.leftBarButtonItem = [[UIBarButtonItem alloc]
-        initWithTitle:LocalizedString(@"Settings")
-                 style:UIBarButtonItemStylePlain
-                target:self
-                action:@selector(returnToYouTubeSettings)];
+        initWithCustomView:NavigationBackButton(LocalizedString(@"Settings"), self, @selector(returnToYouTubeSettings))];
 }
 
 - (void)viewWillAppear:(BOOL)animated {
@@ -195,29 +277,33 @@ static void ShowToast(UIViewController *viewController, NSString *message) {
 }
 
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
-    return 4;
+    return 5;
 }
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
     switch (section) {
         case 0:
-            return 4;
+            return 1;
         case 1:
-            return 3;
+            return 4;
         case 2:
+            return 3;
+        case 3:
             return 2;
         default:
-            return 3;
+            return 1;
     }
 }
 
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
     switch (section) {
         case 0:
-            return LocalizedString(@"Filtering");
+            return LocalizedString(@"Support");
         case 1:
-            return LocalizedString(@"Blocked Content");
+            return LocalizedString(@"Filtering");
         case 2:
+            return LocalizedString(@"Blocked Content");
+        case 3:
             return LocalizedString(@"Settings");
         default:
             return LocalizedString(@"About");
@@ -226,22 +312,24 @@ static void ShowToast(UIViewController *viewController, NSString *message) {
 
 - (NSString *)titleForRow:(NSIndexPath *)indexPath {
     if (indexPath.section == 0)
-        return LocalizedString(@[@"Enable Gonerino", @"Show Gonerino Button", @"Block 'People also watched'", @"Block 'You might also like'"][indexPath.row]);
+        return LocalizedString(@"Donate on Ko-fi");
     if (indexPath.section == 1)
-        return LocalizedString(@[@"Channels", @"Videos", @"Words"][indexPath.row]);
+        return LocalizedString(@[@"Enable Gonerino", @"Show Gonerino Button", @"Block 'People also watched'", @"Block 'You might also like'"][indexPath.row]);
     if (indexPath.section == 2)
+        return LocalizedString(@[@"Channels", @"Videos", @"Words"][indexPath.row]);
+    if (indexPath.section == 3)
         return LocalizedString(@[@"Export Settings", @"Import Settings"][indexPath.row]);
-    return LocalizedString(@[@"GitHub", @"Donate", @"Version"][indexPath.row]);
+    return LocalizedString(@"GitHub");
 }
 
 - (NSString *)subtitleForRow:(NSIndexPath *)indexPath {
-    if (indexPath.section == 0)
+    if (indexPath.section == 1)
         return LocalizedString(@[@"Remove blocked content from YouTube feeds",
                                  @"Display the quick toggle in the top navigation bar",
                                  @"Remove this recommendation section",
                                  @"Remove this recommendation section"][indexPath.row]);
 
-    if (indexPath.section == 1) {
+    if (indexPath.section == 2) {
         if (indexPath.row == 0)
             return LocalizedCount(@"blocked channel", @"blocked channels", [ChannelManager sharedInstance].blockedChannels.count);
         if (indexPath.row == 1)
@@ -249,13 +337,15 @@ static void ShowToast(UIViewController *viewController, NSString *message) {
         return LocalizedCount(@"blocked word", @"blocked words", [WordManager sharedInstance].blockedWords.count);
     }
 
-    if (indexPath.section == 2)
-        return LocalizedString(indexPath.row == 0 ? @"Save your block lists and preferences" : @"Restore your block lists and preferences");
-    if (indexPath.row == 0)
-        return LocalizedString(@"View source code and report issues");
-    if (indexPath.row == 1)
+    return nil;
+}
+
+- (NSString *)tableView:(UITableView *)tableView titleForFooterInSection:(NSInteger)section {
+    if (section == 0)
         return LocalizedString(@"Support Gonerino development");
-    return [NSString stringWithFormat:@"v%@", TWEAK_VERSION];
+    if (section == 4)
+        return [NSString stringWithFormat:@"%@ %@", LocalizedString(@"Version"), TWEAK_VERSION];
+    return nil;
 }
 
 - (BOOL)valueForSwitchRow:(NSInteger)row {
@@ -279,16 +369,87 @@ static void ShowToast(UIViewController *viewController, NSString *message) {
     [Util refreshFeedViews];
 }
 
-- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
-    NSString *identifier = indexPath.section == 0 ? @"SettingsSwitchCell" : @"SettingsActionCell";
-    UITableViewCellStyle style = indexPath.section == 0 ? UITableViewCellStyleDefault : UITableViewCellStyleSubtitle;
+- (void)actionButtonTapped:(UIButton *)sender {
+    NSInteger section = sender.tag / 100;
+    NSInteger row = sender.tag % 100;
+    NSString *URLString = nil;
+    if (section == 0)
+        URLString = @"https://ko-fi.com/castdrian";
+    else if (section == 3) {
+        if (row == 0)
+            [self exportSettings];
+        else
+            [self importSettings];
+    }
+    else if (section == 4)
+        URLString = @"https://github.com/castdrian/Gonerino";
+
+    if (URLString.length > 0)
+        [[UIApplication sharedApplication] openURL:[NSURL URLWithString:URLString] options:@{} completionHandler:nil];
+}
+
+- (UITableViewCell *)buttonCellForTableView:(UITableView *)tableView indexPath:(NSIndexPath *)indexPath {
+    static NSString *identifier = @"SettingsButtonCell";
     UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:identifier];
     if (!cell)
-        cell = [[UITableViewCell alloc] initWithStyle:style reuseIdentifier:identifier];
+        cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:identifier];
+
+    for (UIView *subview in cell.contentView.subviews)
+        [subview removeFromSuperview];
+
+    NSString *title = [self titleForRow:indexPath];
+    BOOL prominent = indexPath.section == 0;
+    UIButton *button = [UIButton buttonWithType:UIButtonTypeSystem];
+    if (@available(iOS 15.0, *)) {
+        UIButtonConfiguration *configuration = prominent ? [UIButtonConfiguration tintedButtonConfiguration] : [UIButtonConfiguration plainButtonConfiguration];
+        configuration.image = [UIImage systemImageNamed:prominent ? @"heart.fill" : (indexPath.section == 4 ? @"safari" : (indexPath.row == 0 ? @"square.and.arrow.up" : @"square.and.arrow.down"))];
+        configuration.title = title;
+        configuration.imagePadding = prominent ? 8.0 : 6.0;
+        configuration.contentInsets = prominent ? NSDirectionalEdgeInsetsMake(12.0, 12.0, 12.0, 12.0) : NSDirectionalEdgeInsetsMake(8.0, 0.0, 8.0, 0.0);
+        if (prominent)
+            configuration.cornerStyle = UIButtonConfigurationCornerStyleMedium;
+        button.configuration = configuration;
+    } else {
+        NSString *symbol = prominent ? @"heart.fill" : (indexPath.section == 4 ? @"safari" : (indexPath.row == 0 ? @"square.and.arrow.up" : @"square.and.arrow.down"));
+        [button setImage:[UIImage systemImageNamed:symbol] forState:UIControlStateNormal];
+        [button setTitle:title forState:UIControlStateNormal];
+        button.imageEdgeInsets = UIEdgeInsetsMake(0.0, 0.0, 0.0, 6.0);
+        button.contentEdgeInsets = UIEdgeInsetsMake(prominent ? 12.0 : 8.0, 0.0, prominent ? 12.0 : 8.0, 0.0);
+    }
+    button.tag = indexPath.section * 100 + indexPath.row;
+    button.accessibilityLabel = title;
+    button.contentHorizontalAlignment = prominent ? UIControlContentHorizontalAlignmentCenter : UIControlContentHorizontalAlignmentLeft;
+    button.translatesAutoresizingMaskIntoConstraints = NO;
+    [button addTarget:self action:@selector(actionButtonTapped:) forControlEvents:UIControlEventTouchUpInside];
+    [cell.contentView addSubview:button];
+    [NSLayoutConstraint activateConstraints:@[
+        [button.topAnchor constraintEqualToAnchor:cell.contentView.topAnchor constant:4.0],
+        [button.leadingAnchor constraintEqualToAnchor:cell.contentView.leadingAnchor constant:16.0],
+        [button.trailingAnchor constraintEqualToAnchor:cell.contentView.trailingAnchor constant:-16.0],
+        [button.bottomAnchor constraintEqualToAnchor:cell.contentView.bottomAnchor constant:-4.0]
+    ]];
+    cell.accessoryView = nil;
+    cell.accessoryType = UITableViewCellAccessoryNone;
+    cell.selectionStyle = UITableViewCellSelectionStyleNone;
+    cell.backgroundColor = UIColor.clearColor;
+    if (@available(iOS 14.0, *))
+        cell.backgroundConfiguration = [UIBackgroundConfiguration clearConfiguration];
+    return cell;
+}
+
+- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
+    if (indexPath.section == 0 || indexPath.section >= 3)
+        return [self buttonCellForTableView:tableView indexPath:indexPath];
+
+    NSString *identifier = indexPath.section == 1 ? @"SettingsSwitchCell" : @"SettingsNavigationCell";
+    UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:identifier];
+    if (!cell)
+        cell = [[UITableViewCell alloc] initWithStyle:indexPath.section == 1 ? UITableViewCellStyleDefault : UITableViewCellStyleSubtitle
+                                     reuseIdentifier:identifier];
 
     cell.textLabel.text = [self titleForRow:indexPath];
-    cell.detailTextLabel.text = indexPath.section == 0 ? nil : [self subtitleForRow:indexPath];
-    if (indexPath.section == 0) {
+    cell.detailTextLabel.text = [self subtitleForRow:indexPath];
+    if (indexPath.section == 1) {
         UISwitch *control = [UISwitch new];
         control.tag = indexPath.row;
         control.on = [self valueForSwitchRow:indexPath.row];
@@ -337,20 +498,10 @@ static void ShowToast(UIViewController *viewController, NSString *message) {
              for (NSString *channel in [ChannelManager sharedInstance].blockedChannels) {
                  [entries addObject:[SettingsEntry entryWithTitle:channel
                                                            subtitle:nil
-                                                             action:^{
-                                                                 UIAlertController *alert = [UIAlertController alertControllerWithTitle:LocalizedString(@"Delete Channel")
-                                                                                                                          message:[NSString stringWithFormat:LocalizedString(@"Are you sure you want to delete '%@'?"), channel]
-                                                                                                                   preferredStyle:UIAlertControllerStyleAlert];
-                                                                 [alert addAction:[UIAlertAction actionWithTitle:LocalizedString(@"Delete")
-                                                                                                    style:UIAlertActionStyleDestructive
-                                                                                                  handler:^(__unused UIAlertAction *action) {
-                                                                                                      [[ChannelManager sharedInstance] removeBlockedChannel:channel];
-                                                                                                      [weakList refreshEntries];
-                                                                                                      [weakSelf.settingsManager settingsIntegrationReloadSection];
-                                                                                                  }]];
-                                                                 [alert addAction:[UIAlertAction actionWithTitle:LocalizedString(@"Cancel") style:UIAlertActionStyleCancel handler:nil]];
-                                                                 [weakSelf presentViewController:alert animated:YES completion:nil];
-                                                             }]];
+                                                       deleteAction:^{
+                                                           [[ChannelManager sharedInstance] removeBlockedChannel:channel];
+                                                           [weakSelf.settingsManager settingsIntegrationReloadSection];
+                                                       }]];
              }
              return entries;
          }];
@@ -377,20 +528,10 @@ static void ShowToast(UIViewController *viewController, NSString *message) {
                  NSString *channel = [video[@"channel"] length] > 0 ? video[@"channel"] : LocalizedString(@"Unknown Channel");
                  [entries addObject:[SettingsEntry entryWithTitle:title
                                                            subtitle:channel
-                                                             action:^{
-                                                                 UIAlertController *alert = [UIAlertController alertControllerWithTitle:LocalizedString(@"Delete Video")
-                                                                                                                          message:[NSString stringWithFormat:LocalizedString(@"Are you sure you want to delete '%@'?"), title]
-                                                                                                                   preferredStyle:UIAlertControllerStyleAlert];
-                                                                 [alert addAction:[UIAlertAction actionWithTitle:LocalizedString(@"Delete")
-                                                                                                    style:UIAlertActionStyleDestructive
-                                                                                                  handler:^(__unused UIAlertAction *action) {
-                                                                                                      [[VideoManager sharedInstance] removeBlockedVideo:videoId];
-                                                                                                      [weakList refreshEntries];
-                                                                                                      [weakSelf.settingsManager settingsIntegrationReloadSection];
-                                                                                                  }]];
-                                                                 [alert addAction:[UIAlertAction actionWithTitle:LocalizedString(@"Cancel") style:UIAlertActionStyleCancel handler:nil]];
-                                                                 [weakSelf presentViewController:alert animated:YES completion:nil];
-                                                             }]];
+                                                       deleteAction:^{
+                                                           [[VideoManager sharedInstance] removeBlockedVideo:videoId];
+                                                           [weakSelf.settingsManager settingsIntegrationReloadSection];
+                                                       }]];
              }
              return entries;
          }];
@@ -431,20 +572,10 @@ static void ShowToast(UIViewController *viewController, NSString *message) {
              for (NSString *word in [WordManager sharedInstance].blockedWords) {
                  [entries addObject:[SettingsEntry entryWithTitle:word
                                                            subtitle:nil
-                                                             action:^{
-                                                                 UIAlertController *alert = [UIAlertController alertControllerWithTitle:LocalizedString(@"Delete Word")
-                                                                                                                          message:[NSString stringWithFormat:LocalizedString(@"Are you sure you want to delete '%@'?"), word]
-                                                                                                                   preferredStyle:UIAlertControllerStyleAlert];
-                                                                 [alert addAction:[UIAlertAction actionWithTitle:LocalizedString(@"Delete")
-                                                                                                    style:UIAlertActionStyleDestructive
-                                                                                                  handler:^(__unused UIAlertAction *action) {
-                                                                                                      [[WordManager sharedInstance] removeBlockedWord:word];
-                                                                                                      [weakList refreshEntries];
-                                                                                                      [weakSelf.settingsManager settingsIntegrationReloadSection];
-                                                                                                  }]];
-                                                                 [alert addAction:[UIAlertAction actionWithTitle:LocalizedString(@"Cancel") style:UIAlertActionStyleCancel handler:nil]];
-                                                                 [weakSelf presentViewController:alert animated:YES completion:nil];
-                                                             }]];
+                                                       deleteAction:^{
+                                                           [[WordManager sharedInstance] removeBlockedWord:word];
+                                                           [weakSelf.settingsManager settingsIntegrationReloadSection];
+                                                       }]];
              }
              return entries;
          }];
@@ -562,7 +693,11 @@ static void ShowToast(UIViewController *viewController, NSString *message) {
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
     [tableView deselectRowAtIndexPath:indexPath animated:YES];
-    if (indexPath.section == 1) {
+    if (indexPath.section == 0) {
+        [[UIApplication sharedApplication] openURL:[NSURL URLWithString:@"https://ko-fi.com/castdrian"] options:@{} completionHandler:nil];
+        return;
+    }
+    if (indexPath.section == 2) {
         if (indexPath.row == 0)
             [self openChannels];
         else if (indexPath.row == 1)
@@ -571,21 +706,15 @@ static void ShowToast(UIViewController *viewController, NSString *message) {
             [self openWords];
         return;
     }
-    if (indexPath.section == 2) {
+    if (indexPath.section == 3) {
         if (indexPath.row == 0)
             [self exportSettings];
         else
             [self importSettings];
         return;
     }
-    if (indexPath.section == 3) {
-        NSArray *urls = @[
-            @"https://github.com/castdrian/Gonerino",
-            @"https://ko-fi.com/castdrian",
-            @"https://github.com/castdrian/Gonerino/releases"
-        ];
-        [[UIApplication sharedApplication] openURL:[NSURL URLWithString:urls[indexPath.row]] options:@{} completionHandler:nil];
-    }
+    if (indexPath.section == 4)
+        [[UIApplication sharedApplication] openURL:[NSURL URLWithString:@"https://github.com/castdrian/Gonerino"] options:@{} completionHandler:nil];
 }
 
 @end
@@ -608,22 +737,22 @@ static void OpenCustomSettingsAttempt(YTSettingsSectionItemManager *manager, NSU
         return;
 
     SettingsPageViewController *viewController = [[SettingsPageViewController alloc] initWithSettingsManager:manager];
-    if (navigationController && navigationController.viewControllers.count > 1) {
-        NSMutableArray *viewControllers = navigationController.viewControllers.mutableCopy;
-        [viewControllers removeObjectsInRange:NSMakeRange(1, viewControllers.count - 1)];
-        [viewControllers addObject:viewController];
-        [navigationController setViewControllers:viewControllers animated:YES];
-    } else if (navigationController)
-        [navigationController pushViewController:viewController animated:YES];
-    else
+    if (navigationController) {
+        UIViewController *rootViewController = navigationController.viewControllers.firstObject ?: settingsViewController;
+        [navigationController setViewControllers:@[rootViewController, viewController] animated:NO];
+    } else {
         [settingsViewController pushViewController:viewController];
+    }
 }
 
 void OpenCustomSettings(YTSettingsSectionItemManager *manager) {
     if (!manager)
         return;
 
-    dispatch_async(dispatch_get_main_queue(), ^{
+    if ([NSThread isMainThread])
         OpenCustomSettingsAttempt(manager, 0);
-    });
+    else
+        dispatch_async(dispatch_get_main_queue(), ^{
+            OpenCustomSettingsAttempt(manager, 0);
+        });
 }

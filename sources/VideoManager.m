@@ -1,4 +1,5 @@
 #import "VideoManager.h"
+#import "Util.h"
 
 static NSString *CleanChannelName(id value) {
     if (![value isKindOfClass:[NSString class]])
@@ -9,6 +10,14 @@ static NSString *CleanChannelName(id value) {
     if ([normalized isEqualToString:@"action menu"] || [normalized isEqualToString:@"more actions"])
         return @"";
     return channel;
+}
+
+static NSString *CleanVideoTitle(id value) {
+    if (![value isKindOfClass:[NSString class]])
+        return @"";
+
+    NSString *title = [value stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    return [Util isUsableVideoTitle:title] ? title : @"";
 }
 
 @interface VideoManager ()
@@ -44,7 +53,7 @@ static NSString *CleanChannelName(id value) {
 
             NSDictionary *video = @{
                 @"id": videoId,
-                @"title": [value[@"title"] isKindOfClass:[NSString class]] ? value[@"title"] : @"",
+                @"title": CleanVideoTitle(value[@"title"]),
                 @"channel": CleanChannelName(value[@"channel"])
             };
             [cleanedVideos addObject:video];
@@ -66,7 +75,7 @@ static NSString *CleanChannelName(id value) {
     if (!videoId.length)
         return;
 
-    NSDictionary *videoInfo = @{@"id": videoId, @"title": title ?: @"", @"channel": CleanChannelName(channel)};
+    NSDictionary *videoInfo = @{@"id": videoId, @"title": CleanVideoTitle(title), @"channel": CleanChannelName(channel)};
 
     NSInteger existingIndex =
         [self.blockedVideoArray indexOfObjectPassingTest:^BOOL(NSDictionary *obj, NSUInteger idx, BOOL *stop) {
@@ -115,7 +124,7 @@ static NSString *CleanChannelName(id value) {
             continue;
         [validVideos addObject:@{
             @"id": videoId,
-            @"title": [value[@"title"] isKindOfClass:[NSString class]] ? value[@"title"] : @"",
+            @"title": CleanVideoTitle(value[@"title"]),
             @"channel": CleanChannelName(value[@"channel"])
         }];
     }

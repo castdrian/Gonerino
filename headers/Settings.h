@@ -30,7 +30,6 @@ NS_ASSUME_NONNULL_BEGIN
                                             }]]
 
 static const NSInteger SettingsCategory = 2002;
-static const NSInteger SettingsGroup = 'gnrn';
 
 #define TWEAK_VERSION PACKAGE_VERSION
 

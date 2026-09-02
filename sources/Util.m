@@ -341,18 +341,38 @@ static NSString *ShortsChannelTextFromNode(id node) {
     return nil;
 }
 
+static BOOL IsShortsControlText(NSString *text) {
+    NSString *candidate = [text stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    NSString *lowercaseCandidate = candidate.lowercaseString;
+    if (candidate.length == 0 || [candidate hasPrefix:@"@"])
+        return YES;
+
+    NSArray<NSString *> *controlPrefixes = @[
+        @"subscribe to ", @"subscribed to ", @"suscribirse a ", @"suscrito a ",
+        @"abonnieren ", @"abonner à ", @"abonné à ", @"iscriviti a ",
+        @"assinar ", @"inscrever-se ", @"подписаться на ", @"購読"
+    ];
+    for (NSString *prefix in controlPrefixes) {
+        if ([lowercaseCandidate hasPrefix:prefix])
+            return YES;
+    }
+
+    NSArray<NSString *> *controlLabels = @[
+        @"retry", @"subscribe", @"subscribed", @"share", @"remix", @"description",
+        @"clear screen", @"audio track", @"abonnieren", @"suscribirse", @"abonner",
+        @"iscriviti", @"assinar", @"подписаться"
+    ];
+    if ([controlLabels containsObject:lowercaseCandidate])
+        return YES;
+    return [lowercaseCandidate hasPrefix:@"captions"] || [lowercaseCandidate hasPrefix:@"quality"];
+}
+
 static BOOL IsLikelyShortsTitleText(NSString *text, NSString *channel) {
     if (text.length == 0 || text.length > 240)
         return NO;
 
     NSString *candidate = [text stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
-    NSString *lowercaseCandidate = candidate.lowercaseString;
-    if (candidate.length == 0 || [candidate isEqualToString:channel] || [candidate hasPrefix:@"@"] ||
-        [lowercaseCandidate isEqualToString:@"retry"] || [lowercaseCandidate isEqualToString:@"subscribe"] ||
-        [lowercaseCandidate isEqualToString:@"share"] || [lowercaseCandidate isEqualToString:@"remix"] ||
-        [lowercaseCandidate isEqualToString:@"description"] || [lowercaseCandidate isEqualToString:@"clear screen"] ||
-        [lowercaseCandidate isEqualToString:@"audio track"] || [lowercaseCandidate hasPrefix:@"captions"] ||
-        [lowercaseCandidate hasPrefix:@"quality"])
+    if (candidate.length == 0 || [candidate isEqualToString:channel] || IsShortsControlText(candidate))
         return NO;
 
     static NSRegularExpression *metricsRegex;
@@ -1282,6 +1302,11 @@ static NSDictionary *VideoInfoFromNode(id node, BOOL bypassCache) {
         }
         CollectLegacyInlinePlaybackMetadata(node, result, priorities);
         CollectInlinePlaybackMetadata(node, result, priorities);
+        BOOL isShortsNode = [nodeClassName containsString:@"short"] || [nodeClassName containsString:@"reel"];
+        if (isShortsNode && IsShortsControlText(result[@"title"])) {
+            [result removeObjectForKey:@"title"];
+            [priorities removeObjectForKey:@"title"];
+        }
         NSString *title = result[@"title"];
         NSString *channel = result[@"channel"];
         NSString *lowercaseTitle = title.lowercaseString;
@@ -1411,6 +1436,10 @@ static NSDictionary *VideoInfoFromNode(id node, BOOL bypassCache) {
     return VideoInfoFromNode(node, NO);
 }
 
++ (BOOL)isUsableVideoTitle:(NSString *)title {
+    return title.length > 0 && !IsShortsControlText(title);
+}
+
 + (NSDictionary *)freshVideoInfoFromNode:(id)node {
     if (!node)
         return nil;
@@ -1423,7 +1452,10 @@ static NSDictionary *VideoInfoFromNode(id node, BOOL bypassCache) {
     NSDictionary *feedMetadata = FeedMetadataFromView(sourceView);
     for (NSString *key in @[@"title", @"channel"]) {
         NSString *value = feedMetadata[key];
-        if ([metadata[key] length] == 0 && value.length > 0)
+        BOOL replacePlaceholder = [key isEqualToString:@"title"] &&
+                                  ![self isUsableVideoTitle:metadata[key]] &&
+                                  [self isUsableVideoTitle:value];
+        if (([metadata[key] length] == 0 || replacePlaceholder) && value.length > 0)
             metadata[key] = value;
     }
     if (metadata.count == 0)
@@ -1443,13 +1475,18 @@ static NSDictionary *VideoInfoFromNode(id node, BOOL bypassCache) {
 }
 
 + (BOOL)nodeContainsBlockedVideo:(id)node {
+    return [self nodeContainsBlockedVideo:node videoInfo:nil];
+}
+
++ (BOOL)nodeContainsBlockedVideo:(id)node
+                        videoInfo:(NSDictionary<NSString *,NSString *> *)videoInfo {
     BOOL isEnabled = [[NSUserDefaults standardUserDefaults] objectForKey:@"GonerinoEnabled"] == nil
                          ? YES
                          : [[NSUserDefaults standardUserDefaults] boolForKey:@"GonerinoEnabled"];
     if (!isEnabled)
         return NO;
 
-    NSDictionary *info = [self videoInfoFromNode:node];
+    NSDictionary *info = videoInfo ?: [self videoInfoFromNode:node];
     if ([[VideoManager sharedInstance] isVideoBlocked:info[@"id"]] ||
         [[ChannelManager sharedInstance] isChannelBlocked:info[@"channel"]] ||
         [[WordManager sharedInstance] isWordBlocked:info[@"title"]] ||
