@@ -1417,6 +1417,10 @@ static NSDictionary *VideoInfoFromNode(id node, BOOL bypassCache) {
 }
 
 + (void)refreshFeedViews {
+    static BOOL refreshQueued = NO;
+    if (refreshQueued)
+        return;
+    refreshQueued = YES;
     dispatch_async(dispatch_get_main_queue(), ^{
         NSMutableArray *pendingViews = [NSMutableArray array];
         for (UIWindow *window in [UIApplication sharedApplication].windows)
@@ -1429,6 +1433,7 @@ static NSDictionary *VideoInfoFromNode(id node, BOOL bypassCache) {
                 [(UICollectionView *)view reloadData];
             [pendingViews addObjectsFromArray:view.subviews];
         }
+        refreshQueued = NO;
     });
 }
 

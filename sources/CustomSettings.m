@@ -3,6 +3,34 @@
 #import "Localization.h"
 #import "Util.h"
 
+static UIViewController *TopVisibleViewController(UIViewController *viewController) {
+    if (!viewController)
+        return nil;
+    if (viewController.presentedViewController && !viewController.presentedViewController.isBeingDismissed)
+        return TopVisibleViewController(viewController.presentedViewController);
+    if ([viewController isKindOfClass:[UINavigationController class]])
+        return TopVisibleViewController([(UINavigationController *)viewController visibleViewController]);
+    if ([viewController isKindOfClass:[UITabBarController class]])
+        return TopVisibleViewController([(UITabBarController *)viewController selectedViewController]);
+    for (UIViewController *child in viewController.childViewControllers.reverseObjectEnumerator) {
+        if (child.viewIfLoaded.window)
+            return TopVisibleViewController(child);
+    }
+    return viewController;
+}
+
+static void RequestPortraitOrientation(UIViewController *viewController) {
+    UIWindowScene *scene = viewController.view.window.windowScene;
+    if (!scene)
+        return;
+
+    if (@available(iOS 16.0, *)) {
+        UIWindowSceneGeometryPreferencesIOS *preferences = [[UIWindowSceneGeometryPreferencesIOS alloc]
+            initWithInterfaceOrientations:UIInterfaceOrientationMaskPortrait];
+        [scene requestGeometryUpdateWithPreferences:preferences errorHandler:nil];
+    }
+}
+
 static YTSettingsViewController *SettingsControllerForManager(YTSettingsSectionItemManager *manager) {
     if (!manager)
         return nil;
@@ -28,6 +56,12 @@ static YTSettingsViewController *SettingsControllerForManager(YTSettingsSectionI
         if (![responder respondsToSelector:@selector(nextResponder)])
             break;
         responder = [responder nextResponder];
+    }
+
+    for (UIWindow *window in [UIApplication sharedApplication].windows) {
+        UIViewController *candidate = TopVisibleViewController(window.rootViewController);
+        if (settingsClass && [candidate isKindOfClass:settingsClass])
+            return (YTSettingsViewController *)candidate;
     }
     return nil;
 }
@@ -111,6 +145,18 @@ static UIButton *NavigationBackButton(NSString *title, id target, SEL action) {
 
 @implementation SettingsListViewController
 
+- (UIInterfaceOrientationMask)supportedInterfaceOrientations {
+    return UIInterfaceOrientationMaskPortrait;
+}
+
+- (UIInterfaceOrientation)preferredInterfaceOrientationForPresentation {
+    return UIInterfaceOrientationPortrait;
+}
+
+- (BOOL)shouldAutorotate {
+    return YES;
+}
+
 - (instancetype)initWithTitle:(NSString *)title
              searchPlaceholder:(NSString *)searchPlaceholder
               entriesProvider:(NSArray<SettingsEntry *> *(^)(void))entriesProvider {
@@ -162,7 +208,13 @@ static UIButton *NavigationBackButton(NSString *title, id target, SEL action) {
 
 - (void)viewWillAppear:(BOOL)animated {
     [super viewWillAppear:animated];
+    RequestPortraitOrientation(self);
     [self refreshEntries];
+}
+
+- (void)viewDidAppear:(BOOL)animated {
+    [super viewDidAppear:animated];
+    RequestPortraitOrientation(self);
 }
 
 - (void)refreshEntries {
@@ -244,6 +296,18 @@ static UIButton *NavigationBackButton(NSString *title, id target, SEL action) {
 
 @implementation SettingsPageViewController
 
+- (UIInterfaceOrientationMask)supportedInterfaceOrientations {
+    return UIInterfaceOrientationMaskPortrait;
+}
+
+- (UIInterfaceOrientation)preferredInterfaceOrientationForPresentation {
+    return UIInterfaceOrientationPortrait;
+}
+
+- (BOOL)shouldAutorotate {
+    return YES;
+}
+
 - (instancetype)initWithSettingsManager:(YTSettingsSectionItemManager *)settingsManager {
     self = [super initWithStyle:UITableViewStyleInsetGrouped];
     if (self) {
@@ -273,7 +337,13 @@ static UIButton *NavigationBackButton(NSString *title, id target, SEL action) {
 
 - (void)viewWillAppear:(BOOL)animated {
     [super viewWillAppear:animated];
+    RequestPortraitOrientation(self);
     [self.tableView reloadData];
+}
+
+- (void)viewDidAppear:(BOOL)animated {
+    [super viewDidAppear:animated];
+    RequestPortraitOrientation(self);
 }
 
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
@@ -743,6 +813,8 @@ static void OpenCustomSettingsAttempt(YTSettingsSectionItemManager *manager, NSU
     } else {
         [settingsViewController pushViewController:viewController];
     }
+    [viewController loadViewIfNeeded];
+    [viewController.tableView reloadData];
 }
 
 void OpenCustomSettings(YTSettingsSectionItemManager *manager) {

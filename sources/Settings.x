@@ -2,6 +2,22 @@
 #import "CustomSettings.h"
 #import "Localization.h"
 
+static UIViewController *TopVisibleViewController(UIViewController *viewController) {
+    if (!viewController)
+        return nil;
+    if (viewController.presentedViewController && !viewController.presentedViewController.isBeingDismissed)
+        return TopVisibleViewController(viewController.presentedViewController);
+    if ([viewController isKindOfClass:[UINavigationController class]])
+        return TopVisibleViewController([(UINavigationController *)viewController visibleViewController]);
+    if ([viewController isKindOfClass:[UITabBarController class]])
+        return TopVisibleViewController([(UITabBarController *)viewController selectedViewController]);
+    for (UIViewController *child in viewController.childViewControllers.reverseObjectEnumerator) {
+        if (child.viewIfLoaded.window)
+            return TopVisibleViewController(child);
+    }
+    return viewController;
+}
+
 static YTSettingsViewController *SettingsViewControllerForManager(YTSettingsSectionItemManager *manager) {
     if (!manager)
         return nil;
@@ -27,7 +43,45 @@ static YTSettingsViewController *SettingsViewControllerForManager(YTSettingsSect
             break;
         responder = [responder nextResponder];
     }
+
+    Class settingsClass = %c(YTSettingsViewController);
+    for (UIWindow *window in [UIApplication sharedApplication].windows) {
+        UIViewController *candidate = TopVisibleViewController(window.rootViewController);
+        if ([candidate isKindOfClass:settingsClass])
+            return (YTSettingsViewController *)candidate;
+    }
     return nil;
+}
+
+static BOOL GonerinoCategoryIsVisible(YTSettingsSectionItemManager *manager) {
+    YTSettingsViewController *settingsViewController = SettingsViewControllerForManager(manager);
+    UIViewController *topViewController = nil;
+    for (UIWindow *window in [UIApplication sharedApplication].windows) {
+        if (window.isKeyWindow) {
+            topViewController = TopVisibleViewController(window.rootViewController);
+            break;
+        }
+    }
+    if (!topViewController)
+        topViewController = settingsViewController.navigationController.topViewController ?: settingsViewController;
+    NSString *title = topViewController.title ?: topViewController.navigationItem.title;
+    if (title.length == 0)
+        title = settingsViewController.navigationController.navigationBar.topItem.title;
+    return [title isEqualToString:LocalizedString(@"Gonerino")];
+}
+
+static void OpenCustomSettingsWhenCategoryIsVisible(YTSettingsSectionItemManager *manager, NSUInteger attempt) {
+    if (GonerinoCategoryIsVisible(manager)) {
+        OpenCustomSettings(manager);
+        return;
+    }
+
+    if (attempt < 40) {
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.1 * NSEC_PER_SEC)),
+                       dispatch_get_main_queue(), ^{
+                           OpenCustomSettingsWhenCategoryIsVisible(manager, attempt + 1);
+                       });
+    }
 }
 
 static const NSUInteger SettingsGroup = 0x67726e72;
@@ -91,7 +145,7 @@ static const NSUInteger SettingsGroup = 0x67726e72;
 - (void)updateSectionForCategory:(NSUInteger)category withEntry:(id)entry {
     if (category == SettingsCategory) {
         [self settingsIntegrationUpdateSectionWithEntry:entry];
-        OpenCustomSettings(self);
+        OpenCustomSettingsWhenCategoryIsVisible(self, 0);
         return;
     }
     %orig;
