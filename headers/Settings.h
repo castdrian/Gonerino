@@ -17,6 +17,9 @@
 #import <rootless.h>
 #import <version.h>
 
+@interface YTCollectionViewController : UIViewController
+@end
+
 NS_ASSUME_NONNULL_BEGIN
 
 #define SECTION_HEADER(s)                                                                                              \

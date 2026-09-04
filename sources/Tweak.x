@@ -640,13 +640,20 @@ static void CollapseBlockedCellGaps(YTAsyncCollectionView *collectionView);
 static void RevealFeedContentAfterRemoval(YTAsyncCollectionView *collectionView,
                                           UICollectionViewCell *removedCell,
                                           CGRect removedFrame);
+static BOOL CollectionViewIsEligibleForFiltering(YTAsyncCollectionView *collectionView);
+static void RequestFiltering(YTAsyncCollectionView *collectionView);
+static void ScheduleMetadataRetry(YTAsyncCollectionView *collectionView);
 
 static void *BlockedCellKey = &BlockedCellKey;
 static void *DirectBlockedVideoIDKey = &DirectBlockedVideoIDKey;
-static void *CollapsedLayoutKey = &CollapsedLayoutKey;
 static void *GapCollapsePendingKey = &GapCollapsePendingKey;
 static void *ShortsTransitionKey = &ShortsTransitionKey;
 static void *FilterMetadataKey = &FilterMetadataKey;
+static void *FilterNeedsRefreshKey = &FilterNeedsRefreshKey;
+static void *FilterWaitingForIdleKey = &FilterWaitingForIdleKey;
+static void *FilterRetryScheduledKey = &FilterRetryScheduledKey;
+static void *FilterRetryCountKey = &FilterRetryCountKey;
+static void *VisibleCellsKey = &VisibleCellsKey;
 
 static NSMapTable *FeedCellsByVideoID(void) {
     static NSMapTable *map;
@@ -684,54 +691,39 @@ static NSDictionary *FilterMetadataForCell(UICollectionViewCell *cell, id node, 
     if (cached[@"node"] == node) {
         NSDictionary *info = cached[@"info"];
         NSTimeInterval age = now - [cached[@"timestamp"] doubleValue];
-        NSTimeInterval validFor = FilterMetadataIsComplete(info) ? (isPagingCollection ? 4.0 : 3.0) : (isPagingCollection ? 1.5 : 2.0);
+        NSTimeInterval validFor = FilterMetadataIsComplete(info) ? (isPagingCollection ? 4.0 : 3.0) : (isPagingCollection ? 1.0 : 1.2);
         if (age >= 0.0 && age < validFor)
             return info;
     }
 
-    NSDictionary *info = [Util videoInfoFromNode:node];
-    if (!FilterMetadataIsComplete(info)) {
+    NSDictionary *info = [Util videoInfoFromNode:node] ?: @{};
+    BOOL shouldReadRenderedView = isPagingCollection;
+    if (!isPagingCollection && cached[@"node"] == node) {
+        NSNumber *freshTimestamp = cached[@"freshTimestamp"];
+        shouldReadRenderedView = !freshTimestamp || now - freshTimestamp.doubleValue >= 2.5;
+    }
+    NSNumber *freshTimestamp = nil;
+    if (!FilterMetadataIsComplete(info) && shouldReadRenderedView) {
         NSDictionary *freshInfo = [Util freshVideoInfoFromNode:node sourceView:cell];
         if (freshInfo.count > 0)
             info = freshInfo;
+        freshTimestamp = @(now);
     }
-    if (!info)
-        info = @{};
-    objc_setAssociatedObject(cell,
-                             FilterMetadataKey,
-                             @{ @"node": node, @"info": info, @"timestamp": @(now) },
-                             OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    NSMutableDictionary *cacheEntry = [@{ @"node": node, @"info": info, @"timestamp": @(now) } mutableCopy];
+    if (freshTimestamp)
+        cacheEntry[@"freshTimestamp"] = freshTimestamp;
+    objc_setAssociatedObject(cell, FilterMetadataKey, cacheEntry, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     return info;
 }
 
 static void RefreshVisibleFeeds(void) {
     dispatch_async(dispatch_get_main_queue(), ^{
-        UIWindow *keyWindow = nil;
-        for (UIWindow *window in [UIApplication sharedApplication].windows) {
-            if (window.isKeyWindow) {
-                keyWindow = window;
-                break;
-            }
-        }
-        if (!keyWindow)
-            keyWindow = [UIApplication sharedApplication].windows.firstObject;
-
-        NSMutableArray *pendingViews = [NSMutableArray arrayWithObject:keyWindow ?: [NSNull null]];
-        while (pendingViews.count > 0) {
-            id object = pendingViews.lastObject;
-            [pendingViews removeLastObject];
-            if (![object isKindOfClass:[UIView class]])
+        for (YTAsyncCollectionView *collectionView in TrackedFeedCollectionViews().allObjects) {
+            if (!collectionView.window || !CollectionViewIsEligibleForFiltering(collectionView))
                 continue;
-
-            UIView *view = object;
-            if ([view isKindOfClass:NSClassFromString(@"YTAsyncCollectionView")]) {
-                objc_setAssociatedObject(view, CollapsedLayoutKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-                [view setNeedsLayout];
-                YTAsyncCollectionView *collectionView = (YTAsyncCollectionView *)view;
-                if ([collectionView respondsToSelector:@selector(scheduleFiltering)])
-                    [collectionView scheduleFiltering];
-            }
-            [pendingViews addObjectsFromArray:view.subviews];
+            collectionView.lastFilterTime = 0.0;
+            [collectionView setNeedsLayout];
+            RequestFiltering(collectionView);
         }
     });
 }
@@ -740,22 +732,137 @@ static BOOL CollectionViewIsScrolling(YTAsyncCollectionView *collectionView) {
     return collectionView.isDragging || collectionView.isDecelerating || collectionView.isTracking;
 }
 
-static void CollapseBlockedCellGaps(YTAsyncCollectionView *collectionView) {
-    if (!collectionView || collectionView.pagingEnabled || objc_getAssociatedObject(collectionView, CollapsedLayoutKey))
+static BOOL CollectionViewIsHorizontallyArranged(YTAsyncCollectionView *collectionView) {
+    if (!collectionView || collectionView.pagingEnabled || collectionView.bounds.size.width <= 0.0)
+        return NO;
+
+    CGFloat width = collectionView.bounds.size.width;
+    CGFloat height = collectionView.bounds.size.height;
+    NSArray<UICollectionViewCell *> *visibleCells = collectionView.visibleCells;
+    for (NSUInteger firstIndex = 0; firstIndex < visibleCells.count; firstIndex++) {
+        CGRect firstFrame = visibleCells[firstIndex].frame;
+        for (NSUInteger secondIndex = firstIndex + 1; secondIndex < visibleCells.count; secondIndex++) {
+            CGRect secondFrame = visibleCells[secondIndex].frame;
+            CGFloat verticalDistance = fabs(CGRectGetMidY(firstFrame) - CGRectGetMidY(secondFrame));
+            CGFloat horizontalDistance = fabs(CGRectGetMidX(firstFrame) - CGRectGetMidX(secondFrame));
+            if (verticalDistance < MAX(24.0, height * 0.2) && horizontalDistance > width * 0.2)
+                return YES;
+        }
+    }
+
+    CGSize contentSize = collectionView.contentSize;
+    return contentSize.width > width + 48.0 &&
+           contentSize.width > MAX(contentSize.height * 1.25, width * 1.25);
+}
+
+static BOOL CollectionViewIsEligibleForFiltering(YTAsyncCollectionView *collectionView) {
+    if (!collectionView || !collectionView.window || collectionView.visibleCells.count == 0)
+        return NO;
+    if (collectionView.pagingEnabled)
+        return YES;
+    return !CollectionViewIsHorizontallyArranged(collectionView);
+}
+
+static BOOL CollectionViewHasFilterableCells(YTAsyncCollectionView *collectionView) {
+    if (!collectionView)
+        return NO;
+    if (collectionView.pagingEnabled)
+        return collectionView.visibleCells.count > 0;
+
+    Class asyncCellClass = NSClassFromString(@"_ASCollectionViewCell");
+    for (UICollectionViewCell *cell in collectionView.visibleCells) {
+        if (![cell isKindOfClass:asyncCellClass])
+            continue;
+        _ASCollectionViewCell *asCell = (_ASCollectionViewCell *)cell;
+        if ([asCell respondsToSelector:@selector(node)] && [asCell node])
+            return YES;
+    }
+    return NO;
+}
+
+static void RequestFiltering(YTAsyncCollectionView *collectionView) {
+    if (!collectionView)
+        return;
+    objc_setAssociatedObject(collectionView, FilterNeedsRefreshKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    [collectionView scheduleFiltering];
+}
+
+static void ScheduleFilteringAfterIdle(YTAsyncCollectionView *collectionView) {
+    if (!collectionView || objc_getAssociatedObject(collectionView, FilterWaitingForIdleKey))
         return;
 
-    if (collectionView.bounds.size.height <= 0.0 ||
-        collectionView.contentSize.height <= collectionView.bounds.size.height)
+    objc_setAssociatedObject(collectionView, FilterWaitingForIdleKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    __weak YTAsyncCollectionView *weakCollectionView = collectionView;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.30 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        YTAsyncCollectionView *strongCollectionView = weakCollectionView;
+        if (!strongCollectionView)
+            return;
+        objc_setAssociatedObject(strongCollectionView, FilterWaitingForIdleKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        if (CollectionViewIsScrolling(strongCollectionView)) {
+            ScheduleFilteringAfterIdle(strongCollectionView);
+            return;
+        }
+        strongCollectionView.lastFilterTime = 0.0;
+        RequestFiltering(strongCollectionView);
+    });
+}
+
+static void ScheduleMetadataRetry(YTAsyncCollectionView *collectionView) {
+    if (!collectionView || objc_getAssociatedObject(collectionView, FilterRetryScheduledKey))
+        return;
+
+    NSUInteger retryCount = [objc_getAssociatedObject(collectionView, FilterRetryCountKey) unsignedIntegerValue];
+    if (retryCount >= 8)
+        return;
+
+    objc_setAssociatedObject(collectionView, FilterRetryCountKey, @(retryCount + 1), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    objc_setAssociatedObject(collectionView, FilterRetryScheduledKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    __weak YTAsyncCollectionView *weakCollectionView = collectionView;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.40 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        YTAsyncCollectionView *strongCollectionView = weakCollectionView;
+        if (!strongCollectionView)
+            return;
+        objc_setAssociatedObject(strongCollectionView, FilterRetryScheduledKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        if (!strongCollectionView.window || !CollectionViewIsEligibleForFiltering(strongCollectionView))
+            return;
+        strongCollectionView.lastFilterTime = 0.0;
+        RequestFiltering(strongCollectionView);
+    });
+}
+
+static BOOL CollectionViewHasBlockedCells(YTAsyncCollectionView *collectionView) {
+    for (UIView *subview in collectionView.subviews) {
+        if ([subview isKindOfClass:[UICollectionViewCell class]] &&
+            objc_getAssociatedObject(subview, BlockedCellKey))
+            return YES;
+    }
+    return NO;
+}
+
+static void CollapseBlockedCellGaps(YTAsyncCollectionView *collectionView) {
+    if (!collectionView || collectionView.pagingEnabled || collectionView.bounds.size.height <= 0.0)
         return;
 
     NSMutableArray<UICollectionViewCell *> *cells = [NSMutableArray array];
     NSMutableArray<NSValue *> *blockedFrames = [NSMutableArray array];
-    for (UICollectionViewCell *cell in collectionView.visibleCells) {
-        if (![cell isKindOfClass:[UICollectionViewCell class]])
+    for (UIView *subview in collectionView.subviews) {
+        if (![subview isKindOfClass:[UICollectionViewCell class]])
             continue;
+        UICollectionViewCell *cell = (UICollectionViewCell *)subview;
+        cell.transform = CGAffineTransformIdentity;
         [cells addObject:cell];
         if (objc_getAssociatedObject(cell, BlockedCellKey))
             [blockedFrames addObject:[NSValue valueWithCGRect:cell.frame]];
+    }
+    for (UICollectionViewCell *cell in collectionView.visibleCells) {
+        if (![cell isKindOfClass:[UICollectionViewCell class]])
+            continue;
+        if (![cells containsObject:cell]) {
+            cell.transform = CGAffineTransformIdentity;
+            [cells addObject:cell];
+            if (objc_getAssociatedObject(cell, BlockedCellKey))
+                [blockedFrames addObject:[NSValue valueWithCGRect:cell.frame]];
+        }
     }
     if (blockedFrames.count == 0)
         return;
@@ -771,21 +878,31 @@ static void CollapseBlockedCellGaps(YTAsyncCollectionView *collectionView) {
             BOOL below = CGRectGetMinY(frame) >= CGRectGetMaxY(blockedFrame) - 1.0;
             BOOL overlapsHorizontally = CGRectGetMinX(frame) < CGRectGetMaxX(blockedFrame) &&
                                          CGRectGetMaxX(frame) > CGRectGetMinX(blockedFrame);
-            if (below && overlapsHorizontally)
-                offset += CGRectGetHeight(blockedFrame);
+            if (!below || !overlapsHorizontally)
+                continue;
+
+            CGFloat slotHeight = CGRectGetHeight(blockedFrame);
+            CGFloat nextMinY = CGFLOAT_MAX;
+            for (UICollectionViewCell *candidate in cells) {
+                CGRect candidateFrame = candidate.frame;
+                BOOL candidateBelow = CGRectGetMinY(candidateFrame) > CGRectGetMinY(blockedFrame) + 1.0;
+                BOOL candidateOverlaps = CGRectGetMinX(candidateFrame) < CGRectGetMaxX(blockedFrame) &&
+                                         CGRectGetMaxX(candidateFrame) > CGRectGetMinX(blockedFrame);
+                if (candidateBelow && candidateOverlaps)
+                    nextMinY = MIN(nextMinY, CGRectGetMinY(candidateFrame));
+            }
+            if (nextMinY < CGFLOAT_MAX)
+                slotHeight = MAX(slotHeight, nextMinY - CGRectGetMinY(blockedFrame));
+            offset += slotHeight;
         }
-        if (offset > 0.0) {
-            frame.origin.y -= offset;
-            cell.frame = frame;
-        }
+        if (offset > 0.0)
+            cell.transform = CGAffineTransformMakeTranslation(0.0, -offset);
     }
-    objc_setAssociatedObject(collectionView, CollapsedLayoutKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 }
 
 static void MarkGapCollapsePending(YTAsyncCollectionView *collectionView) {
     if (!collectionView || collectionView.pagingEnabled)
         return;
-    objc_setAssociatedObject(collectionView, CollapsedLayoutKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     objc_setAssociatedObject(collectionView, GapCollapsePendingKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     [collectionView setNeedsLayout];
 }
@@ -823,7 +940,7 @@ static void RevealFeedContentAfterRemoval(YTAsyncCollectionView *collectionView,
 }
 
 static void FilterVisibleCells(YTAsyncCollectionView *collectionView) {
-    if (!collectionView || CollectionViewIsScrolling(collectionView))
+    if (!CollectionViewIsEligibleForFiltering(collectionView) || CollectionViewIsScrolling(collectionView))
         return;
 
     if (collectionView.pagingEnabled && collectionView.bounds.size.height > 0.0 &&
@@ -835,10 +952,12 @@ static void FilterVisibleCells(YTAsyncCollectionView *collectionView) {
 
     collectionView.filtering = YES;
     collectionView.lastFilterTime = CFAbsoluteTimeGetCurrent();
+    objc_setAssociatedObject(collectionView, FilterNeedsRefreshKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     [TrackedFeedCollectionViews() addObject:collectionView];
     @try {
         BOOL isPagingCollection = collectionView.pagingEnabled;
         BOOL hasBlockedCell = NO;
+        BOOL hasIncompleteMetadata = NO;
         for (UICollectionViewCell *cell in collectionView.visibleCells) {
             NSString *directVideoId = objc_getAssociatedObject(cell, DirectBlockedVideoIDKey);
             BOOL directlyBlocked = objc_getAssociatedObject(cell, BlockedCellKey) != nil;
@@ -888,6 +1007,8 @@ static void FilterVisibleCells(YTAsyncCollectionView *collectionView) {
             }
 
             NSDictionary *info = FilterMetadataForCell(cell, node, isPagingCollection);
+            if (!FilterMetadataIsComplete(info) && (looksLikeActionVideo || isPagingCollection))
+                hasIncompleteMetadata = YES;
             NSString *metadataVideoId = info[@"id"];
             if (metadataVideoId.length > 0)
                 [FeedCellsByVideoID() setObject:cell forKey:metadataVideoId];
@@ -911,6 +1032,10 @@ static void FilterVisibleCells(YTAsyncCollectionView *collectionView) {
         }
         if (hasBlockedCell)
             MarkGapCollapsePending(collectionView);
+        if (hasIncompleteMetadata)
+            ScheduleMetadataRetry(collectionView);
+        else
+            objc_setAssociatedObject(collectionView, FilterRetryCountKey, @0, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     } @catch (__unused NSException *exception) {
     }
     collectionView.filtering = NO;
@@ -1180,16 +1305,18 @@ static void RemoveBlockedFeedItem(UIView *sourceView,
     if ([[NSUserDefaults standardUserDefaults] objectForKey:@"GonerinoEnabled"] != nil &&
         ![[NSUserDefaults standardUserDefaults] boolForKey:@"GonerinoEnabled"])
         return;
-    if (self.filterScheduled)
+    if (self.filterScheduled || objc_getAssociatedObject(self, FilterWaitingForIdleKey))
         return;
     if (!self.window || self.visibleCells.count == 0)
         return;
-    if (CFAbsoluteTimeGetCurrent() - self.lastFilterTime < 0.75)
+    if (!CollectionViewIsEligibleForFiltering(self) || !CollectionViewHasFilterableCells(self))
         return;
 
+    NSTimeInterval elapsed = CFAbsoluteTimeGetCurrent() - self.lastFilterTime;
+    NSTimeInterval delay = elapsed >= 0.75 ? 0.08 : MAX(0.08, 0.75 - elapsed);
     self.filterScheduled = YES;
     __weak typeof(self) weakSelf = self;
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.08 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
         __strong typeof(weakSelf) strongSelf = weakSelf;
         if (!strongSelf)
             return;
@@ -1199,7 +1326,7 @@ static void RemoveBlockedFeedItem(UIView *sourceView,
             ![[NSUserDefaults standardUserDefaults] boolForKey:@"GonerinoEnabled"])
             return;
         if (CollectionViewIsScrolling(strongSelf)) {
-            [strongSelf scheduleFiltering];
+            ScheduleFilteringAfterIdle(strongSelf);
             return;
         }
         FilterVisibleCells(strongSelf);
@@ -1210,23 +1337,32 @@ static void RemoveBlockedFeedItem(UIView *sourceView,
     %orig;
     if (objc_getAssociatedObject(self, GapCollapsePendingKey)) {
         objc_setAssociatedObject(self, GapCollapsePendingKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        objc_setAssociatedObject(self, CollapsedLayoutKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         CollapseBlockedCellGaps(self);
     }
-    if (self.visibleCells.count > 0)
-        [self scheduleFiltering];
+    BOOL visibleCellsChanged = ![objc_getAssociatedObject(self, VisibleCellsKey) isEqualToArray:self.visibleCells];
+    if (visibleCellsChanged) {
+        objc_setAssociatedObject(self, VisibleCellsKey, self.visibleCells.copy, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        RequestFiltering(self);
+    } else if (self.visibleCells.count > 0 && CollectionViewHasBlockedCells(self)) {
+        CollapseBlockedCellGaps(self);
+    }
 }
 
 - (void)reloadData {
-    objc_setAssociatedObject(self, CollapsedLayoutKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    objc_setAssociatedObject(self, FilterRetryCountKey, @0, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    objc_setAssociatedObject(self, FilterRetryScheduledKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    objc_setAssociatedObject(self, VisibleCellsKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     %orig;
-    [self scheduleFiltering];
+    RequestFiltering(self);
 }
 
 - (void)didMoveToWindow {
     %orig;
-    if (self.window)
-        [self scheduleFiltering];
+    if (self.window) {
+        objc_setAssociatedObject(self, FilterRetryCountKey, @0, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        objc_setAssociatedObject(self, VisibleCellsKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        RequestFiltering(self);
+    }
 }
 
 %end
@@ -1237,6 +1373,7 @@ static void RemoveBlockedFeedItem(UIView *sourceView,
     ClearFilterMetadata(self);
     objc_setAssociatedObject(self, BlockedCellKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     objc_setAssociatedObject(self, DirectBlockedVideoIDKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    self.transform = CGAffineTransformIdentity;
     %orig;
 }
 

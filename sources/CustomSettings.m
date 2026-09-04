@@ -789,6 +789,30 @@ static UIButton *NavigationBackButton(NSString *title, id target, SEL action) {
 
 @end
 
+static void OpenCustomSettingsForViewController(YTSettingsViewController *settingsViewController,
+                                                YTSettingsSectionItemManager *manager) {
+    if (!settingsViewController || !manager)
+        return;
+
+    UINavigationController *navigationController = settingsViewController.navigationController;
+    BOOL canPushThroughSettingsController = [settingsViewController respondsToSelector:@selector(pushViewController:)];
+    if (!navigationController && !canPushThroughSettingsController)
+        return;
+
+    if ([navigationController.topViewController isKindOfClass:[SettingsPageViewController class]])
+        return;
+
+    SettingsPageViewController *viewController = [[SettingsPageViewController alloc] initWithSettingsManager:manager];
+    if (navigationController) {
+        UIViewController *rootViewController = navigationController.viewControllers.firstObject ?: settingsViewController;
+        [navigationController setViewControllers:@[rootViewController, viewController] animated:NO];
+    } else {
+        [settingsViewController pushViewController:viewController];
+    }
+    [viewController loadViewIfNeeded];
+    [viewController.tableView reloadData];
+}
+
 static void OpenCustomSettingsAttempt(YTSettingsSectionItemManager *manager, NSUInteger attempt) {
     YTSettingsViewController *settingsViewController = SettingsControllerForManager(manager);
     UINavigationController *navigationController = settingsViewController.navigationController;
@@ -803,18 +827,7 @@ static void OpenCustomSettingsAttempt(YTSettingsSectionItemManager *manager, NSU
         return;
     }
 
-    if ([navigationController.topViewController isKindOfClass:[SettingsPageViewController class]])
-        return;
-
-    SettingsPageViewController *viewController = [[SettingsPageViewController alloc] initWithSettingsManager:manager];
-    if (navigationController) {
-        UIViewController *rootViewController = navigationController.viewControllers.firstObject ?: settingsViewController;
-        [navigationController setViewControllers:@[rootViewController, viewController] animated:NO];
-    } else {
-        [settingsViewController pushViewController:viewController];
-    }
-    [viewController loadViewIfNeeded];
-    [viewController.tableView reloadData];
+    OpenCustomSettingsForViewController(settingsViewController, manager);
 }
 
 void OpenCustomSettings(YTSettingsSectionItemManager *manager) {
