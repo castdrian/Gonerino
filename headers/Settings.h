@@ -32,7 +32,7 @@ NS_ASSUME_NONNULL_BEGIN
                                                 return NO;                                                             \
                                             }]]
 
-static const NSInteger SettingsCategory = 2002;
+static const NSInteger SettingsCategory = 2;
 
 #define TWEAK_VERSION PACKAGE_VERSION
 

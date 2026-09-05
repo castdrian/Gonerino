@@ -3,22 +3,6 @@
 #import "Localization.h"
 #import "Util.h"
 
-static UIViewController *TopVisibleViewController(UIViewController *viewController) {
-    if (!viewController)
-        return nil;
-    if (viewController.presentedViewController && !viewController.presentedViewController.isBeingDismissed)
-        return TopVisibleViewController(viewController.presentedViewController);
-    if ([viewController isKindOfClass:[UINavigationController class]])
-        return TopVisibleViewController([(UINavigationController *)viewController visibleViewController]);
-    if ([viewController isKindOfClass:[UITabBarController class]])
-        return TopVisibleViewController([(UITabBarController *)viewController selectedViewController]);
-    for (UIViewController *child in viewController.childViewControllers.reverseObjectEnumerator) {
-        if (child.viewIfLoaded.window)
-            return TopVisibleViewController(child);
-    }
-    return viewController;
-}
-
 static void RequestPortraitOrientation(UIViewController *viewController) {
     UIWindowScene *scene = viewController.view.window.windowScene;
     if (!scene)
@@ -29,41 +13,6 @@ static void RequestPortraitOrientation(UIViewController *viewController) {
             initWithInterfaceOrientations:UIInterfaceOrientationMaskPortrait];
         [scene requestGeometryUpdateWithPreferences:preferences errorHandler:nil];
     }
-}
-
-static YTSettingsViewController *SettingsControllerForManager(YTSettingsSectionItemManager *manager) {
-    if (!manager)
-        return nil;
-
-    Class settingsClass = NSClassFromString(@"YTSettingsViewController");
-    for (NSString *key in @[@"_dataDelegate", @"_settingsViewControllerDelegate"]) {
-        @try {
-            id delegate = [manager valueForKey:key];
-            if (settingsClass && [delegate isKindOfClass:settingsClass])
-                return delegate;
-        } @catch (__unused NSException *exception) {
-        }
-    }
-
-    id responder = nil;
-    @try {
-        responder = [manager parentResponder];
-    } @catch (__unused NSException *exception) {
-    }
-    for (NSUInteger depth = 0; responder && depth < 8; depth++) {
-        if (settingsClass && [responder isKindOfClass:settingsClass])
-            return responder;
-        if (![responder respondsToSelector:@selector(nextResponder)])
-            break;
-        responder = [responder nextResponder];
-    }
-
-    for (UIWindow *window in [UIApplication sharedApplication].windows) {
-        UIViewController *candidate = TopVisibleViewController(window.rootViewController);
-        if (settingsClass && [candidate isKindOfClass:settingsClass])
-            return (YTSettingsViewController *)candidate;
-    }
-    return nil;
 }
 
 static void ShowToast(UIViewController *viewController, NSString *message) {
@@ -287,7 +236,8 @@ static UIButton *NavigationBackButton(NSString *title, id target, SEL action) {
 
 @end
 
-@interface SettingsPageViewController : UITableViewController <UIDocumentPickerDelegate>
+@interface SettingsPageViewController : UIViewController <UITableViewDataSource, UITableViewDelegate, UIDocumentPickerDelegate>
+@property(nonatomic, strong) UITableView *tableView;
 @property(nonatomic, weak) YTSettingsSectionItemManager *settingsManager;
 @property(nonatomic, assign) BOOL importingSettings;
 @property(nonatomic, strong) NSURL *exportFileURL;
@@ -309,7 +259,7 @@ static UIButton *NavigationBackButton(NSString *title, id target, SEL action) {
 }
 
 - (instancetype)initWithSettingsManager:(YTSettingsSectionItemManager *)settingsManager {
-    self = [super initWithStyle:UITableViewStyleInsetGrouped];
+    self = [super initWithNibName:nil bundle:nil];
     if (self) {
         self.title = LocalizedString(@"Gonerino");
         _settingsManager = settingsManager;
@@ -327,6 +277,18 @@ static UIButton *NavigationBackButton(NSString *title, id target, SEL action) {
 
 - (void)viewDidLoad {
     [super viewDidLoad];
+    self.view.backgroundColor = UIColor.systemBackgroundColor;
+    self.tableView = [[UITableView alloc] initWithFrame:self.view.bounds style:UITableViewStyleInsetGrouped];
+    self.tableView.translatesAutoresizingMaskIntoConstraints = NO;
+    self.tableView.dataSource = self;
+    self.tableView.delegate = self;
+    [self.view addSubview:self.tableView];
+    [NSLayoutConstraint activateConstraints:@[
+        [self.tableView.topAnchor constraintEqualToAnchor:self.view.topAnchor],
+        [self.tableView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
+        [self.tableView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
+        [self.tableView.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor]
+    ]];
     self.tableView.rowHeight = UITableViewAutomaticDimension;
     self.tableView.estimatedRowHeight = 56.0;
     self.navigationItem.largeTitleDisplayMode = UINavigationItemLargeTitleDisplayModeNever;
@@ -436,7 +398,10 @@ static UIButton *NavigationBackButton(NSString *title, id target, SEL action) {
     NSArray *keys = @[@"GonerinoEnabled", @"GonerinoShowButton", @"GonerinoPeopleWatched", @"GonerinoMightLike"];
     [[NSUserDefaults standardUserDefaults] setBool:sender.isOn forKey:keys[sender.tag]];
     [[NSUserDefaults standardUserDefaults] synchronize];
-    [Util refreshFeedViews];
+    [Util refreshPreferenceSnapshot];
+    [[NSNotificationCenter defaultCenter] postNotificationName:FeedFilterStateDidChangeNotification object:nil];
+    if (sender.tag == 0 || sender.tag >= 2)
+        [Util refreshFeedViews];
 }
 
 - (void)actionButtonTapped:(UIButton *)sender {
@@ -729,6 +694,8 @@ static UIButton *NavigationBackButton(NSString *title, id target, SEL action) {
             [defaults setBool:[settings[settingsKey] boolValue] forKey:defaultKeys[settingsKey]];
     }
     [defaults synchronize];
+    [Util refreshPreferenceSnapshot];
+    [[NSNotificationCenter defaultCenter] postNotificationName:FeedFilterStateDidChangeNotification object:nil];
     [self.tableView reloadData];
     [self.settingsManager settingsIntegrationReloadSection];
     [Util refreshFeedViews];
@@ -789,55 +756,8 @@ static UIButton *NavigationBackButton(NSString *title, id target, SEL action) {
 
 @end
 
-static void OpenCustomSettingsForViewController(YTSettingsViewController *settingsViewController,
-                                                YTSettingsSectionItemManager *manager) {
-    if (!settingsViewController || !manager)
-        return;
-
-    UINavigationController *navigationController = settingsViewController.navigationController;
-    BOOL canPushThroughSettingsController = [settingsViewController respondsToSelector:@selector(pushViewController:)];
-    if (!navigationController && !canPushThroughSettingsController)
-        return;
-
-    if ([navigationController.topViewController isKindOfClass:[SettingsPageViewController class]])
-        return;
-
-    SettingsPageViewController *viewController = [[SettingsPageViewController alloc] initWithSettingsManager:manager];
-    if (navigationController) {
-        UIViewController *rootViewController = navigationController.viewControllers.firstObject ?: settingsViewController;
-        [navigationController setViewControllers:@[rootViewController, viewController] animated:NO];
-    } else {
-        [settingsViewController pushViewController:viewController];
-    }
-    [viewController loadViewIfNeeded];
-    [viewController.tableView reloadData];
-}
-
-static void OpenCustomSettingsAttempt(YTSettingsSectionItemManager *manager, NSUInteger attempt) {
-    YTSettingsViewController *settingsViewController = SettingsControllerForManager(manager);
-    UINavigationController *navigationController = settingsViewController.navigationController;
-    BOOL canPushThroughSettingsController = [settingsViewController respondsToSelector:@selector(pushViewController:)];
-    if (!settingsViewController || (!navigationController && !canPushThroughSettingsController)) {
-        if (attempt < 12) {
-            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.05 * NSEC_PER_SEC)),
-                           dispatch_get_main_queue(), ^{
-                               OpenCustomSettingsAttempt(manager, attempt + 1);
-                           });
-        }
-        return;
-    }
-
-    OpenCustomSettingsForViewController(settingsViewController, manager);
-}
-
-void OpenCustomSettings(YTSettingsSectionItemManager *manager) {
+UIViewController *CreateCustomSettingsViewController(YTSettingsSectionItemManager *manager) {
     if (!manager)
-        return;
-
-    if ([NSThread isMainThread])
-        OpenCustomSettingsAttempt(manager, 0);
-    else
-        dispatch_async(dispatch_get_main_queue(), ^{
-            OpenCustomSettingsAttempt(manager, 0);
-        });
+        return nil;
+    return [[SettingsPageViewController alloc] initWithSettingsManager:manager];
 }

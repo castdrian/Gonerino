@@ -2,4 +2,4 @@
 
 @class YTSettingsSectionItemManager;
 
-void OpenCustomSettings(YTSettingsSectionItemManager *manager);
+UIViewController *CreateCustomSettingsViewController(YTSettingsSectionItemManager *manager);

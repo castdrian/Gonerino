@@ -22,6 +22,7 @@ static NSString *CleanVideoTitle(id value) {
 
 @interface VideoManager ()
 @property(nonatomic, strong) NSMutableArray<NSDictionary *> *blockedVideoArray;
+@property(nonatomic, copy) NSSet<NSString *> *blockedVideoIDLookup;
 @end
 
 @implementation VideoManager
@@ -61,6 +62,7 @@ static NSString *CleanVideoTitle(id value) {
                 changed = YES;
         }
         _blockedVideoArray = cleanedVideos;
+        _blockedVideoIDLookup = [NSSet setWithArray:[cleanedVideos valueForKey:@"id"]];
         if (changed)
             [self saveBlockedVideos];
     }
@@ -84,6 +86,9 @@ static NSString *CleanVideoTitle(id value) {
 
     if (existingIndex == NSNotFound) {
         [self.blockedVideoArray addObject:videoInfo];
+        NSMutableSet *lookup = [self.blockedVideoIDLookup mutableCopy];
+        [lookup addObject:videoId];
+        self.blockedVideoIDLookup = lookup.copy;
         [self saveBlockedVideos];
     }
 }
@@ -96,6 +101,9 @@ static NSString *CleanVideoTitle(id value) {
 
     if (indexes.count > 0) {
         [self.blockedVideoArray removeObjectsAtIndexes:indexes];
+        NSMutableSet *lookup = [self.blockedVideoIDLookup mutableCopy];
+        [lookup removeObject:videoId];
+        self.blockedVideoIDLookup = lookup.copy;
         [self saveBlockedVideos];
     }
 }
@@ -104,9 +112,7 @@ static NSString *CleanVideoTitle(id value) {
     if (![videoId isKindOfClass:[NSString class]] || videoId.length == 0)
         return NO;
 
-    return [self.blockedVideoArray indexOfObjectPassingTest:^BOOL(NSDictionary *obj, NSUInteger idx, BOOL *stop) {
-               return [obj[@"id"] isEqualToString:videoId];
-           }] != NSNotFound;
+    return [self.blockedVideoIDLookup containsObject:videoId];
 }
 
 - (void)saveBlockedVideos {
@@ -130,6 +136,7 @@ static NSString *CleanVideoTitle(id value) {
     }
 
     self.blockedVideoArray = validVideos;
+    self.blockedVideoIDLookup = [NSSet setWithArray:[validVideos valueForKey:@"id"]];
     [self saveBlockedVideos];
 }
 

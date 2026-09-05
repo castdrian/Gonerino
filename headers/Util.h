@@ -6,12 +6,39 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
+extern NSString * const FeedFilterStateDidChangeNotification;
+
+@interface FeedMetadataRecord : NSObject
+
+@property(nonatomic, copy, readonly) NSString *videoID;
+@property(nonatomic, copy, readonly) NSString *title;
+@property(nonatomic, copy, readonly) NSString *channel;
+
+- (instancetype)initWithVideoID:(nullable NSString *)videoID
+                           title:(nullable NSString *)title
+                         channel:(nullable NSString *)channel;
+- (NSDictionary<NSString *, NSString *> *)dictionaryRepresentation;
+
+@end
+
 @interface Util : NSObject
 
 + (nullable NSDictionary<NSString *, NSString *> *)videoInfoFromNode:(nullable id)node;
++ (nullable FeedMetadataRecord *)feedVideoMetadataFromNode:(nullable id)node;
++ (nullable FeedMetadataRecord *)feedVideoMetadataFromShortsContentView:(nullable id)contentView;
++ (void)rememberFeedVideoMetadata:(nullable FeedMetadataRecord *)metadata forNode:(nullable id)node;
++ (nullable NSDictionary<NSString *, NSString *> *)feedVideoInfoFromNode:(nullable id)node;
++ (nullable FeedMetadataRecord *)cachedFeedVideoMetadataForVideoID:(nullable NSString *)videoID;
++ (nullable NSString *)feedVideoIDFromThumbnailURL:(nullable NSURL *)url;
++ (nullable NSString *)feedVideoIDForObject:(nullable id)object;
++ (void)setFeedVideoID:(nullable NSString *)videoID forObject:(nullable id)object;
++ (BOOL)filteringEnabled;
++ (void)refreshPreferenceSnapshot;
 + (nullable NSDictionary<NSString *, NSString *> *)freshVideoInfoFromNode:(nullable id)node;
 + (nullable NSDictionary<NSString *, NSString *> *)freshVideoInfoFromNode:(nullable id)node
                                                                sourceView:(nullable UIView *)sourceView;
++ (void)invalidateVideoInfoForNode:(nullable id)node;
++ (void)registerFeedView:(nullable UICollectionView *)feedView;
 + (BOOL)isUsableVideoTitle:(nullable NSString *)title;
 + (void)refreshFeedViews;
 + (void)showToast:(NSString *)message fromView:(nullable UIView *)view;
@@ -19,6 +46,7 @@ NS_ASSUME_NONNULL_BEGIN
                       completion:(void (^)(NSString *videoId, NSString *videoTitle, NSString *ownerName))completion;
 
 + (BOOL)nodeContainsBlockedVideo:(id)node;
++ (BOOL)nodeContainsBlockedVideo:(id)node metadata:(nullable FeedMetadataRecord *)metadata;
 + (BOOL)nodeContainsBlockedVideo:(id)node
                         videoInfo:(nullable NSDictionary<NSString *, NSString *> *)videoInfo;
 

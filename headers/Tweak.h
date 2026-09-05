@@ -10,7 +10,13 @@
 @class YTAsyncCollectionView;
 @class _ASCollectionViewCell;
 @class ASDisplayNode;
+@class ASCellNode;
+@class ASLayoutElementStyle;
+@class ASCollectionView;
 @class ASTextNode;
+@class ELMImageNode;
+@class YTImageView;
+@class YTThumbnailController;
 @class YTWatchController;
 @class YTSingleVideoController;
 @class YTDefaultSheetController;
@@ -24,22 +30,6 @@ NS_ASSUME_NONNULL_BEGIN
 
 @interface YTAsyncCollectionView : UICollectionView
 
-@property(nonatomic, assign) BOOL filtering;
-@property(nonatomic, assign) BOOL filterScheduled;
-@property(nonatomic, assign) NSTimeInterval lastFilterTime;
-
-- (void)layoutSubviews;
-- (void)scheduleFiltering;
-
-- (void)performBatchUpdates:(void(NS_NOESCAPE ^ _Nullable)(void))updates
-                 completion:(void (^_Nullable)(BOOL finished))completion;
-
-- (NSArray<UICollectionViewCell *> *)visibleCells;
-
-- (nullable NSIndexPath *)indexPathForCell:(UICollectionViewCell *)cell;
-
-- (void)removeOffendingCells;
-
 @end
 
 @interface _ASCollectionViewCell : UICollectionViewCell
@@ -52,10 +42,40 @@ NS_ASSUME_NONNULL_BEGIN
 
 @property(nonatomic, copy, nullable) NSString *accessibilityLabel;
 @property(nonatomic, copy, nullable) NSString *accessibilityIdentifier;
+@property(nonatomic, assign, getter=isHidden) BOOL hidden;
+@property(nonatomic, assign) CGFloat alpha;
+@property(nonatomic, assign) CGRect frame;
+@property(nonatomic, assign) CGRect bounds;
+- (ASLayoutElementStyle *)style;
 
 - (nullable NSArray<ASDisplayNode *> *)subnodes;
 - (nullable id)controller;
 - (nullable UIView *)view;
+
+@end
+
+@interface ASCellNode : ASDisplayNode
+
+@property(nonatomic, strong) UICollectionViewLayoutAttributes *layoutAttributes;
+
+@end
+
+@interface ELMImageNode : ASDisplayNode
+
+- (id)downloadImageWithURL:(NSURL *)url
+               shouldRetry:(BOOL)shouldRetry
+             callbackQueue:(id)queue
+          downloadProgress:(id)progress
+                completion:(id)completion;
+- (void)cachedImageWithURL:(NSURL *)url
+             callbackQueue:(id)queue
+                completion:(id)completion;
+
+@end
+
+@interface ASLayoutElementStyle : NSObject
+
+@property(nonatomic, assign) CGSize preferredSize;
 
 @end
 
@@ -206,6 +226,17 @@ NS_ASSUME_NONNULL_BEGIN
 @interface YTShortsPlayerViewController : UIViewController
 - (nullable id)shortsContentView;
 - (void)reelContentViewRequestsAdvanceToNextVideo:(nullable id)contentView;
+@end
+
+@interface YTThumbnailController : NSObject
+- (instancetype)initWithImageView:(YTImageView *)imageView
+                              URLs:(NSDictionary *)URLs
+                       imageService:(id)imageService;
+@end
+
+@interface YTImageView : UIView
+@property(nonatomic, weak) id delegate;
+- (void)setImage:(UIImage *)image animated:(BOOL)animated;
 @end
 
 NS_ASSUME_NONNULL_END

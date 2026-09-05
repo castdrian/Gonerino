@@ -2,7 +2,12 @@
 
 @interface WordManager ()
 @property(nonatomic, strong) NSMutableSet<NSString *> *blockedWordSet;
+@property(nonatomic, copy) NSSet<NSString *> *blockedWordLookup;
 @end
+
+static NSString *WordLookupKey(NSString *word) {
+    return [word.lowercaseString stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+}
 
 @implementation WordManager
 
@@ -17,13 +22,17 @@
     self = [super init];
     if (self) {
         _blockedWordSet = [NSMutableSet set];
+        NSMutableSet *lookup = [NSMutableSet set];
         for (id value in [[NSUserDefaults standardUserDefaults] arrayForKey:@"GonerinoBlockedWords"]) {
             if (![value isKindOfClass:[NSString class]])
                 continue;
             NSString *word = [value stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
             if (word.length > 0)
                 [_blockedWordSet addObject:word];
+            if (word.length > 0)
+                [lookup addObject:WordLookupKey(word)];
         }
+        _blockedWordLookup = lookup.copy;
     }
     return self;
 }
@@ -36,6 +45,9 @@
     NSString *normalizedWord = [word stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
     if (normalizedWord.length > 0) {
         [self.blockedWordSet addObject:normalizedWord];
+        NSMutableSet *lookup = [self.blockedWordLookup mutableCopy];
+        [lookup addObject:WordLookupKey(normalizedWord)];
+        self.blockedWordLookup = lookup.copy;
         [self saveBlockedWords];
     }
 }
@@ -43,6 +55,9 @@
 - (void)removeBlockedWord:(NSString *)word {
     if (word) {
         [self.blockedWordSet removeObject:word];
+        NSMutableSet *lookup = [self.blockedWordLookup mutableCopy];
+        [lookup removeObject:WordLookupKey(word)];
+        self.blockedWordLookup = lookup.copy;
         [self saveBlockedWords];
     }
 }
@@ -51,8 +66,9 @@
     if (![text isKindOfClass:[NSString class]] || text.length == 0)
         return NO;
 
-    for (NSString *word in self.blockedWordSet) {
-        if ([text.lowercaseString containsString:word.lowercaseString]) {
+    NSString *normalizedText = text.lowercaseString;
+    for (NSString *word in self.blockedWordLookup) {
+        if ([normalizedText containsString:word]) {
             return YES;
         }
     }
@@ -66,13 +82,17 @@
 
 - (void)setBlockedWords:(NSArray<NSString *> *)words {
     self.blockedWordSet = [NSMutableSet set];
+    NSMutableSet *lookup = [NSMutableSet set];
     for (id value in words) {
         if (![value isKindOfClass:[NSString class]])
             continue;
         NSString *word = [value stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
         if (word.length > 0)
             [self.blockedWordSet addObject:word];
+        if (word.length > 0)
+            [lookup addObject:WordLookupKey(word)];
     }
+    self.blockedWordLookup = lookup.copy;
     [self saveBlockedWords];
 }
 

@@ -1,0 +1,78 @@
+[
+  {
+    "name": "long-form-video-node",
+    "rendererClass": "YTVideoNode",
+    "node": {
+      "videoId": "dQw4w9WgXcQ",
+      "title": "Long form fixture",
+      "ownerDisplayName": "Fixture Channel"
+    },
+    "expected": {
+      "id": "dQw4w9WgXcQ",
+      "title": "Long form fixture",
+      "channel": "Fixture Channel"
+    }
+  },
+  {
+    "name": "long-form-context-node",
+    "rendererClass": "YTVideoWithContextNode",
+    "node": {
+      "element": {
+        "properties": {
+          "videoId": "9bZkp7q19f0",
+          "videoTitle": "Context fixture",
+          "channelName": "Context Channel"
+        }
+      }
+    },
+    "expected": {
+      "id": "9bZkp7q19f0",
+      "title": "Context fixture",
+      "channel": "Context Channel"
+    }
+  },
+  {
+    "name": "elements-feed-node",
+    "rendererClass": "ELMCellNode",
+    "node": {
+      "element": {
+        "allProperties": {
+          "contentVideoId": "M7lc1UVf-8U",
+          "contentTitle": "Elements fixture",
+          "ownerDisplayName": "Elements Channel"
+        }
+      }
+    },
+    "expected": {
+      "id": "M7lc1UVf-8U",
+      "title": "Elements fixture",
+      "channel": "Elements Channel"
+    }
+  },
+  {
+    "name": "shorts-node",
+    "rendererClass": "YTShortsVideoNode",
+    "node": {
+      "currentVideo": {
+        "videoId": "aqz-KE-bpKQ",
+        "title": "Shorts fixture",
+        "channel": "Shorts Channel"
+      }
+    },
+    "expected": {
+      "id": "aqz-KE-bpKQ",
+      "title": "Shorts fixture",
+      "channel": "Shorts Channel"
+    }
+  },
+  {
+    "name": "incomplete-unknown-renderer",
+    "rendererClass": "FutureUnknownRendererNode",
+    "node": {
+      "title": "Unknown fixture"
+    },
+    "expected": {},
+    "expectedVisible": true
+  }
+]
+
