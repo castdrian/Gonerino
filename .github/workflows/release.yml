@@ -8,7 +8,7 @@ env:
 
 jobs:
   build-tweak-and-release:
-    runs-on: macos-14
+    runs-on: macos-latest
     permissions:
       contents: write
 
@@ -23,8 +23,13 @@ jobs:
         run: |
           git clone https://github.com/PoomSmart/YouTubeHeader $THEOS/include/YouTubeHeader
 
+      - name: Prepare GNU Make
+        run: |
+          brew install make
+          gmake --version
+
       - name: Build packages
-        run: make package FINALPACKAGE=1
+        run: gmake package FINALPACKAGE=1
 
       - name: Extract Values
         run: |

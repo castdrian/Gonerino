@@ -876,7 +876,8 @@ static UICollectionViewCell *FeedCellForSourceView(UIView *sourceView) {
 }
 
 - (NSArray *)actions {
-    return ActionsWithBlockingActions(self, %orig);
+    NSArray *originalActions = %orig;
+    return ActionsWithBlockingActions(self, originalActions);
 }
 
 - (void)presentFromView:(UIView *)view {
