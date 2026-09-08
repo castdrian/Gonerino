@@ -1,7 +1,7 @@
 # Gonerino
 
 [![Release](https://github.com/castdrian/Gonerino/actions/workflows/release.yml/badge.svg)](https://github.com/castdrian/Gonerino/actions/workflows/release.yml)
-[![Crowdin](https://img.shields.io/badge/Crowdin-2ab27b?style=flat&logo=crowdin&logoColor=white)](https://crowdin.com/project/gonerino)
+[![Crowdin](https://img.shields.io/badge/Crowdin-Translations-2ab27b?logo=crowdin&logoColor=white)](https://crowdin.com/project/gonerino)
 
 YouTube tweak that allows you to block and automatically remove items from your feeds.
 
