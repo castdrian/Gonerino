@@ -12,6 +12,6 @@ if match is None:
 
 major, minor, patch = (int(value) for value in match.groups())
 next_version = f"{major}.{minor}.{patch + 1}"
-updated_control = control[:match.start(1)] + next_version + control[match.end(1):]
+updated_control = control[:match.start()] + f"Version: {next_version}" + control[match.end():]
 control_path.write_text(updated_control, encoding="utf-8")
 print(next_version)
