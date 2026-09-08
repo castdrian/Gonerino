@@ -19,8 +19,8 @@ A YouTube tweak that allows you to block specific channels and automatically rem
 
 | Category | Version/Method | Status |
 |----------|---------------|---------|
-| **iOS Version** | 26.0.1 | ✅ |
-| **YouTube Version** | 21.35.3 | ✅ |
+| **iOS Version** | 26.0.1+ | ✅ |
+| **YouTube Version** | 21.35.3+ | ✅ |
 | **Loading Methods** | ElleKit (palera1n) (Dopamine) (Sideloaded) | ✅ |
 | | TrollFools (TrollStore) | ⚠️ |
 | | CydiaSubstrate | ❓ |
