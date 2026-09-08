@@ -44,7 +44,7 @@ static NSComparisonResult GonerinoCompareVersions(NSString *first, NSString *sec
     NSURL *URL = [URLString isKindOfClass:[NSString class]] ? [NSURL URLWithString:URLString] : nil;
     if (URL) {
         dispatch_async(dispatch_get_main_queue(), ^{
-            [[UIApplication sharedApplication] openURL:URL options:@{} completionHandler:nil];
+            [[UIApplication sharedApplication] openURL:URL options:@{} completionHandler:^(__unused BOOL success) {}];
         });
     }
     completionHandler();
@@ -76,7 +76,7 @@ static void GonerinoConfigureNotifications(void) {
         }
         UNUserNotificationCenter *center = [UNUserNotificationCenter currentNotificationCenter];
         [center requestAuthorizationWithOptions:UNAuthorizationOptionAlert | UNAuthorizationOptionBadge | UNAuthorizationOptionSound
-                              completionHandler:nil];
+                              completionHandler:^(__unused BOOL granted, __unused NSError *error) {}];
     });
 }
 
