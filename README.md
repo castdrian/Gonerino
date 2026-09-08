@@ -1,5 +1,9 @@
 # Gonerino
 
+[![Release](https://github.com/castdrian/Gonerino/actions/workflows/release.yml/badge.svg)](https://github.com/castdrian/Gonerino/actions/workflows/release.yml)
+[![Compatibility](https://github.com/castdrian/Gonerino/actions/workflows/compatibility-card.yml/badge.svg)](https://github.com/castdrian/Gonerino/actions/workflows/compatibility-card.yml)
+[![Crowdin](https://img.shields.io/badge/Crowdin-Translations-2ab27b?logo=crowdin&logoColor=white)](https://crowdin.com/project/gonerino)
+
 A YouTube tweak that allows you to block specific channels and automatically remove their videos from your feed.
 
 ## Download
@@ -18,15 +22,11 @@ A YouTube tweak that allows you to block specific channels and automatically rem
 
 ## Screenshots
 
-<p align="center"><img src="assets/screenshots.svg" alt="Gonerino custom settings, long-form controls, and Shorts controls in iPhone SE frames" width="100%"></p>
+<p align="center"><img src="assets/screenshots.svg" alt="Gonerino custom settings, long-form controls, and Shorts controls in iPhone SE 2020 frames" width="100%"></p>
 
 ## Compatibility
 
 ![Gonerino compatibility](.github/compatibility.svg)
-
-## Translations
-
-[![Crowdin](https://badges.crowdin.net/gonerino/localized.svg)](https://crowdin.com/project/gonerino)
 
 ## Contributors
 

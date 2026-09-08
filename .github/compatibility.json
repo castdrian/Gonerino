@@ -1,20 +1,20 @@
 {
-  "title": "Gonerino compatibility",
+  "title": "Compatibility",
   "subtitle": "Verified against the current development environment",
   "rows": [
     {
       "label": "iOS",
-      "value": "26.0.1",
+      "value": "26.0.1 and newer",
       "status": "verified"
     },
     {
       "label": "YouTube",
-      "value": "21.35.3",
+      "value": "21.35.3 and newer",
       "status": "verified"
     },
     {
       "label": "ElleKit",
-      "value": "palera1n · Dopamine · Sideloaded",
+      "value": "palera1n, Dopamine, Sideloaded",
       "status": "verified"
     },
     {
@@ -31,6 +31,28 @@
       "label": "TweakLoader",
       "value": "LiveContainer",
       "status": "partial"
+    }
+  ],
+  "legend": [
+    {
+      "status": "verified",
+      "label": "Verified",
+      "description": "Tested in the current environment"
+    },
+    {
+      "status": "partial",
+      "label": "Partial",
+      "description": "Works with known limitations"
+    },
+    {
+      "status": "untested",
+      "label": "Untested",
+      "description": "No current verification"
+    },
+    {
+      "status": "unsupported",
+      "label": "Unsupported",
+      "description": "Known not to work"
     }
   ]
 }
