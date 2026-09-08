@@ -3,7 +3,7 @@
 [![Release](https://github.com/castdrian/Gonerino/actions/workflows/release.yml/badge.svg)](https://github.com/castdrian/Gonerino/actions/workflows/release.yml)
 [![Crowdin](https://img.shields.io/badge/Crowdin-Translations-2ab27b?logo=crowdin&logoColor=white)](https://crowdin.com/project/gonerino)
 
-A YouTube tweak that allows you to block specific channels and automatically remove their videos from your feed.
+YouTube tweak that allows you to block and automatically remove items from your feeds.
 
 <p align="center"><img src="assets/screenshots.svg" alt="Gonerino custom settings, long-form controls, and Shorts controls in iPhone SE 2020 frames" width="100%"></p>
 
@@ -18,7 +18,7 @@ A YouTube tweak that allows you to block specific channels and automatically rem
 
 - Block channels or individual videos from YouTube menus
 - Block items by channel, video, or keyword
-- Remove blocked items from Home, Search and Shorts
+- Remove blocked items from all feeds
 - Hide “People also watched” and “You might also like” sections
 
 ## Compatibility
