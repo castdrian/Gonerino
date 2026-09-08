@@ -14,6 +14,6 @@
 <path d="m18 31 6.4 3.9v6.4c0 1.7-1.8 2.7-3.3 1.8l-3.1-1.9A4.2 4.2 0 0 1 16 37.6V31Z" fill="#18b5b6"/>
 <path d="m31 37 13-7.6v5.8L31 42.8V37Zm0 9 13-7.6v5.8L31 51.8V46Z" fill="#18b5b6"/>
 </g>
-<text x="65" y="24" fill="#f5f5f7" font-family="Arial,Helvetica,sans-serif" font-size="10" font-weight="600">ADD TO YOUR PACKAGE MANAGER</text>
+<text x="65" y="24" fill="#f5f5f7" font-family="Arial,Helvetica,sans-serif" font-size="10" font-weight="600">ADD TO PACKAGE MANAGER</text>
 <text x="65" y="44" fill="#98989f" font-family="Arial,Helvetica,sans-serif" font-size="11">repo.adriancastro.dev</text>
 </svg>
