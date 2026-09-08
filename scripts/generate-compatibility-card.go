@@ -42,11 +42,61 @@ func projectRoot() string {
 }
 
 func parseString(value string) (string, error) {
-	value = strings.TrimSpace(value)
-	if len(value) < 2 || value[0] != '"' || value[len(value)-1] != '"' {
+	value = stripInlineComment(value)
+	if len(value) < 2 {
 		return "", fmt.Errorf("unsupported TOML value %q", value)
 	}
-	return strconv.Unquote(value)
+	switch value[0] {
+	case '"':
+		if value[len(value)-1] != '"' {
+			return "", fmt.Errorf("unsupported TOML value %q", value)
+		}
+		return strconv.Unquote(value)
+	case '\'':
+		if value[len(value)-1] != '\'' {
+			return "", fmt.Errorf("unsupported TOML value %q", value)
+		}
+		return value[1 : len(value)-1], nil
+	default:
+		return "", fmt.Errorf("unsupported TOML value %q", value)
+	}
+}
+
+func stripInlineComment(value string) string {
+	value = strings.TrimSpace(value)
+	quote := byte(0)
+	escaped := false
+	for index := 0; index < len(value); index++ {
+		character := value[index]
+		if quote == '"' {
+			if escaped {
+				escaped = false
+				continue
+			}
+			if character == '\\' {
+				escaped = true
+				continue
+			}
+			if character == quote {
+				quote = 0
+			}
+			continue
+		}
+		if quote == '\'' {
+			if character == quote {
+				quote = 0
+			}
+			continue
+		}
+		if character == '"' || character == '\'' {
+			quote = character
+			continue
+		}
+		if character == '#' {
+			return strings.TrimSpace(value[:index])
+		}
+	}
+	return value
 }
 
 func parseConfig(path string) (config, error) {
@@ -58,7 +108,7 @@ func parseConfig(path string) (config, error) {
 	section := ""
 	var current *entry
 	for _, rawLine := range strings.Split(string(contents), "\n") {
-		line := strings.TrimSpace(rawLine)
+		line := stripInlineComment(rawLine)
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}

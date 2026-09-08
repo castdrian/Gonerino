@@ -38,7 +38,6 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           REPOSITORY: ${{ github.repository }}
         run: |
-          source_file="layout/Library/Application Support/Gonerino.bundle/en.lproj/Localizable.strings"
           bundle_prefix="layout/Library/Application Support/Gonerino.bundle/"
           files=$(gh api --paginate "repos/${REPOSITORY}/pulls/${PR_NUMBER}/files" --jq '.[].filename')
           test -n "$files"
@@ -49,9 +48,6 @@ jobs:
                 ;;
               "${bundle_prefix}"*.lproj/Localizable.strings)
                 test -f "$file"
-                if cmp -s "$source_file" "$file"; then
-                  exit 1
-                fi
                 ;;
               *) exit 1 ;;
             esac

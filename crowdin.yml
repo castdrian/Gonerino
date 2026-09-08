@@ -1,3 +1,4 @@
 files:
   - source: "/layout/Library/Application Support/Gonerino.bundle/en.lproj/Localizable.strings"
     translation: "/layout/Library/Application Support/Gonerino.bundle/%osx_code%/Localizable.strings"
+    skip_untranslated_files: true

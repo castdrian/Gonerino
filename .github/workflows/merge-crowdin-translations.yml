@@ -11,7 +11,7 @@ on:
       - main
 
 permissions:
-  contents: read
+  contents: write
   pull-requests: write
 
 jobs:
@@ -28,6 +28,7 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
       - name: Validate changed files
+        id: validate
         env:
           GH_TOKEN: ${{ secrets.REPO_ACCESS_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
@@ -37,6 +38,7 @@ jobs:
           bundle_prefix="layout/Library/Application Support/Gonerino.bundle/"
           files=$(gh api --paginate "repos/${REPOSITORY}/pulls/${PR_NUMBER}/files" --jq '.[].filename')
           test -n "$files"
+          translated=0
           while IFS= read -r file; do
             case "$file" in
               "${bundle_prefix}en.lproj/Localizable.strings")
@@ -44,14 +46,25 @@ jobs:
                 ;;
               "${bundle_prefix}"*.lproj/Localizable.strings)
                 test -f "$file"
-                if cmp -s "$source_file" "$file"; then
-                  exit 1
+                if ! cmp -s "$source_file" "$file"; then
+                  translated=1
                 fi
                 ;;
               *) exit 1 ;;
             esac
           done <<< "$files"
+          echo "has_translations=$translated" >> "$GITHUB_OUTPUT"
+      - name: Close empty Crowdin pull request
+        if: steps.validate.outputs.has_translations != '1'
+        env:
+          GH_TOKEN: ${{ secrets.REPO_ACCESS_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPOSITORY: ${{ github.repository }}
+        run: >-
+          gh pr close "$PR_NUMBER" --repo "$REPOSITORY" --delete-branch
+          --comment "Crowdin exported no translated values, so this no-op pull request was closed. It will reopen automatically when a translation is submitted."
       - name: Enable automatic merge
+        if: steps.validate.outputs.has_translations == '1'
         env:
           GH_TOKEN: ${{ secrets.REPO_ACCESS_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
