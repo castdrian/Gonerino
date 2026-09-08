@@ -6,6 +6,14 @@
 
 - add release notifications and changelog UI (0f2e7e1)
 
+### Fixes
+
+- satisfy notification SDK callbacks (08ac291)
+
+### Documentation
+
+- generate changelog for 1.6.0 (5f1f2c8)
+
 ## 1.5.0 - 2026-09-08
 
 ### Features
