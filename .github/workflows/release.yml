@@ -17,7 +17,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Prepare Theos
-        uses: Randomblock1/theos-action@v1
+        uses: Randomblock1/theos-action@v1.5
 
       - name: Clone YouTubeHeader
         run: |

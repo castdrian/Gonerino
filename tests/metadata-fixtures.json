@@ -32,6 +32,19 @@
     }
   },
   {
+    "name": "synthetic-action-label-is-not-a-channel",
+    "rendererClass": "YTVideoNode",
+    "node": {
+      "videoId": "BaW_jenozKc",
+      "title": "Action label fixture",
+      "ownerDisplayName": "Action menu"
+    },
+    "expected": {
+      "id": "BaW_jenozKc",
+      "title": "Action label fixture"
+    }
+  },
+  {
     "name": "elements-feed-node",
     "rendererClass": "ELMCellNode",
     "node": {
@@ -66,6 +79,24 @@
     }
   },
   {
+    "name": "long-form-model-wrapper",
+    "rendererClass": "YTVideoModel",
+    "node": {
+      "renderer": {
+        "videoRenderer": {
+          "videoId": "ScMzIvxBSi4",
+          "videoTitle": "Nested model fixture",
+          "ownerDisplayName": "Nested Channel"
+        }
+      }
+    },
+    "expected": {
+      "id": "ScMzIvxBSi4",
+      "title": "Nested model fixture",
+      "channel": "Nested Channel"
+    }
+  },
+  {
     "name": "incomplete-unknown-renderer",
     "rendererClass": "FutureUnknownRendererNode",
     "node": {
@@ -75,4 +106,3 @@
     "expectedVisible": true
   }
 ]
-

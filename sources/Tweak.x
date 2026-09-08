@@ -1,11 +1,48 @@
 #import "Tweak.h"
+#import "FeedDataSourceAdapter.h"
 #import "Localization.h"
 #import <objc/runtime.h>
+#import <objc/message.h>
 
 static id ValueForObjectKey(id object, NSString *key);
+static id DirectObjectIvar(id object, NSString *key);
+static id ExplicitObjectValue(id object, NSString *key);
 static UIViewController *ViewControllerForObject(id object);
-static BOOL ObjectLooksLikeShorts(id object);
-static __weak YTShortsPlayerViewController *CurrentShortsPlayer;
+static id ShortsPlayerForObject(id object);
+static __weak id CurrentShortsPlayer;
+static void *FeedDataSourceAdapterKey = &FeedDataSourceAdapterKey;
+static void *ActionSheetSourceViewKey = &ActionSheetSourceViewKey;
+static void *ActionSheetBlockingActionsKey = &ActionSheetBlockingActionsKey;
+static void *ShortsResponseMetadataKey = &ShortsResponseMetadataKey;
+static void *BottomSheetBlockingActionsKey = &BottomSheetBlockingActionsKey;
+static NSDictionary *CachedActionVideoInfo(id sheet, UIView *sourceView, id sourceNode);
+
+static void InstallFeedDataSourceAdapter(UICollectionView *collectionView, id dataSource) {
+    FeedDataSourceAdapter *existingAdapter = objc_getAssociatedObject(collectionView, FeedDataSourceAdapterKey);
+    if (!dataSource)
+        return;
+    if ([FeedDataSourceAdapter isAdapter:dataSource])
+        return;
+    if (existingAdapter) {
+        [existingAdapter replaceDataSource:dataSource];
+        return;
+    }
+    FeedDataSourceAdapter *adapter = [FeedDataSourceAdapter adapterWithCollectionView:collectionView dataSource:dataSource];
+    objc_setAssociatedObject(collectionView, FeedDataSourceAdapterKey, adapter, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+}
+
+static void PrepareFeedDataSourceForReload(UICollectionView *collectionView) {
+    FeedDataSourceAdapter *adapter = objc_getAssociatedObject(collectionView, FeedDataSourceAdapterKey);
+    [adapter upstreamWillReload];
+}
+
+static void PrepareCollectionNodeForReload(id collectionNode) {
+    id collectionView = ExplicitObjectValue(collectionNode, @"collectionView");
+    if (![collectionView isKindOfClass:[UICollectionView class]])
+        collectionView = ExplicitObjectValue(collectionNode, @"view");
+    if ([collectionView isKindOfClass:[UICollectionView class]])
+        PrepareFeedDataSourceForReload(collectionView);
+}
 
 static id ValueForObjectKey(id object, NSString *key) {
     if (!object || key.length == 0)
@@ -30,68 +67,107 @@ static id ValueForObjectKey(id object, NSString *key) {
     return nil;
 }
 
+static id DirectObjectIvar(id object, NSString *key) {
+    if (!object || key.length == 0)
+        return nil;
+
+    for (Class currentClass = object_getClass(object); currentClass; currentClass = class_getSuperclass(currentClass)) {
+        Ivar ivar = class_getInstanceVariable(currentClass, [NSString stringWithFormat:@"_%@", key].UTF8String);
+        if (!ivar)
+            continue;
+        const char *type = ivar_getTypeEncoding(ivar);
+        if (!type || type[0] != '@')
+            return nil;
+        return object_getIvar(object, ivar);
+    }
+
+    return nil;
+}
+
+static id ExplicitObjectValue(id object, NSString *key) {
+    return ValueForObjectKey(object, key) ?: DirectObjectIvar(object, key);
+}
+
+static FeedMetadataRecord *CombinedShortsMetadata(FeedMetadataRecord *first, FeedMetadataRecord *second) {
+    if (!first)
+        return second;
+    if (!second)
+        return first;
+    NSString *videoID = first.videoID.length > 0 ? first.videoID : second.videoID;
+    NSString *title = first.title.length > 0 ? first.title : second.title;
+    NSString *channel = first.channel.length > 0 ? first.channel : second.channel;
+    return [[FeedMetadataRecord alloc] initWithVideoID:videoID title:title channel:channel];
+}
+
+static UICollectionView *ShortsCollectionViewForPlayer(id player) {
+    id provider = ExplicitObjectValue(player, @"reelHeaderUpdaterProvider");
+    id collectionView = ExplicitObjectValue(provider, @"scrollView");
+    return [collectionView isKindOfClass:[UICollectionView class]] ? collectionView : nil;
+}
+
+static void RememberShortsMetadataForPlayer(id player, FeedMetadataRecord *metadata) {
+    if (!player || metadata.dictionaryRepresentation.count == 0)
+        return;
+
+    id model = ExplicitObjectValue(player, @"model") ?: ExplicitObjectValue(player, @"contentModel") ?: ExplicitObjectValue(player, @"itemModel");
+    id contentView = ExplicitObjectValue(player, @"shortsContentView") ?: ExplicitObjectValue(player, @"contentView");
+    if (model)
+        [Util rememberFeedVideoMetadata:metadata forNode:model];
+    if (contentView)
+        [Util rememberFeedVideoMetadata:metadata forNode:contentView];
+
+    UICollectionView *collectionView = ShortsCollectionViewForPlayer(player);
+    if (collectionView) {
+        if ([contentView isKindOfClass:[UIView class]])
+            [FeedDataSourceAdapter rememberMetadata:metadata forContentView:(UIView *)contentView inCollectionView:collectionView];
+        [FeedDataSourceAdapter rememberMetadata:metadata forVisibleItemInCollectionView:collectionView];
+    }
+}
+
+static void CaptureCurrentShortsMetadata(id player) {
+    if (!player)
+        return;
+
+    static void *ShortsMetadataModelKey = &ShortsMetadataModelKey;
+    id model = ExplicitObjectValue(player, @"model") ?: ExplicitObjectValue(player, @"contentModel") ?: ExplicitObjectValue(player, @"itemModel");
+    if (model && objc_getAssociatedObject(player, ShortsMetadataModelKey) == model) {
+        FeedMetadataRecord *cachedMetadata = [Util cachedFeedVideoMetadataForNode:model];
+        if (cachedMetadata.videoID.length > 0 && cachedMetadata.title.length > 0 && cachedMetadata.channel.length > 0)
+            return;
+    }
+
+    id contentView = ExplicitObjectValue(player, @"shortsContentView") ?: ExplicitObjectValue(player, @"contentView");
+    FeedMetadataRecord *modelMetadata = [Util feedVideoMetadataFromModel:model];
+    FeedMetadataRecord *contentMetadata = [Util cachedFeedVideoMetadataForNode:contentView];
+    FeedMetadataRecord *metadata = CombinedShortsMetadata(modelMetadata, contentMetadata);
+    if (metadata.dictionaryRepresentation.count == 0)
+        return;
+
+    RememberShortsMetadataForPlayer(player, metadata);
+    if (model)
+        objc_setAssociatedObject(player, ShortsMetadataModelKey, model, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+}
+
 static void AssociateVideoIDWithNode(id node, NSString *videoID) {
     if (!node || videoID.length == 0)
         return;
 
-    if ([[Util feedVideoIDForObject:node] isEqualToString:videoID])
-        return;
-
-    id current = node;
-    for (NSUInteger depth = 0; depth < 8 && current; depth++) {
-        [Util setFeedVideoID:videoID forObject:current];
-        [Util invalidateVideoInfoForNode:current];
-        id next = ValueForObjectKey(current, @"supernode");
-        if (!next || next == current)
-            break;
-        current = next;
-    }
-}
-
-static BOOL NodeLooksLikeVideo(id node) {
-    if (!node)
-        return NO;
-
-    NSString *nodeClassName = NSStringFromClass([node class]);
-    NSString *normalizedClassName = nodeClassName.lowercaseString;
-    if ([normalizedClassName containsString:@"collection"] ||
-        [normalizedClassName containsString:@"reorderable"] ||
-        [normalizedClassName containsString:@"scrollablepage"] ||
-        [normalizedClassName containsString:@"shelf"] ||
-        [normalizedClassName containsString:@"section"])
-        return NO;
-
-    BOOL isVideoLike = [normalizedClassName containsString:@"video"] ||
-                       [normalizedClassName containsString:@"short"] ||
-                       [normalizedClassName containsString:@"reel"];
-    BOOL isContentNode = [normalizedClassName containsString:@"node"] ||
-                         [normalizedClassName containsString:@"item"];
-    if (isVideoLike && isContentNode)
-        return YES;
-
-    return NO;
-}
-
-static BOOL NodeLooksLikeActionVideo(id node) {
-    if (!node)
-        return NO;
-
-    if (NodeLooksLikeVideo(node))
-        return YES;
-
-    NSString *className = NSStringFromClass([node class]).lowercaseString;
-    if ([className containsString:@"shorts"] &&
-        ([className containsString:@"node"] || [className containsString:@"item"] ||
-         [className containsString:@"player"]))
-        return YES;
-
-    return NO;
+    NSString *existingVideoID = [Util feedVideoIDForObject:node];
+    if (existingVideoID.length > 0 && ![existingVideoID isEqualToString:videoID])
+        [Util resetFeedVideoMetadataForNode:node];
+    FeedMetadataRecord *metadata = [[FeedMetadataRecord alloc] initWithVideoID:videoID
+                                                                            title:nil
+                                                                          channel:nil];
+    [Util setFeedVideoID:videoID forObject:node];
+    [Util rememberFeedVideoMetadata:metadata forNode:node];
+    [FeedDataSourceAdapter rememberMetadata:metadata forNode:node];
 }
 
 static UIView *ActionSheetSourceView(id sheet) {
-    id source = ValueForObjectKey(sheet, @"sourceView");
-    if (!source)
-        source = ValueForObjectKey(sheet, @"_sourceView");
+    UIView *associatedSourceView = objc_getAssociatedObject(sheet, ActionSheetSourceViewKey);
+    if ([associatedSourceView isKindOfClass:[UIView class]])
+        return associatedSourceView;
+    id source = ExplicitObjectValue(sheet, @"sourceView");
     if ([source isKindOfClass:[UIView class]])
         return source;
     if ([source isKindOfClass:[UIViewController class]])
@@ -99,130 +175,52 @@ static UIView *ActionSheetSourceView(id sheet) {
     return nil;
 }
 
-static id ActionSheetNodeCandidate(id candidate) {
-    if (!candidate)
-        return nil;
-    if ([candidate isKindOfClass:[UIView class]])
-        return ValueForObjectKey(candidate, @"asyncdisplaykit_node");
-    if ([candidate isKindOfClass:[UIViewController class]])
-        return ValueForObjectKey(((UIViewController *)candidate).view, @"asyncdisplaykit_node");
-    if (NodeLooksLikeActionVideo(candidate))
-        return candidate;
+static UICollectionViewCell *FeedCellForSourceView(UIView *sourceView);
 
-    NSString *className = NSStringFromClass([candidate class]).lowercaseString;
-    if ([className containsString:@"shorts"] ||
-        [className containsString:@"reel"] ||
-        [className containsString:@"video"] ||
-        [className containsString:@"player"])
-        return candidate;
+static UICollectionView *FeedCollectionViewForSourceView(UIView *sourceView) {
+    UIView *view = sourceView;
+    for (NSUInteger depth = 0; view && depth < 16; depth++, view = view.superview) {
+        if ([view isKindOfClass:[UICollectionView class]])
+            return (UICollectionView *)view;
+    }
     return nil;
 }
 
-static void AppendActionCandidate(NSMutableArray *candidates, NSMutableSet *visited, id candidate) {
-    if (!candidate || candidate == [NSNull null] || candidates.count >= 24)
-        return;
-
-    NSValue *identity = [NSValue valueWithNonretainedObject:candidate];
-    if ([visited containsObject:identity])
-        return;
-    [visited addObject:identity];
-    [candidates addObject:candidate];
-}
-
-static void AppendActionCandidateChildren(NSMutableArray *candidates,
-                                          NSMutableSet *visited,
-                                          id object) {
-    if (!object || candidates.count >= 24)
-        return;
-
-    NSArray *children = ValueForObjectKey(object, @"subnodes");
-    NSUInteger childCount = 0;
-    for (id child in children) {
-        if (childCount++ >= 16 || candidates.count >= 24)
-            break;
-        NSString *className = NSStringFromClass([child class]).lowercaseString;
-        if (NodeLooksLikeActionVideo(child) || [className containsString:@"container"] ||
-            [className containsString:@"element"] || [className containsString:@"inlineplayback"])
-            AppendActionCandidate(candidates, visited, child);
-
-        if (![className containsString:@"container"] && ![className containsString:@"element"])
-            continue;
-        NSArray *grandchildren = ValueForObjectKey(child, @"subnodes");
-        NSUInteger grandchildCount = 0;
-        for (id grandchild in grandchildren) {
-            if (grandchildCount++ >= 16 || candidates.count >= 24)
-                break;
-            NSString *grandchildClassName = NSStringFromClass([grandchild class]).lowercaseString;
-            if (NodeLooksLikeActionVideo(grandchild) || [grandchildClassName containsString:@"inlineplayback"])
-                AppendActionCandidate(candidates, visited, grandchild);
-        }
-    }
-}
-
-static UICollectionViewCell *FeedCellForSourceView(UIView *sourceView);
-
-static NSArray *ActionVideoCandidates(id sheet,
-                                      id presentationNode,
-                                      id presentationSourceNode,
-                                      UIView *sourceView) {
-    NSMutableArray *candidates = [NSMutableArray array];
-    NSMutableSet *visited = [NSMutableSet set];
-
+static id FeedNodeForSourceView(UIView *sourceView) {
     UICollectionViewCell *sourceCell = FeedCellForSourceView(sourceView);
     if (sourceCell) {
-        id cellNode = ValueForObjectKey(sourceCell, @"node");
-        AppendActionCandidate(candidates, visited, cellNode);
-        AppendActionCandidateChildren(candidates, visited, cellNode);
-        id cellAsyncNode = ValueForObjectKey(sourceCell, @"asyncdisplaykit_node");
-        AppendActionCandidate(candidates, visited, cellAsyncNode);
-        AppendActionCandidateChildren(candidates, visited, cellAsyncNode);
+        id cellNode = ExplicitObjectValue(sourceCell, @"node");
+        if (cellNode)
+            return cellNode;
+        cellNode = ExplicitObjectValue(sourceCell, @"asyncdisplaykit_node");
+        if (cellNode)
+            return cellNode;
     }
+    return ExplicitObjectValue(sourceView, @"asyncdisplaykit_node");
+}
 
-    UIView *ancestor = sourceView;
-    NSUInteger ancestorDepth = 0;
-    while (ancestor && ancestorDepth++ < 8) {
-        id ancestorNode = ValueForObjectKey(ancestor, @"asyncdisplaykit_node");
-        AppendActionCandidate(candidates, visited, ancestorNode);
-        AppendActionCandidateChildren(candidates, visited, ancestorNode);
-        ancestor = ancestor.superview;
+static id ActionSheetSourceNode(id sheet, UIView *sourceView) {
+    id node = FeedNodeForSourceView(sourceView);
+    if (node)
+        return node;
+
+    for (NSString *key in @[@"sourceNode", @"videoNode", @"currentVideo", @"contentView", @"node", @"playerViewController", @"shortsPlayerViewController", @"parentResponder", @"elementEntry", @"model", @"data", @"item", @"entry", @"renderer"]) {
+        id candidate = ExplicitObjectValue(sheet, key);
+        if ([candidate isKindOfClass:[UIViewController class]])
+            candidate = ((UIViewController *)candidate).view;
+        if ([candidate isKindOfClass:[UIView class]])
+            candidate = ExplicitObjectValue(candidate, @"asyncdisplaykit_node");
+        if (candidate)
+            return candidate;
     }
-
-    BOOL shortsContext = ObjectLooksLikeShorts(sourceView) ||
-                         ObjectLooksLikeShorts(presentationNode) ||
-                         ObjectLooksLikeShorts(presentationSourceNode);
-    if (shortsContext && CurrentShortsPlayer) {
-        AppendActionCandidate(candidates, visited, CurrentShortsPlayer);
-        id shortsContentView = ValueForObjectKey(CurrentShortsPlayer, @"shortsContentView");
-        AppendActionCandidate(candidates, visited, ActionSheetNodeCandidate(shortsContentView) ?: shortsContentView);
-        for (NSString *key in @[@"currentVideo", @"reelContentView", @"reelItem", @"reel", @"contentView",
-                                @"videoNode", @"playerNode", @"currentPlayer", @"content"]) {
-            id candidate = ValueForObjectKey(CurrentShortsPlayer, key);
-            AppendActionCandidate(candidates, visited, ActionSheetNodeCandidate(candidate) ?: candidate);
-        }
-    }
-
-    AppendActionCandidate(candidates, visited, presentationNode);
-    AppendActionCandidate(candidates, visited, presentationSourceNode);
-    AppendActionCandidate(candidates, visited, ActionSheetNodeCandidate(sourceView));
-
-    for (NSString *key in @[
-        @"sourceNode", @"_sourceNode", @"videoNode", @"_videoNode", @"playerNode", @"_playerNode",
-        @"currentVideo", @"playerViewController", @"shortsPlayerViewController", @"currentPlayer",
-        @"contentView", @"reelContentView"
-    ]) {
-        id candidate = ValueForObjectKey(sheet, key);
-        id node = ActionSheetNodeCandidate(candidate);
-        AppendActionCandidate(candidates, visited, node ?: candidate);
-        AppendActionCandidateChildren(candidates, visited, node ?: candidate);
-    }
-    return candidates;
+    return nil;
 }
 
 static UIViewController *ViewControllerForObject(id object) {
     if ([object isKindOfClass:[UIViewController class]])
         return object;
 
-    UIView *sourceView = [object isKindOfClass:[UIView class]] ? object : ValueForObjectKey(object, @"sourceView");
+    UIView *sourceView = [object isKindOfClass:[UIView class]] ? object : ExplicitObjectValue(object, @"sourceView");
     if (sourceView) {
         UIResponder *responder = sourceView;
         while (responder) {
@@ -235,14 +233,60 @@ static UIViewController *ViewControllerForObject(id object) {
     return nil;
 }
 
+static id ShortsPlayerForObject(id object) {
+    UIView *view = [object isKindOfClass:[UIView class]] ? object : ExplicitObjectValue(object, @"view");
+    NSMutableArray *pending = [NSMutableArray array];
+    if (view)
+        [pending addObject:view];
+    id parentResponder = ExplicitObjectValue(object, @"parentResponder");
+    if (parentResponder)
+        [pending addObject:parentResponder];
+    NSMutableSet *visited = [NSMutableSet set];
+    NSUInteger index = 0;
+    while (index < pending.count && index < 32) {
+        id candidate = pending[index++];
+        if (!candidate || candidate == [NSNull null])
+            continue;
+        NSValue *identity = [NSValue valueWithNonretainedObject:candidate];
+        if ([visited containsObject:identity])
+            continue;
+        [visited addObject:identity];
+        NSString *className = NSStringFromClass([candidate class]).lowercaseString;
+        if ([className containsString:@"shortsplayer"] || [className containsString:@"reelplayer"])
+            return candidate;
+        if ([candidate isKindOfClass:[UIView class]]) {
+            UIView *candidateView = candidate;
+            if (candidateView.superview && pending.count < 32)
+                [pending addObject:candidateView.superview];
+            UIResponder *responder = candidateView.nextResponder;
+            if (responder && pending.count < 32)
+                [pending addObject:responder];
+        } else {
+            id nextResponder = ExplicitObjectValue(candidate, @"nextResponder");
+            if (nextResponder && pending.count < 32)
+                [pending addObject:nextResponder];
+            id relatedParent = ExplicitObjectValue(candidate, @"parentResponder");
+            if (relatedParent && pending.count < 32)
+                [pending addObject:relatedParent];
+        }
+    }
+    return nil;
+}
+
 static void SendToast(id object, NSString *message) {
-    UIView *view = [object isKindOfClass:[UIView class]] ? object : ValueForObjectKey(object, @"sourceView");
+    UIView *view = [object isKindOfClass:[UIView class]] ? object : ExplicitObjectValue(object, @"sourceView");
     if (![view isKindOfClass:[UIView class]])
         view = nil;
     [Util showToast:message fromView:view];
 }
 
 static void MergeAvailableVideoInfo(NSMutableDictionary *result, NSDictionary *candidate) {
+    NSString *candidateVideoID = candidate[@"id"];
+    NSString *existingVideoID = result[@"id"];
+    if (candidateVideoID.length > 0 && existingVideoID.length > 0 &&
+        ![candidateVideoID isEqualToString:existingVideoID])
+        return;
+
     for (NSString *key in @[@"id", @"title", @"channel"]) {
         NSString *value = candidate[key];
         if (![value isKindOfClass:[NSString class]] || value.length == 0)
@@ -267,183 +311,233 @@ static void MergeCachedVideoInfo(NSMutableDictionary *result) {
     MergeAvailableVideoInfo(result, cachedInfo);
 }
 
-static YTShortsPlayerViewController *FindShortsPlayerInViewController(UIViewController *viewController,
-                                                                        NSMutableSet *visited,
-                                                                        NSUInteger depth) {
-    Class shortsClass = NSClassFromString(@"YTShortsPlayerViewController");
-    if (!viewController || depth > 8)
-        return nil;
-
-    NSValue *identity = [NSValue valueWithNonretainedObject:viewController];
-    if ([visited containsObject:identity])
-        return nil;
-    [visited addObject:identity];
-
-    NSString *viewControllerClassName = NSStringFromClass([viewController class]).lowercaseString;
-    if ((shortsClass && [viewController isKindOfClass:shortsClass]) ||
-        (([viewControllerClassName containsString:@"short"] || [viewControllerClassName containsString:@"reel"]) &&
-         [viewController respondsToSelector:@selector(reelContentViewRequestsAdvanceToNextVideo:)]))
-        return (YTShortsPlayerViewController *)viewController;
-
-    NSMutableArray<UIViewController *> *priorityControllers = [NSMutableArray arrayWithCapacity:5];
-    if (viewController.presentedViewController)
-        [priorityControllers addObject:viewController.presentedViewController];
-    if (viewController.presentingViewController)
-        [priorityControllers addObject:viewController.presentingViewController];
-    if (viewController.navigationController.visibleViewController)
-        [priorityControllers addObject:viewController.navigationController.visibleViewController];
-    if (viewController.tabBarController.selectedViewController)
-        [priorityControllers addObject:viewController.tabBarController.selectedViewController];
-    if (viewController.parentViewController)
-        [priorityControllers addObject:viewController.parentViewController];
-    for (UIViewController *candidate in priorityControllers) {
-        YTShortsPlayerViewController *player = FindShortsPlayerInViewController(candidate, visited, depth + 1);
-        if (player)
-            return player;
-    }
-
-    for (UIViewController *child in viewController.childViewControllers.reverseObjectEnumerator) {
-        YTShortsPlayerViewController *player = FindShortsPlayerInViewController(child, visited, depth + 1);
-        if (player)
-            return player;
-    }
-    return nil;
+static void MergeCachedMetadataForObject(NSMutableDictionary *info, id object) {
+    FeedMetadataRecord *metadata = [Util cachedFeedVideoMetadataForNode:object];
+    NSString *associatedVideoID = [Util feedVideoIDForObject:object];
+    MergeAvailableVideoInfo(info, metadata.dictionaryRepresentation);
+    if (associatedVideoID.length > 0)
+        MergeAvailableVideoInfo(info, [[Util cachedFeedVideoMetadataForVideoID:associatedVideoID] dictionaryRepresentation]);
+    MergeCachedVideoInfo(info);
 }
 
-static YTShortsPlayerViewController *VisibleShortsPlayer(void) {
-    for (UIWindow *window in [UIApplication sharedApplication].windows) {
-        if (!window.windowScene || window.hidden || window.alpha <= 0.01)
-            continue;
-        YTShortsPlayerViewController *player = FindShortsPlayerInViewController(window.rootViewController,
-                                                                                  [NSMutableSet set],
-                                                                                  0);
-        if (player)
-            return player;
-    }
-    return nil;
+static void MergeModelMetadata(NSMutableDictionary *result, id object) {
+    if (!object || object == [NSNull null] || [object isKindOfClass:[UIView class]])
+        return;
+    MergeAvailableVideoInfo(result, [[Util feedVideoMetadataFromModel:object] dictionaryRepresentation]);
 }
 
-static BOOL ObjectLooksLikeShorts(id object) {
-    if (!object)
-        return NO;
-
-    NSString *className = NSStringFromClass([object class]).lowercaseString;
-    if ([className containsString:@"short"] || [className containsString:@"reel"])
-        return YES;
-
-    if ([object isKindOfClass:[UIView class]]) {
-        UIView *view = object;
-        NSUInteger depth = 0;
-        while (view && depth++ < 10) {
-            NSString *viewClassName = NSStringFromClass([view class]).lowercaseString;
-            if ([viewClassName containsString:@"short"] || [viewClassName containsString:@"reel"])
-                return YES;
-            view = view.superview;
-        }
-    }
-
-    UIViewController *viewController = ViewControllerForObject(object);
-    while (viewController) {
-        NSString *viewControllerClassName = NSStringFromClass([viewController class]).lowercaseString;
-        if ([viewControllerClassName containsString:@"short"] || [viewControllerClassName containsString:@"reel"])
-            return YES;
-        viewController = viewController.parentViewController;
-    }
-    return NO;
-}
-
-static YTShortsPlayerViewController *ShortsPlayerForObject(id object) {
-    if (!object)
-        return nil;
-
-    Class shortsClass = NSClassFromString(@"YTShortsPlayerViewController");
-    if (shortsClass && [object isKindOfClass:shortsClass])
-        return (YTShortsPlayerViewController *)object;
-
-    UIViewController *viewController = ViewControllerForObject(object);
-    if (viewController) {
-        YTShortsPlayerViewController *player = FindShortsPlayerInViewController(viewController,
-                                                                                  [NSMutableSet set],
-                                                                                  0);
-        if (player)
-            return player;
-    }
-
-    for (NSString *key in @[@"controller", @"closestViewController", @"viewController",
-                            @"playerViewController", @"shortsPlayerViewController", @"parentViewController"]) {
-        id candidate = ValueForObjectKey(object, key);
-        if (!candidate || candidate == object)
-            continue;
-        if (shortsClass && [candidate isKindOfClass:shortsClass])
-            return (YTShortsPlayerViewController *)candidate;
-        viewController = ViewControllerForObject(candidate);
-        if (!viewController)
-            continue;
-        YTShortsPlayerViewController *player = FindShortsPlayerInViewController(viewController,
-                                                                                  [NSMutableSet set],
-                                                                                  0);
-        if (player)
-            return player;
-    }
-    return nil;
-}
-
-static NSDictionary *ActionVideoInfo(id sheet,
-                                     id presentationNode,
-                                     id presentationSourceNode,
-                                     UIView *sourceView,
-                                     BOOL requiresChannel) {
-    @try {
-        NSMutableDictionary *info = [NSMutableDictionary dictionary];
-        NSArray *candidates = ActionVideoCandidates(sheet, presentationNode, presentationSourceNode, sourceView);
-        BOOL shortsContext = ObjectLooksLikeShorts(sourceView) ||
-                             ObjectLooksLikeShorts(presentationNode) ||
-                             ObjectLooksLikeShorts(presentationSourceNode);
-        if (shortsContext) {
-            YTShortsPlayerViewController *shortsPlayer = CurrentShortsPlayer ?: ShortsPlayerForObject(sourceView);
-            id shortsContentView = ValueForObjectKey(shortsPlayer, @"shortsContentView");
-            FeedMetadataRecord *shortsMetadata = [Util feedVideoMetadataFromShortsContentView:shortsContentView];
-            MergeAvailableVideoInfo(info, shortsMetadata.dictionaryRepresentation);
-        }
-
-        for (id candidate in candidates) {
-            FeedMetadataRecord *candidateMetadata = [Util feedVideoMetadataFromNode:candidate];
-            NSDictionary *candidateInfo = [candidateMetadata dictionaryRepresentation];
-            if (![candidateInfo isKindOfClass:[NSDictionary class]])
-                continue;
-            MergeAvailableVideoInfo(info, candidateInfo);
-            MergeCachedVideoInfo(info);
-            if ((requiresChannel && [info[@"channel"] length] > 0) ||
-                (!requiresChannel && [info[@"id"] length] > 0))
+static void MergeMenuContextMetadata(NSMutableDictionary *result, id renderers, id entry) {
+    MergeModelMetadata(result, entry);
+    if ([renderers isKindOfClass:[NSArray class]]) {
+        NSUInteger count = 0;
+        for (id renderer in (NSArray *)renderers) {
+            if (count++ >= 8)
+                break;
+            MergeModelMetadata(result, renderer);
+            if (result[@"id"] && result[@"title"] && result[@"channel"])
                 break;
         }
-        FeedMetadataRecord *record = [[FeedMetadataRecord alloc] initWithVideoID:info[@"id"]
-                                                                             title:info[@"title"]
-                                                                           channel:info[@"channel"]];
-        for (id candidate in candidates)
-            [Util rememberFeedVideoMetadata:record forNode:candidate];
-        return [info copy];
-    } @catch (__unused NSException *exception) {
-        return @{};
+    } else {
+        MergeModelMetadata(result, renderers);
     }
 }
 
-static void RemoveBlockedFeedItem(UIView *sourceView,
-                                  UICollectionViewCell *knownCell,
-                                  YTAsyncCollectionView *knownCollectionView,
-                                  NSString *videoId,
-                                  BOOL isShorts,
-                                  YTShortsPlayerViewController *shortsPlayer);
-static UICollectionViewCell *FeedCellForMetadataObject(id object);
-static YTAsyncCollectionView *CollectionViewForFeedCell(UICollectionViewCell *cell);
+static void RememberActionMetadata(NSDictionary *metadata, UIView *sourceView, id sourceNode) {
+    if (metadata.count == 0)
+        return;
+    FeedMetadataRecord *actionMetadata = [[FeedMetadataRecord alloc] initWithVideoID:metadata[@"id"]
+                                                                                  title:metadata[@"title"]
+                                                                                channel:metadata[@"channel"]];
+    if (sourceNode) {
+        [Util rememberFeedVideoMetadata:actionMetadata forNode:sourceNode];
+        [FeedDataSourceAdapter rememberMetadata:actionMetadata forNode:sourceNode];
+    }
+    id shortsPlayer = ShortsPlayerForObject(sourceView) ?: CurrentShortsPlayer;
+    if (shortsPlayer)
+        RememberShortsMetadataForPlayer(shortsPlayer, actionMetadata);
+    UICollectionView *sourceCollectionView = FeedCollectionViewForSourceView(sourceView);
+    if (sourceCollectionView)
+        [FeedDataSourceAdapter rememberMetadata:actionMetadata
+                                     forContentView:sourceView
+                                    inCollectionView:sourceCollectionView];
+}
+
+static NSArray *MenuBlockingActions(NSDictionary *metadata,
+                                    YTActionSheetAction *originalAction,
+                                    UIView *sourceView) {
+    if (![metadata[@"id"] isKindOfClass:[NSString class]] ||
+        ![metadata[@"channel"] isKindOfClass:[NSString class]] ||
+        [metadata[@"id"] length] == 0 ||
+        [metadata[@"channel"] length] == 0)
+        return @[];
+
+    UIImage *originalIcon = ExplicitObjectValue(originalAction, @"iconImage");
+    CGSize iconSize = originalIcon.size;
+    if (iconSize.width <= 0.0 || iconSize.height <= 0.0)
+        iconSize = CGSizeMake(24.0, 24.0);
+    NSString *videoID = [metadata[@"id"] copy];
+    NSString *videoTitle = [Util isUsableVideoTitle:metadata[@"title"]] ? [metadata[@"title"] copy] : @"";
+    NSString *channel = [metadata[@"channel"] copy];
+    __weak UIView *weakSourceView = sourceView;
+
+    YTActionSheetAction *blockChannelAction = [%c(YTActionSheetAction)
+        actionWithTitle:LocalizedString(@"Block channel")
+              iconImage:[Util createBlockChannelIconWithSize:iconSize]
+         secondaryIconImage:nil
+     accessibilityIdentifier:nil
+                handler:^ {
+                     [[ChannelManager sharedInstance] addBlockedChannel:channel];
+                    SendToast(weakSourceView,
+                              [NSString stringWithFormat:LocalizedString(@"Blocked %@"), channel]);
+                }];
+
+    YTActionSheetAction *blockVideoAction = [%c(YTActionSheetAction)
+        actionWithTitle:LocalizedString(@"Block video")
+              iconImage:[Util createBlockVideoIconWithSize:iconSize]
+         secondaryIconImage:nil
+     accessibilityIdentifier:nil
+                handler:^ {
+                    [[VideoManager sharedInstance] addBlockedVideo:videoID title:videoTitle channel:channel];
+                    SendToast(weakSourceView,
+                              [NSString stringWithFormat:LocalizedString(@"Blocked video: %@"),
+                                                         videoTitle.length > 0 ? videoTitle : videoID]);
+                }];
+
+    if (!blockChannelAction || !blockVideoAction)
+        return @[];
+    blockChannelAction.shouldDismissOnAction = YES;
+    blockVideoAction.shouldDismissOnAction = YES;
+    return @[blockChannelAction, blockVideoAction];
+}
+
+static NSArray *AppendCurrentShortsBlockingActions(id sheet, NSArray *actions) {
+    if (!CurrentShortsPlayer || ![actions isKindOfClass:[NSArray class]] || actions.count == 0)
+        return actions;
+
+    UIView *sourceView = ActionSheetSourceView(sheet);
+    if (!sourceView && [CurrentShortsPlayer isKindOfClass:[UIViewController class]])
+        sourceView = ((UIViewController *)CurrentShortsPlayer).view;
+    NSDictionary *metadata = CachedActionVideoInfo(sheet, sourceView, nil);
+    NSArray *blockingActions = MenuBlockingActions(metadata, actions.firstObject, sourceView);
+    if (blockingActions.count == 0)
+        return actions;
+
+    NSMutableArray *result = [NSMutableArray arrayWithArray:blockingActions];
+    [result addObjectsFromArray:actions];
+    for (YTActionSheetAction *action in blockingActions) {
+        NSString *title = action.title.lowercaseString;
+        BOOL alreadyPresent = NO;
+        for (YTActionSheetAction *existingAction in result) {
+            if ([existingAction.title.lowercaseString isEqualToString:title]) {
+                alreadyPresent = YES;
+                break;
+            }
+        }
+        if (!alreadyPresent)
+            [result addObject:action];
+    }
+    return result.copy;
+}
+
+static void InjectShortsBottomSheetActions(id contentViewController) {
+    if (!contentViewController)
+        return;
+
+    id actionSheetController = DirectObjectIvar(contentViewController, @"actionsController") ?: contentViewController;
+    id actionOwner = DirectObjectIvar(actionSheetController, @"delegate") ?: contentViewController;
+    NSMutableArray *actions = DirectObjectIvar(actionOwner, @"actions");
+    if (!CurrentShortsPlayer || objc_getAssociatedObject(actionOwner, BottomSheetBlockingActionsKey))
+        return;
+    if (![actions isKindOfClass:[NSMutableArray class]] || actions.count == 0)
+        return;
+
+    UIView *sourceView = [CurrentShortsPlayer isKindOfClass:[UIViewController class]] ?
+        ((UIViewController *)CurrentShortsPlayer).view : nil;
+    NSDictionary *metadata = CachedActionVideoInfo(actionOwner, sourceView, nil);
+    NSArray *blockingActions = MenuBlockingActions(metadata, actions.firstObject, sourceView);
+    if (blockingActions.count == 0)
+        return;
+
+    objc_setAssociatedObject(actionOwner,
+                             BottomSheetBlockingActionsKey,
+                             blockingActions,
+                             OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    for (YTActionSheetAction *action in [blockingActions reverseObjectEnumerator]) {
+        NSString *title = action.title.lowercaseString;
+        BOOL alreadyPresent = NO;
+        for (YTActionSheetAction *existingAction in actions) {
+            if ([existingAction.title.lowercaseString isEqualToString:title]) {
+                alreadyPresent = YES;
+                break;
+            }
+        }
+        if (!alreadyPresent)
+            [actions insertObject:action atIndex:0];
+    }
+    if ([actionOwner respondsToSelector:@selector(relayoutActionSheet)])
+        [actionOwner performSelector:@selector(relayoutActionSheet)];
+    if ([actionSheetController respondsToSelector:@selector(updateDialogToPreferredContentSize)])
+        [actionSheetController performSelector:@selector(updateDialogToPreferredContentSize)];
+}
+
+static NSArray *MenuActionsWithBlockingActions(NSArray *actions, UIView *sourceView, id renderers, id entry) {
+    if (![actions isKindOfClass:[NSArray class]])
+        return @[];
+    id sourceNode = FeedNodeForSourceView(sourceView);
+    NSMutableDictionary *metadata = [CachedActionVideoInfo(nil, sourceView, sourceNode) mutableCopy] ?: [NSMutableDictionary dictionaryWithCapacity:3];
+    MergeMenuContextMetadata(metadata, renderers, entry);
+    RememberActionMetadata(metadata, sourceView, sourceNode);
+    if (actions.count == 0)
+        return actions;
+    for (YTActionSheetAction *action in actions) {
+        NSString *title = action.title.lowercaseString;
+        if ([title isEqualToString:LocalizedString(@"block channel").lowercaseString] ||
+            [title isEqualToString:LocalizedString(@"block video").lowercaseString])
+            return actions;
+    }
+    if (metadata.count == 0)
+        return actions;
+    NSArray *blockingActions = MenuBlockingActions(metadata, actions.firstObject, sourceView);
+    NSArray *result = blockingActions.count > 0 ? [blockingActions arrayByAddingObjectsFromArray:actions] : actions;
+    return result;
+}
+
+static NSDictionary *CachedActionVideoInfo(id sheet, UIView *sourceView, id sourceNode) {
+    NSMutableDictionary *info = [NSMutableDictionary dictionaryWithCapacity:3];
+    UICollectionView *sourceCollectionView = FeedCollectionViewForSourceView(sourceView);
+    MergeAvailableVideoInfo(info,
+                            [[FeedDataSourceAdapter cachedMetadataForContentView:sourceView
+                                                                  inCollectionView:sourceCollectionView] dictionaryRepresentation]);
+    MergeAvailableVideoInfo(info, [[FeedDataSourceAdapter cachedMetadataForNode:sourceNode] dictionaryRepresentation]);
+    MergeCachedMetadataForObject(info, sourceNode);
+    MergeCachedMetadataForObject(info, sourceView);
+    MergeModelMetadata(info, sourceNode);
+    MergeModelMetadata(info, sourceView);
+    for (NSString *key in @[@"entry", @"elementEntry", @"renderer", @"model", @"data", @"item"]) {
+        id context = ExplicitObjectValue(sheet, key);
+        MergeCachedMetadataForObject(info, context);
+        MergeModelMetadata(info, context);
+    }
+
+    id actionPlayer = ShortsPlayerForObject(sourceView) ?: CurrentShortsPlayer;
+    if (actionPlayer) {
+        CurrentShortsPlayer = actionPlayer;
+        id contentView = ExplicitObjectValue(actionPlayer, @"shortsContentView") ?: ExplicitObjectValue(actionPlayer, @"contentView");
+        id model = ExplicitObjectValue(actionPlayer, @"model") ?: ExplicitObjectValue(actionPlayer, @"contentModel") ?: ExplicitObjectValue(actionPlayer, @"itemModel");
+        MergeCachedMetadataForObject(info, contentView);
+        MergeCachedMetadataForObject(info, model);
+        if ([contentView isKindOfClass:[UIView class]])
+            MergeAvailableVideoInfo(info, [[FeedDataSourceAdapter cachedMetadataForContentView:(UIView *)contentView
+                                                                               inCollectionView:ShortsCollectionViewForPlayer(actionPlayer)] dictionaryRepresentation]);
+        MergeAvailableVideoInfo(info, [objc_getAssociatedObject(actionPlayer, ShortsResponseMetadataKey) dictionaryRepresentation]);
+        MergeCachedVideoInfo(info);
+    }
+    return info.copy;
+}
 
 static void *ActionMetadataKey = &ActionMetadataKey;
-static void *FeedNodeCellKey = &FeedNodeCellKey;
 
 static void ResolveActionVideoInfo(id sheet,
-                                   id presentationNode,
-                                   id presentationSourceNode,
-                                   UIView *sourceView,
                                    BOOL requiresChannel,
                                    void (^completion)(NSDictionary *info)) {
     if (!completion)
@@ -458,61 +552,72 @@ static void ResolveActionVideoInfo(id sheet,
         return;
     }
 
-    UIView *currentSourceView = sourceView ?: ActionSheetSourceView(sheet);
-    NSDictionary *info = ActionVideoInfo(sheet,
-                                         presentationNode,
-                                         presentationSourceNode,
-                                         currentSourceView,
-                                         requiresChannel);
-    completion(info);
+    UIView *sourceView = ActionSheetSourceView(sheet);
+    NSDictionary *refreshedInfo = CachedActionVideoInfo(sheet, sourceView, FeedNodeForSourceView(sourceView));
+    if ([refreshedInfo isKindOfClass:[NSDictionary class]] && refreshedInfo.count > 0) {
+        NSMutableDictionary *mergedInfo = [cachedInfo mutableCopy] ?: [NSMutableDictionary dictionaryWithCapacity:3];
+        MergeAvailableVideoInfo(mergedInfo, refreshedInfo);
+        refreshedInfo = mergedInfo.copy;
+        objc_setAssociatedObject(sheet, ActionMetadataKey, refreshedInfo, OBJC_ASSOCIATION_COPY_NONATOMIC);
+    }
+    BOOL refreshedInfoIsUsable = [refreshedInfo isKindOfClass:[NSDictionary class]] &&
+                                 ((requiresChannel && [refreshedInfo[@"channel"] length] > 0) ||
+                                  (!requiresChannel && [refreshedInfo[@"id"] length] > 0));
+    completion(refreshedInfoIsUsable ? refreshedInfo : @{});
 }
 
 static void AddBlockingActions(id sheet, YTActionSheetAction *originalAction) {
     static void *injectionKey = &injectionKey;
     static void *injectionInProgressKey = &injectionInProgressKey;
-    if (!sheet || !originalAction || objc_getAssociatedObject(sheet, injectionInProgressKey) ||
-        objc_getAssociatedObject(sheet, injectionKey))
+    if (!sheet || !originalAction || objc_getAssociatedObject(sheet, injectionInProgressKey))
+        return;
+    NSString *originalTitle = originalAction.title.lowercaseString;
+    if ([originalTitle isEqualToString:LocalizedString(@"block channel").lowercaseString] ||
+        [originalTitle isEqualToString:LocalizedString(@"block video").lowercaseString])
         return;
 
     @try {
         UIView *sourceView = ActionSheetSourceView(sheet);
-        id sourceNode = ValueForObjectKey(sourceView, @"asyncdisplaykit_node");
-        BOOL sourceLooksLikeShorts = ObjectLooksLikeShorts(sourceView) || ObjectLooksLikeShorts(sourceNode);
-        YTShortsPlayerViewController *shortsPlayer = sourceLooksLikeShorts ? ShortsPlayerForObject(sourceView) : nil;
-        if (sourceLooksLikeShorts && !shortsPlayer)
-            shortsPlayer = VisibleShortsPlayer();
-        if (shortsPlayer)
-            CurrentShortsPlayer = shortsPlayer;
-        id node = ActionVideoCandidates(sheet, nil, sourceNode, sourceView).firstObject;
-        if (!node)
+        id sourceNode = ActionSheetSourceNode(sheet, sourceView);
+        NSDictionary *capturedMetadata = CachedActionVideoInfo(sheet, sourceView, sourceNode);
+        if (capturedMetadata.count > 0) {
+            FeedMetadataRecord *actionMetadata = [[FeedMetadataRecord alloc] initWithVideoID:capturedMetadata[@"id"] title:capturedMetadata[@"title"] channel:capturedMetadata[@"channel"]];
+            if (sourceNode) {
+                [Util rememberFeedVideoMetadata:actionMetadata forNode:sourceNode];
+                [FeedDataSourceAdapter rememberMetadata:actionMetadata forNode:sourceNode];
+            }
+            UICollectionView *sourceCollectionView = FeedCollectionViewForSourceView(sourceView);
+            if (sourceCollectionView)
+                [FeedDataSourceAdapter rememberMetadata:actionMetadata
+                                     forContentView:sourceView
+                                    inCollectionView:sourceCollectionView];
+        }
+
+        if (objc_getAssociatedObject(sheet, injectionKey)) {
+            NSDictionary *previousMetadata = objc_getAssociatedObject(sheet, ActionMetadataKey);
+            NSMutableDictionary *refreshedMetadata = [previousMetadata mutableCopy] ?: [NSMutableDictionary dictionaryWithCapacity:3];
+            NSString *previousVideoID = refreshedMetadata[@"id"];
+            NSString *capturedVideoID = capturedMetadata[@"id"];
+            if (previousVideoID.length > 0 && capturedVideoID.length > 0 &&
+                ![previousVideoID isEqualToString:capturedVideoID])
+                refreshedMetadata = [capturedMetadata mutableCopy];
+            else
+                MergeAvailableVideoInfo(refreshedMetadata, capturedMetadata);
+            objc_setAssociatedObject(sheet, ActionMetadataKey, refreshedMetadata.copy, OBJC_ASSOCIATION_COPY_NONATOMIC);
+            return;
+        }
+
+        if ([capturedMetadata[@"id"] length] == 0 || [capturedMetadata[@"channel"] length] == 0)
             return;
 
         objc_setAssociatedObject(sheet, injectionKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         objc_setAssociatedObject(sheet, injectionInProgressKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 
         __weak id weakSheet = sheet;
-        id presentationNode = node;
-        id presentationSourceNode = sourceNode;
-        UICollectionViewCell *sourceCell = FeedCellForSourceView(sourceView);
-        if (!sourceCell)
-            sourceCell = FeedCellForMetadataObject(node);
-        UIView *feedSourceView = sourceView;
-        if (!sourceCell) {
-            id nodeView = ValueForObjectKey(node, @"view");
-            if ([nodeView isKindOfClass:[UIView class]]) {
-                sourceCell = FeedCellForSourceView(nodeView);
-                if (sourceCell)
-                    feedSourceView = nodeView;
-            }
-        }
-        YTAsyncCollectionView *sourceCollectionView = CollectionViewForFeedCell(sourceCell);
-        BOOL isShorts = shortsPlayer != nil || ObjectLooksLikeShorts(sourceView) || ObjectLooksLikeShorts(node);
-        if (!shortsPlayer && isShorts)
-            shortsPlayer = VisibleShortsPlayer();
-        if (shortsPlayer)
-            CurrentShortsPlayer = shortsPlayer;
-        CGSize iconSize = CGSizeMake(24.0, 24.0);
-        NSDictionary *capturedMetadata = ActionVideoInfo(sheet, presentationNode, presentationSourceNode, sourceView, YES);
+        UIImage *originalIcon = ExplicitObjectValue(originalAction, @"iconImage");
+        CGSize iconSize = originalIcon.size;
+        if (iconSize.width <= 0.0 || iconSize.height <= 0.0)
+            iconSize = CGSizeMake(24.0, 24.0);
         objc_setAssociatedObject(sheet,
                                  ActionMetadataKey,
                                  capturedMetadata ?: @{},
@@ -525,9 +630,6 @@ static void AddBlockingActions(id sheet, YTActionSheetAction *originalAction) {
          accessibilityIdentifier:nil
                 handler:^ {
                       ResolveActionVideoInfo(weakSheet,
-                                             presentationNode,
-                                             presentationSourceNode,
-                                             sourceView,
                                              YES,
                                              ^(NSDictionary *info) {
                                                  @try {
@@ -543,12 +645,8 @@ static void AddBlockingActions(id sheet, YTActionSheetAction *originalAction) {
                                                          return;
                                                      }
                                                      SendToast(weakSheet, [NSString stringWithFormat:LocalizedString(@"Blocked %@"), channel]);
-                                                     RemoveBlockedFeedItem(feedSourceView,
-                                                                           sourceCell,
-                                                                           sourceCollectionView,
-                                                                           info[@"id"],
-                                                                           isShorts,
-                                                                           shortsPlayer);
+                                                     if ([weakSheet respondsToSelector:@selector(dismiss)])
+                                                         [weakSheet dismiss];
                                                  } @catch (__unused NSException *exception) {
                                                      SendToast(weakSheet, LocalizedString(@"Could not block this channel"));
                                                  }
@@ -562,9 +660,6 @@ static void AddBlockingActions(id sheet, YTActionSheetAction *originalAction) {
          accessibilityIdentifier:nil
                 handler:^ {
                       ResolveActionVideoInfo(weakSheet,
-                                             presentationNode,
-                                             presentationSourceNode,
-                                             sourceView,
                                              NO,
                                              ^(NSDictionary *info) {
                                                  @try {
@@ -581,12 +676,8 @@ static void AddBlockingActions(id sheet, YTActionSheetAction *originalAction) {
                                                      SendToast(weakSheet,
                                                                [NSString stringWithFormat:LocalizedString(@"Blocked video: %@"),
                                                                                           videoTitle.length > 0 ? videoTitle : videoId]);
-                                                     RemoveBlockedFeedItem(feedSourceView,
-                                                                           sourceCell,
-                                                                           sourceCollectionView,
-                                                                           videoId,
-                                                                           isShorts,
-                                                                           shortsPlayer);
+                                                     if ([weakSheet respondsToSelector:@selector(dismiss)])
+                                                         [weakSheet dismiss];
                                                  } @catch (__unused NSException *exception) {
                                                      SendToast(weakSheet, LocalizedString(@"Could not block this video"));
                                                  }
@@ -601,8 +692,10 @@ static void AddBlockingActions(id sheet, YTActionSheetAction *originalAction) {
 
         blockChannelAction.shouldDismissOnAction = YES;
         blockVideoAction.shouldDismissOnAction = YES;
-        [sheet addAction:blockChannelAction];
-        [sheet addAction:blockVideoAction];
+        objc_setAssociatedObject(sheet,
+                                 ActionSheetBlockingActionsKey,
+                                 @[blockChannelAction, blockVideoAction],
+                                 OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         objc_setAssociatedObject(sheet, injectionInProgressKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     } @catch (__unused NSException *exception) {
         objc_setAssociatedObject(sheet, injectionKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
@@ -610,235 +703,167 @@ static void AddBlockingActions(id sheet, YTActionSheetAction *originalAction) {
     }
 }
 
-static void RefreshVisibleFeeds(void) {
-    [Util refreshFeedViews];
+static void PrimeBlockingActionsForPresentation(id sheet, UIView *sourceView) {
+    if (!sheet)
+        return;
+    if (sourceView)
+        objc_setAssociatedObject(sheet, ActionSheetSourceViewKey, sourceView, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    NSArray *actions = [sheet respondsToSelector:@selector(actions)] ? [[sheet actions] copy] : @[];
+    YTActionSheetAction *originalAction = actions.firstObject;
+    if (originalAction)
+        AddBlockingActions(sheet, originalAction);
+}
+
+static NSArray *ActionsWithBlockingActions(id sheet, NSArray *actions) {
+    if (!sheet || !actions)
+        return actions;
+    NSArray *blockingActions = objc_getAssociatedObject(sheet, ActionSheetBlockingActionsKey);
+    if (blockingActions.count == 0 && actions.count > 0)
+        AddBlockingActions(sheet, actions.firstObject);
+    blockingActions = objc_getAssociatedObject(sheet, ActionSheetBlockingActionsKey);
+    NSArray *result = blockingActions.count > 0 ? [blockingActions arrayByAddingObjectsFromArray:actions] : actions;
+    return AppendCurrentShortsBlockingActions(sheet, result);
 }
 
 static UICollectionViewCell *FeedCellForSourceView(UIView *sourceView) {
     UIView *view = sourceView;
-    while (view) {
+    for (NSUInteger depth = 0; view && depth < 16; depth++, view = view.superview) {
         if ([view isKindOfClass:[UICollectionViewCell class]])
             return (UICollectionViewCell *)view;
-        view = view.superview;
     }
     return nil;
-}
-
-static UICollectionViewCell *FeedCellForMetadataObject(id object) {
-    UICollectionViewCell *associatedCell = objc_getAssociatedObject(object, FeedNodeCellKey);
-    if ([associatedCell isKindOfClass:[UICollectionViewCell class]])
-        return associatedCell;
-
-    for (NSString *key in @[@"view", @"displayView", @"_view"]) {
-        id view = ValueForObjectKey(object, key);
-        UICollectionViewCell *cell = FeedCellForSourceView(view);
-        if (cell)
-            return cell;
-    }
-    return nil;
-}
-
-static YTAsyncCollectionView *CollectionViewForFeedCell(UICollectionViewCell *cell) {
-    UIView *view = cell;
-    while (view) {
-        if ([view isKindOfClass:NSClassFromString(@"YTAsyncCollectionView")])
-            return (YTAsyncCollectionView *)view;
-        view = view.superview;
-    }
-    return nil;
-}
-
-static UICollectionViewCell *CellForVideoID(YTAsyncCollectionView *collectionView, NSString *videoId) {
-    if (!collectionView)
-        return nil;
-
-    for (UICollectionViewCell *cell in collectionView.visibleCells) {
-        if (videoId.length == 0)
-            return cell;
-        id node = nil;
-        if ([cell isKindOfClass:NSClassFromString(@"_ASCollectionViewCell")]) {
-            _ASCollectionViewCell *asCell = (_ASCollectionViewCell *)cell;
-            node = [asCell respondsToSelector:@selector(node)] ? [asCell node] : nil;
-        }
-        node = node ?: ValueForObjectKey(cell, @"asyncdisplaykit_node");
-        FeedMetadataRecord *metadata = [Util feedVideoMetadataFromNode:node];
-        if ([metadata.videoID isEqualToString:videoId])
-            return cell;
-    }
-
-    return nil;
-}
-
-static BOOL IsShortsCollectionView(YTAsyncCollectionView *collectionView) {
-    return collectionView.pagingEnabled && collectionView.bounds.size.height > 0;
-}
-
-static BOOL AdvanceShortsPlayer(YTShortsPlayerViewController *preferredPlayer) {
-    YTShortsPlayerViewController *player = preferredPlayer ?: CurrentShortsPlayer;
-    if (!player)
-        player = VisibleShortsPlayer();
-    if (!player || ![player respondsToSelector:@selector(reelContentViewRequestsAdvanceToNextVideo:)])
-        return NO;
-
-    @try {
-        CurrentShortsPlayer = player;
-        [player reelContentViewRequestsAdvanceToNextVideo:nil];
-        return YES;
-    } @catch (__unused NSException *exception) {
-        return NO;
-    }
-}
-
-static BOOL ScrollShortsCollection(YTAsyncCollectionView *collectionView, NSString *videoId) {
-    if (!IsShortsCollectionView(collectionView))
-        return NO;
-
-    UICollectionViewCell *cell = CellForVideoID(collectionView, videoId);
-    if (!cell)
-        cell = collectionView.visibleCells.firstObject;
-    NSIndexPath *indexPath = cell ? [collectionView indexPathForCell:cell] : nil;
-    if (indexPath && indexPath.section < [collectionView numberOfSections]) {
-        NSInteger nextItem = indexPath.item + 1;
-        if (nextItem < [collectionView numberOfItemsInSection:indexPath.section]) {
-            NSIndexPath *nextIndexPath = [NSIndexPath indexPathForItem:nextItem inSection:indexPath.section];
-            [collectionView scrollToItemAtIndexPath:nextIndexPath
-                                   atScrollPosition:UICollectionViewScrollPositionTop
-                                           animated:YES];
-            return YES;
-        }
-    }
-
-    CGFloat pageHeight = MAX(collectionView.bounds.size.height, 1.0);
-    CGFloat targetOffset = collectionView.contentOffset.y + pageHeight;
-    [collectionView setContentOffset:CGPointMake(collectionView.contentOffset.x, targetOffset) animated:YES];
-    return YES;
-}
-
-static void RemoveBlockedFeedItem(UIView *sourceView,
-                                  UICollectionViewCell *knownCell,
-                                  YTAsyncCollectionView *knownCollectionView,
-                                  NSString *videoId,
-                                  BOOL isShorts,
-                                  YTShortsPlayerViewController *shortsPlayer) {
-    void (^remove)(void) = ^{
-        UICollectionViewCell *cell = knownCell ?: FeedCellForSourceView(sourceView);
-        YTAsyncCollectionView *collectionView = knownCollectionView ?: CollectionViewForFeedCell(cell);
-
-        if (isShorts || IsShortsCollectionView(collectionView)) {
-            AdvanceShortsPlayer(shortsPlayer);
-            if (collectionView && IsShortsCollectionView(collectionView))
-                ScrollShortsCollection(collectionView, videoId);
-            return;
-        }
-
-        if (collectionView) {
-            @try {
-                [collectionView reloadData];
-                return;
-            } @catch (__unused NSException *exception) {
-            }
-        }
-        [Util refreshFeedViews];
-    };
-
-    if (NSThread.isMainThread)
-        remove();
-    else
-        dispatch_async(dispatch_get_main_queue(), remove);
-}
-
-static BOOL FilterableNode(id node) {
-    if (!node)
-        return NO;
-
-    NSString *className = NSStringFromClass([node class]).lowercaseString;
-    if ([className containsString:@"shelf"] || [className containsString:@"section"] ||
-        [className containsString:@"collection"] || [className containsString:@"scrollablepage"])
-        return NO;
-    Class videoNodeClass = NSClassFromString(@"YTVideoNode");
-    Class contextVideoNodeClass = NSClassFromString(@"YTVideoWithContextNode");
-    Class elementCellNodeClass = NSClassFromString(@"ELMCellNode");
-    Class textNodeClass = NSClassFromString(@"ASTextNode");
-    return (videoNodeClass && [node isKindOfClass:videoNodeClass]) ||
-           (contextVideoNodeClass && [node isKindOfClass:contextVideoNodeClass]) ||
-           (elementCellNodeClass && [node isKindOfClass:elementCellNodeClass]) ||
-           (textNodeClass && [node isKindOfClass:textNodeClass]) ||
-           [className containsString:@"short"] || [className containsString:@"reel"];
-}
-
-static id FilteredNodeForBlockedVideo(NSIndexPath *indexPath) {
-    ASCellNode *node = [NSClassFromString(@"ASCellNode") new];
-    if (!node)
-        return nil;
-    ASLayoutElementStyle *style = [node style];
-    if ([style respondsToSelector:@selector(setPreferredSize:)])
-        style.preferredSize = CGSizeZero;
-    return node;
-}
-
-static id FilterNodeAtCollectionBoundary(UICollectionView *collectionView,
-                                         NSIndexPath *indexPath,
-                                         id node) {
-    if (!FilterableNode(node))
-        return node;
-
-    [Util registerFeedView:collectionView];
-    FeedMetadataRecord *metadata = [Util feedVideoMetadataFromNode:node];
-    BOOL blocked = [Util filteringEnabled] && [Util nodeContainsBlockedVideo:node metadata:metadata];
-    if (!blocked)
-        return node;
-
-    id filteredNode = FilteredNodeForBlockedVideo(indexPath);
-    return filteredNode ?: node;
 }
 
 %hook ELMCellNode
 
 - (void)setElement:(id)element {
     %orig;
-    [Util invalidateVideoInfoForNode:self];
+    [FeedDataSourceAdapter invalidateMetadataForNode:self];
+    [Util resetFeedVideoMetadataForNode:self];
 }
 
 %end
 
 %hook ASCollectionView
 
-- (id)nodeForItemAtIndexPath:(NSIndexPath *)indexPath {
-    id node = %orig;
-    return FilterNodeAtCollectionBoundary((UICollectionView *)self, indexPath, node);
+- (void)setDataSource:(id)dataSource {
+    %orig(dataSource);
 }
 
-- (UICollectionViewCell *)cellForItemAtIndexPath:(NSIndexPath *)indexPath {
-    UICollectionViewCell *cell = %orig;
-    if (!cell)
-        return nil;
+- (id)asyncDataSource {
+    id adapter = objc_getAssociatedObject(self, FeedDataSourceAdapterKey);
+    id result = [FeedDataSourceAdapter isAdapter:adapter] ? adapter : %orig;
+    return result;
+}
 
-    id node = ValueForObjectKey(cell, @"node");
-    if (!node)
-        node = ValueForObjectKey(cell, @"asyncdisplaykit_node");
-    if (node)
-        objc_setAssociatedObject(node, FeedNodeCellKey, cell, OBJC_ASSOCIATION_ASSIGN);
-    [Util registerFeedView:(UICollectionView *)self];
-    return cell;
+- (void)setAsyncDataSource:(id)dataSource {
+    if (dataSource && ![FeedDataSourceAdapter isAdapter:dataSource])
+        InstallFeedDataSourceAdapter((UICollectionView *)self, dataSource);
+    id adaptedDataSource = dataSource ? (objc_getAssociatedObject(self, FeedDataSourceAdapterKey) ?: dataSource) : nil;
+    %orig(adaptedDataSource);
+}
+
+- (void)reloadData {
+    PrepareFeedDataSourceForReload(self);
+    %orig;
 }
 
 %end
 
 %hook YTAsyncCollectionView
 
-- (id)nodeForItemAtIndexPath:(NSIndexPath *)indexPath {
-    id node = %orig;
-    return FilterNodeAtCollectionBoundary((UICollectionView *)self, indexPath, node);
+- (void)setAsyncDataSource:(id)dataSource {
+    if (dataSource && ![FeedDataSourceAdapter isAdapter:dataSource])
+        InstallFeedDataSourceAdapter((UICollectionView *)self, dataSource);
+    id adaptedDataSource = dataSource ? (objc_getAssociatedObject(self, FeedDataSourceAdapterKey) ?: dataSource) : nil;
+    %orig(adaptedDataSource);
+}
+
+%end
+
+%hook ASCollectionNode
+
+- (void)reloadData {
+    PrepareCollectionNodeForReload(self);
+    %orig;
+}
+
+- (void)reloadDataWithCompletion:(void (^)(void))completion {
+    PrepareCollectionNodeForReload(self);
+    %orig(completion);
 }
 
 %end
 
 %hook YTDefaultSheetController
 
+- (instancetype)initWithSheetStyle:(NSInteger)sheetStyle
+                        headerTitle:(NSString *)headerTitle
+                     headerSubtitle:(NSString *)headerSubtitle
+               shouldDisableLogging:(BOOL)shouldDisableLogging
+                            delegate:(id)delegate
+                      parentResponder:(id)parentResponder {
+    YTDefaultSheetController *result = %orig(sheetStyle,
+                                               headerTitle,
+                                               headerSubtitle,
+                                               shouldDisableLogging,
+                                               delegate,
+                                               parentResponder);
+    return result;
+}
+
+- (void)addActionWithView:(UIView *)view {
+    %orig(view);
+}
+
+- (void)addActionWithView:(UIView *)view handler:(id)handler {
+    %orig(view, handler);
+}
+
+- (void)addActionWithView:(UIView *)view size:(CGSize)size {
+    %orig(view, size);
+}
+
+- (void)addActionWithView:(UIView *)view size:(CGSize)size handler:(id)handler {
+    %orig(view, size, handler);
+}
+
+- (void)addActionWithView:(UIView *)view delegateAccessibility:(id)delegateAccessibility {
+    %orig(view, delegateAccessibility);
+}
+
+- (void)addActionWithView:(UIView *)view size:(CGSize)size delegateAccessibility:(id)delegateAccessibility {
+    %orig(view, size, delegateAccessibility);
+}
+
+- (void)addActionsContentView:(UIView *)contentView {
+    InjectShortsBottomSheetActions(self);
+    %orig(contentView);
+}
+
+- (void)relayoutActionSheet {
+    InjectShortsBottomSheetActions(self);
+    %orig;
+}
+
 - (void)addAction:(YTActionSheetAction *)action {
     %orig;
     AddBlockingActions(self, action);
+}
 
+- (NSArray *)actions {
+    NSArray *originalActions = %orig;
+    return ActionsWithBlockingActions(self, originalActions);
+}
+
+- (void)presentFromView:(UIView *)view {
+    PrimeBlockingActionsForPresentation(self, view);
+    %orig(view);
+}
+
+- (void)presentFromView:(UIView *)view completion:(id)completion {
+    PrimeBlockingActionsForPresentation(self, view);
+    %orig(view, completion);
 }
 
 %end
@@ -850,24 +875,163 @@ static id FilterNodeAtCollectionBoundary(UICollectionView *collectionView,
     AddBlockingActions(self, action);
 }
 
+- (NSArray *)actions {
+    return ActionsWithBlockingActions(self, %orig);
+}
+
+- (void)presentFromView:(UIView *)view {
+    PrimeBlockingActionsForPresentation(self, view);
+    %orig(view);
+}
+
+- (void)presentFromView:(UIView *)view completion:(id)completion {
+    PrimeBlockingActionsForPresentation(self, view);
+    %orig(view, completion);
+}
+
+%end
+
+%hook YTMenuController
+
+- (NSArray *)actionsForRenderers:(id)renderers
+                        fromView:(UIView *)view
+                           entry:(id)entry
+                  firstResponder:(id)firstResponder {
+    NSArray *actions = %orig(renderers, view, entry, firstResponder);
+    return MenuActionsWithBlockingActions(actions, view, renderers, entry);
+}
+
+- (NSArray *)actionsForRenderers:(id)renderers
+                        fromView:(UIView *)view
+                           entry:(id)entry
+                  shouldLogItems:(BOOL)shouldLogItems
+                  firstResponder:(id)firstResponder {
+    NSArray *actions = %orig(renderers, view, entry, shouldLogItems, firstResponder);
+    return MenuActionsWithBlockingActions(actions, view, renderers, entry);
+}
+
+%end
+
+%hook YTBottomSheetController
+
+- (instancetype)initWithContentViewController:(UIViewController *)contentViewController {
+    YTBottomSheetController *result = %orig(contentViewController);
+    InjectShortsBottomSheetActions(contentViewController);
+    return result;
+}
+
+- (instancetype)initWithContentViewController:(UIViewController *)contentViewController
+                              enableViewPort:(BOOL)enableViewPort {
+    YTBottomSheetController *result = %orig(contentViewController, enableViewPort);
+    InjectShortsBottomSheetActions(contentViewController);
+    return result;
+}
+
+%end
+
+%hook YTActionSheetDialogViewController
+
+- (void)viewDidLoad {
+    InjectShortsBottomSheetActions(self);
+    %orig;
+}
+
+- (void)setPreferredContentSize:(CGSize)preferredContentSize {
+    InjectShortsBottomSheetActions(self);
+    %orig(preferredContentSize);
+}
+
+%end
+
+%hook UIViewController
+
+- (void)presentViewController:(UIViewController *)viewControllerToPresent
+                     animated:(BOOL)animated
+                   completion:(void (^)(void))completion {
+    NSString *className = NSStringFromClass([viewControllerToPresent class]).lowercaseString;
+    BOOL hasActionSheetInterface = [viewControllerToPresent respondsToSelector:@selector(actions)] &&
+                                   [viewControllerToPresent respondsToSelector:@selector(addAction:)];
+    if ([className containsString:@"actionsheet"] || hasActionSheetInterface)
+        PrimeBlockingActionsForPresentation(viewControllerToPresent, ActionSheetSourceView(viewControllerToPresent));
+    %orig(viewControllerToPresent, animated, completion);
+}
+
 %end
 
 %hook YTShortsPlayerViewController
 
-- (void)viewWillAppear:(BOOL)animated {
-    CurrentShortsPlayer = self;
-    %orig;
+- (id)initWithParentResponder:(id)parentResponder
+       pivotBarViewController:(id)pivotBarViewController
+                        model:(id)model
+      mayShowNavigationEduOverlay:(BOOL)mayShowNavigationEduOverlay {
+    id result = %orig(parentResponder, pivotBarViewController, model, mayShowNavigationEduOverlay);
+    if (result) {
+        CurrentShortsPlayer = result;
+        CaptureCurrentShortsMetadata(result);
+    }
+    return result;
 }
 
 - (void)viewDidAppear:(BOOL)animated {
     CurrentShortsPlayer = self;
     %orig;
+    CaptureCurrentShortsMetadata(self);
+}
+
+- (void)handleReelItemWatchResponse:(id)response
+                       prefetchType:(NSInteger)prefetchType
+                   watchRequestIndex:(NSInteger)watchRequestIndex {
+    %orig(response, prefetchType, watchRequestIndex);
+    FeedMetadataRecord *responseMetadata = [Util feedVideoMetadataFromModel:response];
+    CurrentShortsPlayer = self;
+    if (responseMetadata.dictionaryRepresentation.count > 0) {
+        id model = ExplicitObjectValue(self, @"model") ?: ExplicitObjectValue(self, @"contentModel") ?: ExplicitObjectValue(self, @"itemModel");
+        id contentView = ExplicitObjectValue(self, @"shortsContentView") ?: ExplicitObjectValue(self, @"contentView");
+        FeedMetadataRecord *modelMetadata = [Util feedVideoMetadataFromModel:model];
+        FeedMetadataRecord *contentMetadata = [Util cachedFeedVideoMetadataForNode:contentView];
+        FeedMetadataRecord *metadata = CombinedShortsMetadata(CombinedShortsMetadata(modelMetadata, responseMetadata), contentMetadata);
+        objc_setAssociatedObject(self, ShortsResponseMetadataKey, metadata, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        RememberShortsMetadataForPlayer(self, metadata);
+    }
+    CaptureCurrentShortsMetadata(self);
 }
 
 - (id)shortsContentView {
     CurrentShortsPlayer = self;
-    id result = %orig;
+    return %orig;
+}
+
+%end
+
+%hook YTReelPlayerViewController
+
+- (id)initWithParentResponder:(id)parentResponder
+       pivotBarViewController:(id)pivotBarViewController
+                        model:(id)model
+      mayShowNavigationEduOverlay:(BOOL)mayShowNavigationEduOverlay {
+    id result = %orig(parentResponder, pivotBarViewController, model, mayShowNavigationEduOverlay);
+    if (result) {
+        CurrentShortsPlayer = result;
+        CaptureCurrentShortsMetadata(result);
+    }
     return result;
+}
+
+- (void)viewDidAppear:(BOOL)animated {
+    CurrentShortsPlayer = self;
+    %orig;
+    CaptureCurrentShortsMetadata(self);
+}
+
+- (void)currentVideoDidChange {
+    %orig;
+    CurrentShortsPlayer = self;
+    CaptureCurrentShortsMetadata(self);
+}
+
+- (id)contentView {
+    CurrentShortsPlayer = self;
+    return %orig;
 }
 
 %end
@@ -963,10 +1127,8 @@ static id FilterNodeAtCollectionBoundary(UICollectionView *collectionView,
 
 - (void)setImage:(UIImage *)image animated:(BOOL)animated {
     NSString *videoID = [Util feedVideoIDForObject:self.delegate];
-    if (videoID.length > 0) {
+    if (videoID.length > 0)
         [Util setFeedVideoID:videoID forObject:image];
-        [Util invalidateVideoInfoForNode:self];
-    }
     %orig;
 }
 
@@ -976,7 +1138,6 @@ static void *NavigationButtonOwnersKey = &NavigationButtonOwnersKey;
 static void *NavigationButtonImageKey = &NavigationButtonImageKey;
 static void *NavigationButtonImagePageStyleKey = &NavigationButtonImagePageStyleKey;
 static void *NavigationButtonStateKey = &NavigationButtonStateKey;
-static void *NavigationButtonInstalledKey = &NavigationButtonInstalledKey;
 
 static NSHashTable *NavigationButtonOwners(void) {
     NSHashTable *owners = objc_getAssociatedObject([UIApplication sharedApplication], NavigationButtonOwnersKey);
@@ -992,17 +1153,11 @@ static BOOL ShouldShowNavigationButton(void) {
     return [defaults objectForKey:@"GonerinoShowButton"] == nil || [defaults boolForKey:@"GonerinoShowButton"];
 }
 
-static NSInteger CurrentPageStyle(void) {
-    NSInteger pageStyle = 0;
-    Class pageStyleClass = %c(YTPageStyleController);
-    if ([pageStyleClass respondsToSelector:@selector(pageStyle)])
-        return [pageStyleClass pageStyle];
-
-    YTAppDelegate *delegate = (YTAppDelegate *)[UIApplication sharedApplication].delegate;
-    YTAppViewControllerImpl *appViewController = ValueForObjectKey(delegate, @"_appViewController");
-    if ([appViewController respondsToSelector:@selector(pageStyle)])
-        pageStyle = [appViewController pageStyle];
-    return pageStyle;
+static NSInteger CurrentPageStyle(YTRightNavigationButtons *owner) {
+    UIUserInterfaceStyle style = owner.traitCollection.userInterfaceStyle;
+    if (style == UIUserInterfaceStyleUnspecified)
+        style = owner.window.traitCollection.userInterfaceStyle;
+    return style;
 }
 
 static void PrepareNavigationButton(YTRightNavigationButtons *owner) {
@@ -1015,15 +1170,14 @@ static void PrepareNavigationButton(YTRightNavigationButtons *owner) {
         if ([owner.actionButton respondsToSelector:@selector(enableNewTouchFeedback)])
             [owner.actionButton enableNewTouchFeedback];
         owner.actionButton.frame = CGRectMake(0, 0, 40, 40);
+        owner.actionButton.autoresizingMask = UIViewAutoresizingFlexibleRightMargin | UIViewAutoresizingFlexibleBottomMargin;
         owner.actionButton.imageView.contentMode = UIViewContentModeCenter;
         owner.actionButton.adjustsImageWhenHighlighted = NO;
         [owner.actionButton addTarget:owner action:@selector(actionButtonPressed:)
                       forControlEvents:UIControlEventTouchUpInside];
-    }
-    if (!objc_getAssociatedObject(owner, NavigationButtonInstalledKey)) {
         [owner addSubview:owner.actionButton];
-        objc_setAssociatedObject(owner, NavigationButtonInstalledKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
+    owner.actionButton.hidden = !ShouldShowNavigationButton();
 }
 
 static NSArray<UIImage *> *NavigationButtonImages(YTRightNavigationButtons *owner, NSInteger pageStyle) {
@@ -1032,7 +1186,7 @@ static NSArray<UIImage *> *NavigationButtonImages(YTRightNavigationButtons *owne
     if (images && cachedPageStyle.integerValue == pageStyle)
         return images;
 
-    UIColor *tintColor = pageStyle ? UIColor.whiteColor : UIColor.blackColor;
+    UIColor *tintColor = pageStyle == UIUserInterfaceStyleDark ? UIColor.whiteColor : UIColor.blackColor;
     UIImage *baseImage = [Util createBlockVideoIconWithSize:CGSizeMake(20, 20)];
     if (!baseImage)
         return @[];
@@ -1061,7 +1215,7 @@ static void UpdateNavigationButton(YTRightNavigationButtons *owner) {
 
     BOOL shouldShow = ShouldShowNavigationButton();
     BOOL isEnabled = [Util filteringEnabled];
-    NSInteger pageStyle = CurrentPageStyle();
+    NSInteger pageStyle = CurrentPageStyle(owner);
     NSArray<UIImage *> *images = NavigationButtonImages(owner, pageStyle);
     NSDictionary *state = @{
         @"enabled": @(isEnabled),
@@ -1075,7 +1229,7 @@ static void UpdateNavigationButton(YTRightNavigationButtons *owner) {
         UIImage *image = isEnabled ? images.firstObject : images.lastObject;
         if (image)
             [owner.actionButton setImage:image forState:UIControlStateNormal];
-        owner.actionButton.tintColor = pageStyle ? UIColor.whiteColor : UIColor.blackColor;
+        owner.actionButton.tintColor = pageStyle == UIUserInterfaceStyleDark ? UIColor.whiteColor : UIColor.blackColor;
         owner.actionButton.accessibilityLabel = LocalizedString(@"Gonerino");
         owner.actionButton.accessibilityValue = LocalizedString(isEnabled ? @"Enabled" : @"Disabled");
         objc_setAssociatedObject(owner, NavigationButtonStateKey, state, OBJC_ASSOCIATION_COPY_NONATOMIC);
@@ -1100,29 +1254,36 @@ static void RefreshNavigationButtons(void) {
 - (instancetype)initWithFrame:(CGRect)frame {
     YTRightNavigationButtons *owner = %orig;
     PrepareNavigationButton(owner);
+    UpdateNavigationButton(owner);
     return owner;
 }
 
 - (instancetype)initWithCoder:(NSCoder *)coder {
     YTRightNavigationButtons *owner = %orig;
     PrepareNavigationButton(owner);
+    UpdateNavigationButton(owner);
     return owner;
 }
 
 - (NSMutableArray *)buttons {
     NSMutableArray *result = %orig.mutableCopy ?: [NSMutableArray array];
-    UpdateNavigationButton(self);
-    if (ShouldShowNavigationButton() && ![result containsObject:self.actionButton])
+    PrepareNavigationButton(self);
+    if (ShouldShowNavigationButton() && self.actionButton && result.count >= 2 && ![result containsObject:self.actionButton])
         [result insertObject:self.actionButton atIndex:0];
     return result;
 }
 
 - (NSMutableArray *)visibleButtons {
     NSMutableArray *result = %orig.mutableCopy ?: [NSMutableArray array];
-    UpdateNavigationButton(self);
-    if (ShouldShowNavigationButton() && ![result containsObject:self.actionButton])
+    PrepareNavigationButton(self);
+    if (ShouldShowNavigationButton() && self.actionButton && result.count >= 2 && ![result containsObject:self.actionButton])
         [result insertObject:self.actionButton atIndex:0];
     return result;
+}
+
+- (void)traitCollectionDidChange:(UITraitCollection *)previousTraitCollection {
+    %orig;
+    UpdateNavigationButton(self);
 }
 
 %new
@@ -1137,7 +1298,7 @@ static void RefreshNavigationButtons(void) {
     [[NSNotificationCenter defaultCenter] postNotificationName:FeedFilterStateDidChangeNotification object:nil];
     UpdateNavigationButton(self);
     dispatch_async(dispatch_get_main_queue(), ^{
-        RefreshVisibleFeeds();
+        RefreshNavigationButtons();
     });
     UIViewController *viewController = ViewControllerForObject(self);
     NSString *state = LocalizedString(newState ? @"enabled" : @"disabled");
@@ -1150,8 +1311,8 @@ static void RefreshNavigationButtons(void) {
     %init;
     [[NSNotificationCenter defaultCenter] addObserverForName:FeedFilterStateDidChangeNotification
                                                       object:nil
-                                                       queue:[NSOperationQueue mainQueue]
-                                                  usingBlock:^(__unused NSNotification *notification) {
+                                                  queue:[NSOperationQueue mainQueue]
+                                              usingBlock:^(__unused NSNotification *notification) {
                                                       RefreshNavigationButtons();
                                                   }];
 }

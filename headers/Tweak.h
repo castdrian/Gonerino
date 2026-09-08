@@ -5,9 +5,9 @@
 
 #import <Foundation/Foundation.h>
 #import <UIKit/UIKit.h>
+
 #import <objc/runtime.h>
 
-@class YTAsyncCollectionView;
 @class _ASCollectionViewCell;
 @class ASDisplayNode;
 @class ASCellNode;
@@ -25,10 +25,15 @@
 @class YTSettingsCell;
 @class YTQTMButton;
 @class YTShortsPlayerViewController;
+@class YTReelPlayerViewController;
 
 NS_ASSUME_NONNULL_BEGIN
 
-@interface YTAsyncCollectionView : UICollectionView
+@interface ASCollectionView : UICollectionView
+
+@property(nonatomic, weak, nullable) id asyncDataSource;
+- (nullable id)collectionNode;
+- (nullable NSIndexPath *)convertIndexPathToCollectionNode:(NSIndexPath *)indexPath;
 
 @end
 
@@ -57,6 +62,14 @@ NS_ASSUME_NONNULL_BEGIN
 @interface ASCellNode : ASDisplayNode
 
 @property(nonatomic, strong) UICollectionViewLayoutAttributes *layoutAttributes;
+
+@end
+
+@interface ASCollectionNode : ASDisplayNode
+
+- (void)reloadData;
+- (void)reloadDataWithCompletion:(void (^)(void))completion;
+- (void)reloadItemsAtIndexPaths:(NSArray<NSIndexPath *> *)indexPaths;
 
 @end
 
@@ -225,7 +238,16 @@ NS_ASSUME_NONNULL_BEGIN
 
 @interface YTShortsPlayerViewController : UIViewController
 - (nullable id)shortsContentView;
-- (void)reelContentViewRequestsAdvanceToNextVideo:(nullable id)contentView;
+- (nullable id)currentVideo;
+- (nullable NSString *)videoId;
+@end
+
+@interface YTReelPlayerViewController : UIViewController
+- (nullable id)contentView;
+- (nullable id)currentVideo;
+@end
+
+@interface YTShortsContentView : UIView
 @end
 
 @interface YTThumbnailController : NSObject

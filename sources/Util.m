@@ -3,16 +3,43 @@
 #import "VideoManager.h"
 
 #import <objc/runtime.h>
-#import <string.h>
 
 NSString * const FeedFilterStateDidChangeNotification = @"FeedFilterStateDidChangeNotification";
 
 static BOOL ObjectIsClassNamed(id object, NSString *className);
+static id DirectNamedValue(id object, NSString *key);
 static void AdaptShortsNode(id node, NSMutableArray<id> *objects, NSMutableSet *visited);
+static void AdaptElementsFeedNode(id node, NSMutableArray<id> *objects, NSMutableSet *visited);
+static void AddAdapterObjectAndChildren(NSMutableArray<id> *objects,
+                                        NSMutableSet *visited,
+                                        id object,
+                                        NSArray<NSString *> *keys);
+static void AddBoundedModelGraph(NSMutableArray<id> *objects,
+                                 NSMutableSet *visited,
+                                 id object,
+                                 NSArray<NSString *> *keys,
+                                 NSUInteger depth);
+static void AddBoundedShortsSubnodes(NSMutableArray<id> *objects,
+                                     NSMutableSet *visited,
+                                     id node,
+                                     NSUInteger depth);
+static void RecordAdapterObjects(NSArray<id> *objects,
+                                 NSMutableDictionary *result,
+                                 NSMutableDictionary *priorities,
+                                 NSMutableArray<NSString *> *textValues);
+static BOOL IsShortsMetadataTitleText(NSString *text, NSString *channel);
+static void RecordField(NSMutableDictionary *result,
+                        NSMutableDictionary *priorities,
+                        NSString *key,
+                        id value);
 
 @interface NSObject (Text)
 - (NSString *)stringWithFormattingRemoved;
 - (NSString *)string;
+@end
+
+@interface FeedMetadataRecord ()
+@property(nonatomic, copy) NSDictionary<NSString *, NSString *> *cachedDictionaryRepresentation;
 @end
 
 @implementation FeedMetadataRecord
@@ -23,19 +50,20 @@ static void AdaptShortsNode(id node, NSMutableArray<id> *objects, NSMutableSet *
         _videoID = [videoID copy] ?: @"";
         _title = [title copy] ?: @"";
         _channel = [channel copy] ?: @"";
+        NSMutableDictionary<NSString *, NSString *> *dictionary = [NSMutableDictionary dictionaryWithCapacity:3];
+        if (_videoID.length > 0)
+            dictionary[@"id"] = _videoID;
+        if (_title.length > 0)
+            dictionary[@"title"] = _title;
+        if (_channel.length > 0)
+            dictionary[@"channel"] = _channel;
+        _cachedDictionaryRepresentation = dictionary.copy;
     }
     return self;
 }
 
 - (NSDictionary<NSString *, NSString *> *)dictionaryRepresentation {
-    NSMutableDictionary<NSString *, NSString *> *dictionary = [NSMutableDictionary dictionaryWithCapacity:3];
-    if (self.videoID.length > 0)
-        dictionary[@"id"] = self.videoID;
-    if (self.title.length > 0)
-        dictionary[@"title"] = self.title;
-    if (self.channel.length > 0)
-        dictionary[@"channel"] = self.channel;
-    return dictionary.copy;
+    return self.cachedDictionaryRepresentation;
 }
 
 @end
@@ -58,16 +86,8 @@ static NSMutableDictionary<NSString *, FeedMetadataRecord *> *FeedMetadataByVide
     return cache;
 }
 
-static NSHashTable<UICollectionView *> *KnownFeedViews(void) {
-    static NSHashTable<UICollectionView *> *views;
-    static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{
-        views = [NSHashTable weakObjectsHashTable];
-    });
-    return views;
-}
-
 static void *FeedVideoIDAssociationKey = &FeedVideoIDAssociationKey;
+static void *ShortsMetadataAssociationKey = &ShortsMetadataAssociationKey;
 
 static volatile BOOL FilteringEnabledState = YES;
 static volatile BOOL PeopleWatchedState = NO;
@@ -86,6 +106,23 @@ static NSString *TrimmedText(NSString *text) {
     return [text stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
 }
 
+static id IvarObjectValue(id object, NSString *key) {
+    if (!object || key.length == 0)
+        return nil;
+
+    Class objectClass = object_getClass(object);
+    Ivar ivar = class_getInstanceVariable(objectClass, [NSString stringWithFormat:@"_%@", key].UTF8String);
+    if (!ivar)
+        ivar = class_getInstanceVariable(objectClass, key.UTF8String);
+    if (!ivar)
+        return nil;
+
+    const char *type = ivar_getTypeEncoding(ivar);
+    if (!type || type[0] != '@')
+        return nil;
+    return object_getIvar(object, ivar);
+}
+
 static id DirectObjectValue(id object, NSString *key) {
     if (!object || key.length == 0)
         return nil;
@@ -95,7 +132,7 @@ static id DirectObjectValue(id object, NSString *key) {
 
     SEL selector = NSSelectorFromString(key);
     if (![object respondsToSelector:selector])
-        return nil;
+        return IvarObjectValue(object, key);
 
     Method method = class_getInstanceMethod(object_getClass(object), selector);
     const char *returnType = method ? method_getTypeEncoding(method) : NULL;
@@ -103,9 +140,10 @@ static id DirectObjectValue(id object, NSString *key) {
         return nil;
 
     @try {
-        return ((id (*)(id, SEL))method_getImplementation(method))(object, selector);
+        id value = ((id (*)(id, SEL))method_getImplementation(method))(object, selector);
+        return value ?: IvarObjectValue(object, key);
     } @catch (__unused NSException *exception) {
-        return nil;
+        return IvarObjectValue(object, key);
     }
 }
 
@@ -129,6 +167,20 @@ static id DirectArgumentValue(id object, NSString *selectorName, NSString *key) 
     }
 }
 
+static BOOL HasCustomValueForKeyImplementation(id object) {
+    if (!object)
+        return NO;
+
+    SEL selector = @selector(valueForKey:);
+    Method objectMethod = class_getInstanceMethod(object_getClass(object), selector);
+    Method baseMethod = class_getInstanceMethod([NSObject class], selector);
+    if (!objectMethod)
+        return NO;
+    if (!baseMethod)
+        return YES;
+    return method_getImplementation(objectMethod) != method_getImplementation(baseMethod);
+}
+
 static id DirectNamedValue(id object, NSString *key) {
     id value = DirectObjectValue(object, key);
     if (value)
@@ -140,7 +192,19 @@ static id DirectNamedValue(id object, NSString *key) {
     value = DirectArgumentValue(object, @"elementForKey:", key);
     if (value)
         return value;
-    return DirectArgumentValue(object, @"valueForKey:", key);
+    value = DirectArgumentValue(object, @"safeSwiftValueForKey:", key);
+    if (value)
+        return value;
+    value = DirectArgumentValue(object, @"safeValueForKey:", key);
+    if (value)
+        return value;
+    value = DirectArgumentValue(object, @"inputNamed:", key);
+    if (value)
+        return value;
+    value = DirectArgumentValue(object, @"outputNamed:", key);
+    if (value)
+        return value;
+    return HasCustomValueForKeyImplementation(object) ? DirectArgumentValue(object, @"valueForKey:", key) : nil;
 }
 
 static NSString *TextAtom(id value) {
@@ -263,6 +327,27 @@ static BOOL IsSyntheticChannelValue(NSString *text) {
            [normalized isEqualToString:@"verified"] || [normalized isEqualToString:@"premiere"];
 }
 
+static NSString *NormalizedChannelText(NSString *text) {
+    NSString *candidate = TrimmedText(text);
+    if (candidate.length == 0)
+        return nil;
+
+    for (NSString *suffix in @[
+        @", official artist channel",
+        @", official channel",
+        @", verified",
+        @" - official artist channel",
+        @" - official channel",
+        @" - verified"
+    ]) {
+        if ([candidate.lowercaseString hasSuffix:suffix]) {
+            candidate = TrimmedText([candidate substringToIndex:candidate.length - suffix.length]);
+            break;
+        }
+    }
+    return candidate;
+}
+
 static BOOL IsShortsControlText(NSString *text) {
     NSString *candidate = TrimmedText(text);
     NSString *lowercaseCandidate = candidate.lowercaseString;
@@ -283,7 +368,8 @@ static BOOL IsShortsControlText(NSString *text) {
         @"retry", @"subscribe", @"subscribed", @"share", @"remix", @"description",
         @"clear screen", @"audio track", @"abonnieren", @"suscribirse", @"abonner",
         @"iscriviti", @"assinar", @"подписаться", @"back", @"home", @"search", @"shorts",
-        @"subscriptions", @"you", @"like", @"comment", @"save"
+        @"subscriptions", @"you", @"like", @"comment", @"save", @"previous video",
+        @"next video"
     ]) {
         if ([lowercaseCandidate isEqualToString:label])
             return YES;
@@ -486,6 +572,17 @@ static NSString *ChannelFromElementsAccessibleText(NSString *text, NSString *tit
     return nil;
 }
 
+static NSString *DirectShortsVideoID(id object) {
+    if (!object)
+        return nil;
+    for (NSString *key in @[@"videoId", @"videoID", @"videoIdentifier", @"contentVideoId", @"contentVideoID"]) {
+        NSString *videoID = VideoIdFromText(TextAtom(DirectNamedValue(object, key)));
+        if (videoID.length > 0)
+            return videoID;
+    }
+    return nil;
+}
+
 static NSString *TitleFromElementsAccessibleText(NSString *text, NSString *channel) {
     NSString *candidateText = TrimmedText(text);
     if (candidateText.length == 0)
@@ -528,6 +625,36 @@ static NSString *TitleFromElementsAccessibleText(NSString *text, NSString *chann
     return [Util isUsableVideoTitle:title] ? title : nil;
 }
 
+static void RecordShortsAccessibleText(NSString *text,
+                                       NSMutableDictionary *result,
+                                       NSMutableDictionary *priorities) {
+    NSString *candidate = TrimmedText(text);
+    if (candidate.length == 0)
+        return;
+
+    static NSRegularExpression *handleRegex;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        handleRegex = [NSRegularExpression regularExpressionWithPattern:@"(^|\\s)(@[A-Za-z0-9._-]{2,80})(?=\\s|$)"
+                                                                       options:0
+                                                                         error:nil];
+    });
+
+    NSTextCheckingResult *match = [handleRegex firstMatchInString:candidate
+                                                            options:0
+                                                              range:NSMakeRange(0, candidate.length)];
+    if (!match || match.numberOfRanges < 3)
+        return;
+
+    NSString *channel = TrimmedText([candidate substringWithRange:[match rangeAtIndex:2]]);
+    NSString *title = TrimmedText([candidate substringToIndex:match.range.location]);
+    if (title.length == 0 || !IsShortsMetadataTitleText(title, channel))
+        return;
+
+    RecordField(result, priorities, @"ownerDisplayName", channel);
+    RecordField(result, priorities, @"videoTitle", title);
+}
+
 static NSString *TextFromAccessibilityValue(id value) {
     NSString *text = TextFromValue(value);
     if (text.length > 0)
@@ -566,57 +693,24 @@ static BOOL IsShortsMetadataTitleText(NSString *text, NSString *channel) {
 }
 
 static FeedMetadataRecord *ShortsMetadataFromContentView(id contentView) {
-    FeedMetadataRecord *base = [Util feedVideoMetadataFromNode:contentView];
-    NSString *videoID = base.videoID;
-    NSString *title = IsShortsMetadataTitleText(base.title, base.channel) ? base.title : @"";
-    NSString *channel = base.channel;
-    if (![contentView isKindOfClass:[NSObject class]])
-        return base;
+    if (!contentView)
+        return nil;
 
-    NSMutableArray *pending = [NSMutableArray arrayWithObject:contentView];
-    NSMutableSet *visited = [NSMutableSet set];
-    NSUInteger pendingIndex = 0;
-    NSUInteger inspectedCount = 0;
-    while (pendingIndex < pending.count && inspectedCount++ < 128) {
-        id object = pending[pendingIndex++];
-        NSValue *identity = [NSValue valueWithNonretainedObject:object];
-        if ([visited containsObject:identity])
-            continue;
-        [visited addObject:identity];
+    FeedMetadataRecord *record = objc_getAssociatedObject(contentView, ShortsMetadataAssociationKey);
+    id contentNode = [contentView isKindOfClass:[UIView class]] ? DirectObjectValue(contentView, @"asyncdisplaykit_node") : contentView;
+    FeedMetadataRecord *nodeRecord = [Util cachedFeedVideoMetadataForNode:contentNode];
+    if (!record)
+        record = nodeRecord;
+    else if (nodeRecord)
+        record = [[FeedMetadataRecord alloc] initWithVideoID:record.videoID.length > 0 ? record.videoID : nodeRecord.videoID
+                                                       title:record.title.length > 0 ? record.title : nodeRecord.title
+                                                     channel:record.channel.length > 0 ? record.channel : nodeRecord.channel];
+    if (!record)
+        return nil;
 
-        for (NSString *key in @[@"accessibilityLabel", @"accessibilityValue", @"text", @"attributedText"]) {
-            NSString *text = TextFromAccessibilityValue(DirectObjectValue(object, key));
-            if (text.length == 0)
-                continue;
-            if (channel.length == 0 && [text hasPrefix:@"@"] && IsLikelyChannelText(text, title))
-                channel = text;
-            if (title.length == 0 && IsShortsMetadataTitleText(text, channel))
-                title = text;
-        }
-
-        NSArray *accessibilityElements = DirectObjectValue(object, @"accessibilityElements");
-        NSUInteger elementCount = 0;
-        for (id element in accessibilityElements) {
-            if (elementCount++ >= 16 || pending.count >= 128)
-                break;
-            if (element)
-                [pending addObject:element];
-        }
-
-        if ([object isKindOfClass:[UIView class]]) {
-            NSUInteger subviewCount = 0;
-            for (UIView *subview in [(UIView *)object subviews]) {
-                if (subviewCount++ >= 16 || pending.count >= 128)
-                    break;
-                [pending addObject:subview];
-            }
-        }
-    }
-
-    FeedMetadataRecord *record = [[FeedMetadataRecord alloc] initWithVideoID:videoID
-                                                                         title:title
-                                                                       channel:channel];
-    [Util rememberFeedVideoMetadata:record forNode:contentView];
+    NSString *currentVideoID = DirectShortsVideoID(contentView) ?: DirectShortsVideoID(contentNode);
+    if (currentVideoID.length > 0 && record.videoID.length > 0 && ![currentVideoID isEqualToString:record.videoID])
+        return nil;
     return record;
 }
 
@@ -688,6 +782,8 @@ static void RecordField(NSMutableDictionary *result, NSMutableDictionary *priori
     NSString *text = TextFromValue(value);
     if (role == MetadataFieldRoleVideoId)
         text = VideoIdFromText(text);
+    if (role == MetadataFieldRoleChannel)
+        text = NormalizedChannelText(text);
     if (role == MetadataFieldRoleChannel && IsSyntheticChannelValue(text))
         return;
     if (role == MetadataFieldRoleTitle && IsShortsControlText(text))
@@ -734,6 +830,142 @@ static BOOL IsPrintableUTF8Data(const uint8_t *bytes, NSUInteger length) {
     return YES;
 }
 
+static void RecordRendererTextValue(NSMutableDictionary *result,
+                                    NSMutableDictionary *priorities,
+                                    NSString *text) {
+    NSString *candidate = TrimmedText(text);
+    if (candidate.length == 0)
+        return;
+
+    RecordField(result, priorities, @"videoTitle", TitleFromAccessibleText(candidate));
+    RecordField(result, priorities, @"ownerDisplayName", ChannelFromAccessibleText(candidate));
+    RecordField(result, priorities, @"ownerDisplayName", ChannelFromFeedAccessibleText(candidate, result[@"title"]));
+    RecordField(result, priorities, @"ownerDisplayName", ChannelFromElementsAccessibleText(candidate, result[@"title"]));
+    if ([candidate hasPrefix:@"@"] && IsLikelyChannelText(candidate, nil))
+        RecordField(result, priorities, @"ownerDisplayName", candidate);
+}
+
+static void RecordRendererTextInMessage(NSMutableDictionary *result,
+                                        NSMutableDictionary *priorities,
+                                        const uint8_t *bytes,
+                                        NSUInteger length,
+                                        NSUInteger depth,
+                                        NSUInteger *budget) {
+    if (!bytes || length == 0 || depth > 8 || !budget || *budget == 0)
+        return;
+
+    NSUInteger offset = 0;
+    while (offset < length && *budget > 0) {
+        uint64_t tag = 0;
+        if (!ReadVarint(bytes, length, &offset, &tag))
+            return;
+        uint64_t fieldNumber = tag >> 3;
+        uint64_t wireType = tag & 7;
+        if (fieldNumber == 0)
+            return;
+        if (wireType == 0) {
+            uint64_t ignored = 0;
+            if (!ReadVarint(bytes, length, &offset, &ignored))
+                return;
+            continue;
+        }
+        if (wireType == 1) {
+            if (length - offset < 8)
+                return;
+            offset += 8;
+            continue;
+        }
+        if (wireType == 5) {
+            if (length - offset < 4)
+                return;
+            offset += 4;
+            continue;
+        }
+        if (wireType != 2)
+            return;
+
+        uint64_t valueLength = 0;
+        if (!ReadVarint(bytes, length, &offset, &valueLength) || valueLength > length - offset)
+            return;
+        const uint8_t *valueBytes = bytes + offset;
+        NSUInteger valueSize = (NSUInteger)valueLength;
+        (*budget)--;
+        if (IsPrintableUTF8Data(valueBytes, valueSize)) {
+            NSString *value = [[NSString alloc] initWithBytes:valueBytes length:valueSize encoding:NSUTF8StringEncoding];
+            RecordRendererTextValue(result, priorities, value);
+        } else if (depth < 8) {
+            RecordRendererTextInMessage(result, priorities, valueBytes, valueSize, depth + 1, budget);
+        }
+        offset += valueSize;
+        if ([(NSString *)result[@"id"] length] > 0 &&
+            [(NSString *)result[@"title"] length] > 0 &&
+            [(NSString *)result[@"channel"] length] > 0)
+            return;
+    }
+}
+
+static void RecordRendererExtensionText(NSMutableDictionary *result,
+                                         NSMutableDictionary *priorities,
+                                         const uint8_t *bytes,
+                                         NSUInteger length) {
+    static const uint64_t extensionPath[] = {172660663, 1, 168777401, 5, 232954548, 18};
+    const NSUInteger pathLength = sizeof(extensionPath) / sizeof(extensionPath[0]);
+    const uint8_t *currentBytes = bytes;
+    NSUInteger currentLength = length;
+    for (NSUInteger pathIndex = 0; pathIndex < pathLength; pathIndex++) {
+        NSUInteger offset = 0;
+        BOOL found = NO;
+        while (offset < currentLength) {
+            uint64_t tag = 0;
+            if (!ReadVarint(currentBytes, currentLength, &offset, &tag))
+                return;
+            uint64_t fieldNumber = tag >> 3;
+            uint64_t wireType = tag & 7;
+            if (fieldNumber == 0)
+                return;
+            if (wireType == 0) {
+                uint64_t ignored = 0;
+                if (!ReadVarint(currentBytes, currentLength, &offset, &ignored))
+                    return;
+                continue;
+            }
+            if (wireType == 1) {
+                if (currentLength - offset < 8)
+                    return;
+                offset += 8;
+                continue;
+            }
+            if (wireType == 5) {
+                if (currentLength - offset < 4)
+                    return;
+                offset += 4;
+                continue;
+            }
+            if (wireType != 2)
+                return;
+            uint64_t valueLength = 0;
+            if (!ReadVarint(currentBytes, currentLength, &offset, &valueLength) || valueLength > currentLength - offset)
+                return;
+            const uint8_t *valueBytes = currentBytes + offset;
+            NSUInteger valueSize = (NSUInteger)valueLength;
+            if (fieldNumber == extensionPath[pathIndex]) {
+                if (pathIndex + 1 == pathLength) {
+                    NSUInteger budget = 128;
+                    RecordRendererTextInMessage(result, priorities, valueBytes, valueSize, 0, &budget);
+                    return;
+                }
+                currentBytes = valueBytes;
+                currentLength = valueSize;
+                found = YES;
+                break;
+            }
+            offset += valueSize;
+        }
+        if (!found && pathIndex + 1 < pathLength)
+            return;
+    }
+}
+
 static void RecordElementRendererData(NSMutableDictionary *result,
                                       NSMutableDictionary *priorities,
                                       NSData *data) {
@@ -758,6 +990,12 @@ static void RecordElementRendererData(NSMutableDictionary *result,
         NSString *identifier = [[NSString alloc] initWithBytes:bytes + identifierOffset length:11 encoding:NSUTF8StringEncoding];
         RecordField(result, priorities, @"videoId", identifier);
     }
+
+    RecordRendererExtensionText(result, priorities, bytes, limit);
+    if ([(NSString *)result[@"id"] length] > 0 &&
+        [(NSString *)result[@"title"] length] > 0 &&
+        [(NSString *)result[@"channel"] length] > 0)
+        return;
 
     NSMutableArray<NSArray *> *pending = [NSMutableArray arrayWithObject:@[[NSValue valueWithBytes:&bytes objCType:"^v"], @(limit), @0]];
     NSUInteger pendingIndex = 0;
@@ -805,9 +1043,13 @@ static void RecordElementRendererData(NSMutableDictionary *result,
                 break;
             NSUInteger valueSize = (NSUInteger)valueLength;
             const uint8_t *valueBytes = entryBytes + offset;
-            if ((fieldNumber == 36 || fieldNumber == 37) && IsPrintableUTF8Data(valueBytes, valueSize)) {
+            if (IsPrintableUTF8Data(valueBytes, valueSize)) {
                 NSString *value = [[NSString alloc] initWithBytes:valueBytes length:valueSize encoding:NSUTF8StringEncoding];
-                RecordField(result, priorities, fieldNumber == 36 ? @"videoTitle" : @"ownerDisplayName", value);
+                if (fieldNumber == 36)
+                    RecordField(result, priorities, @"videoTitle", value);
+                else if (fieldNumber == 37)
+                    RecordField(result, priorities, @"ownerDisplayName", value);
+                RecordRendererTextValue(result, priorities, value);
             } else if (depth < 4 && !IsPrintableUTF8Data(valueBytes, valueSize) && valueSize <= 65536 && pending.count < 32) {
                 [pending addObject:@[[NSValue valueWithBytes:&valueBytes objCType:"^v"], @(valueSize), @(depth + 1)]];
             }
@@ -820,28 +1062,37 @@ static void RecordPlayableEntryDescription(NSMutableDictionary *result,
                                            NSMutableDictionary *priorities,
                                            id object) {
     NSString *className = NSStringFromClass([object class]).lowercaseString;
-    if (![className containsString:@"playableentry"])
+    if (![className containsString:@"playableentry"] &&
+        ![className containsString:@"playbackplayerdescriptor"])
         return;
 
     id endpoint = DirectObjectValue(object, @"navigationEndpoint");
     NSString *description = TextFromValue(DirectObjectValue(endpoint, @"description"));
     if (description.length == 0)
+        description = TextFromValue(DirectObjectValue(object, @"description"));
+    if (description.length == 0)
         return;
 
-    static NSArray<NSArray<NSString *> *> *patterns;
+    static NSArray<NSArray *> *patterns;
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
-        patterns = @[
+        NSMutableArray *compiledPatterns = [NSMutableArray arrayWithCapacity:3];
+        for (NSArray<NSString *> *pattern in @[
             @[@"video_id: \"([^\"\\\\]*(?:\\\\.[^\"\\\\]*)*)\"", @"videoId"],
             @[@"video_title: \"([^\"\\\\]*(?:\\\\.[^\"\\\\]*)*)\"", @"videoTitle"],
             @[@"owner_display_name: \"([^\"\\\\]*(?:\\\\.[^\"\\\\]*)*)\"", @"ownerDisplayName"]
-        ];
+        ]) {
+            NSRegularExpression *regex = [NSRegularExpression regularExpressionWithPattern:pattern[0]
+                                                                                         options:0
+                                                                                           error:nil];
+            if (regex)
+                [compiledPatterns addObject:@[regex, pattern[1]]];
+        }
+        patterns = compiledPatterns.copy;
     });
 
-    for (NSArray<NSString *> *pattern in patterns) {
-        NSRegularExpression *regex = [NSRegularExpression regularExpressionWithPattern:pattern[0]
-                                                                                   options:0
-                                                                                     error:nil];
+    for (NSArray *pattern in patterns) {
+        NSRegularExpression *regex = pattern[0];
         NSTextCheckingResult *match = [regex firstMatchInString:description
                                                         options:0
                                                           range:NSMakeRange(0, description.length)];
@@ -913,7 +1164,8 @@ static void RecordDirectTextMetadata(id object,
         DirectObjectValue(object, @"text") ?: [NSNull null],
         DirectObjectValue(object, @"attributedText") ?: [NSNull null],
         DirectObjectValue(object, @"currentTitle") ?: [NSNull null],
-        DirectObjectValue(object, @"accessibilityLabel") ?: [NSNull null]
+        DirectObjectValue(object, @"accessibilityLabel") ?: [NSNull null],
+        DirectObjectValue(object, @"label") ?: [NSNull null]
     ];
     for (id value in values) {
         if (value == [NSNull null])
@@ -923,6 +1175,7 @@ static void RecordDirectTextMetadata(id object,
             continue;
         if (textValues.count < 64 && ![textValues containsObject:text])
             [textValues addObject:text];
+        RecordShortsAccessibleText(text, result, priorities);
         if ([identifier containsString:@"channel"] || [identifier containsString:@"owner"] ||
             [className containsString:@"channel"] || [className containsString:@"owner"])
             RecordField(result, priorities, @"ownerDisplayName", text);
@@ -981,9 +1234,41 @@ static void AddAdapterObjectAndChildren(NSMutableArray<id> *objects,
     }
 }
 
+static void AddBoundedModelGraph(NSMutableArray<id> *objects,
+                                 NSMutableSet *visited,
+                                 id object,
+                                 NSArray<NSString *> *keys,
+                                 NSUInteger depth) {
+    if (!object || objects.count >= 64)
+        return;
+
+    NSUInteger countBefore = objects.count;
+    AddAdapterObject(objects, visited, object);
+    if (objects.count == countBefore || depth >= 3)
+        return;
+
+    for (NSString *key in keys) {
+        id value = DirectNamedValue(object, key);
+        if (!value || value == object)
+            continue;
+        if ([value isKindOfClass:[NSArray class]]) {
+            NSUInteger childCount = 0;
+            for (id child in (NSArray *)value) {
+                if (childCount++ >= 16 || objects.count >= 64)
+                    break;
+                AddBoundedModelGraph(objects, visited, child, keys, depth + 1);
+            }
+        } else {
+            AddBoundedModelGraph(objects, visited, value, keys, depth + 1);
+        }
+        if (objects.count >= 64)
+            break;
+    }
+}
+
 static void AdaptInlinePlaybackNode(id node, NSMutableArray<id> *objects, NSMutableSet *visited) {
     AddAdapterObjectAndChildren(objects, visited, node,
-                                @[@"element", @"context", @"playbackView", @"asdPlayableEntry", @"view"]);
+                                @[@"element", @"context", @"playbackView", @"asdPlayableEntry"]);
     id playbackView = DirectNamedValue(node, @"playbackView");
     AddAdapterObjectAndChildren(objects, visited, playbackView, @[@"asdPlayableEntry"]);
     id playableEntry = DirectNamedValue(playbackView, @"asdPlayableEntry");
@@ -992,119 +1277,144 @@ static void AdaptInlinePlaybackNode(id node, NSMutableArray<id> *objects, NSMuta
                                 DirectNamedValue(node, @"element"),
                                 @[@"instance", @"properties", @"allProperties", @"context"]);
 
-    UIView *view = DirectObjectValue(node, @"view");
-    NSUInteger subviewCount = 0;
-    for (UIView *subview in view.subviews) {
-        if (subviewCount++ >= 8)
-            break;
-        NSString *className = NSStringFromClass([subview class]).lowercaseString;
-        if (![className containsString:@"inline"] && ![className containsString:@"playback"])
-            continue;
-        AddAdapterObjectAndChildren(objects, visited, subview, @[@"asdPlayableEntry"]);
-        id playableEntry = DirectNamedValue(subview, @"asdPlayableEntry");
-        AddAdapterObjectAndChildren(objects, visited, playableEntry, @[@"navigationEndpoint"]);
-    }
 }
 
 static void AdaptLongFormVideoNode(id node, NSMutableArray<id> *objects, NSMutableSet *visited) {
     AddAdapterObjectAndChildren(objects, visited, node,
-                                @[@"element", @"parentResponder", @"controller", @"subnodes", @"view"]);
+                                @[@"element", @"context", @"parentResponder", @"controller", @"video", @"videoDetails", @"entry", @"subnodes"]);
+    id context = DirectNamedValue(node, @"context");
+    AddAdapterObjectAndChildren(objects, visited, context, @[@"parentResponder", @"elementEntry", @"entry", @"model", @"data", @"properties"]);
+    AddAdapterObjectAndChildren(objects, visited, DirectNamedValue(context, @"parentResponder"), @[@"elementEntry", @"entry", @"model", @"data", @"properties", @"renderer", @"videoRenderer"]);
     id element = DirectNamedValue(node, @"element");
-    AddAdapterObjectAndChildren(objects, visited, element, @[@"instance", @"properties", @"allProperties", @"context"]);
+    AddAdapterObjectAndChildren(objects, visited, element, @[@"instance", @"properties", @"allProperties", @"context", @"data", @"renderer", @"videoRenderer", @"elementData", @"model"]);
+    AddAdapterObjectAndChildren(objects, visited, DirectNamedValue(element, @"instance"), @[@"properties", @"allProperties", @"data", @"elementData", @"renderer", @"videoRenderer", @"model", @"video", @"videoDetails"]);
     id parentResponder = DirectNamedValue(node, @"parentResponder");
-    AddAdapterObjectAndChildren(objects, visited, parentResponder, @[@"elementEntry"]);
+    AddAdapterObjectAndChildren(objects, visited, parentResponder, @[@"elementEntry", @"entry", @"cell", @"parentResponder"]);
     id controller = DirectNamedValue(node, @"controller");
-    id elementEntry = DirectNamedValue(parentResponder, @"elementEntry") ?: DirectNamedValue(controller, @"elementEntry");
+    id elementEntry = DirectNamedValue(parentResponder, @"elementEntry") ?: DirectNamedValue(parentResponder, @"entry") ?: DirectNamedValue(controller, @"elementEntry");
     AddAdapterObjectAndChildren(objects, visited, elementEntry,
-                                @[@"renderer", @"videoRenderer", @"navigationEndpoint", @"watchEndpoint", @"data", @"elementData"]);
-
+                                @[@"renderer", @"videoRenderer", @"navigationEndpoint", @"watchEndpoint", @"data", @"elementData", @"video", @"videoDetails"]);
     NSArray *subnodes = DirectNamedValue(node, @"subnodes");
     NSUInteger subnodeCount = 0;
     for (id subnode in subnodes) {
-        if (subnodeCount++ >= 24)
+        if (subnodeCount++ >= 16)
             break;
+        AddAdapterObjectAndChildren(objects, visited, subnode,
+                                    @[@"playbackView", @"asdPlayableEntry", @"navigationEndpoint", @"watchEndpoint", @"element", @"context", @"video", @"videoDetails"]);
+        NSString *subnodeClassName = NSStringFromClass([subnode class]).lowercaseString;
+        if ([subnodeClassName containsString:@"inlineplayback"])
+            AdaptInlinePlaybackNode(subnode, objects, visited);
+        else if ([subnodeClassName containsString:@"elm"])
+            AdaptElementsFeedNode(subnode, objects, visited);
+    }
 
-        AddAdapterObject(objects, visited, subnode);
+}
+
+static void AdaptElementsFeedNode(id node, NSMutableArray<id> *objects, NSMutableSet *visited) {
+    AddAdapterObjectAndChildren(objects, visited, node,
+                                @[@"element", @"context", @"controller", @"parentResponder", @"elementEntry", @"entry", @"subnodes"]);
+    id context = DirectNamedValue(node, @"context");
+    AddAdapterObjectAndChildren(objects, visited, context, @[@"parentResponder", @"elementEntry", @"entry", @"model", @"data", @"properties"]);
+    AddAdapterObjectAndChildren(objects, visited, DirectNamedValue(context, @"parentResponder"), @[@"elementEntry", @"entry", @"model", @"data", @"properties", @"renderer", @"videoRenderer"]);
+    id element = DirectNamedValue(node, @"element");
+    AddAdapterObjectAndChildren(objects, visited, element, @[@"instance", @"properties", @"allProperties", @"context", @"data", @"renderer", @"videoRenderer", @"elementData", @"model"]);
+    AddAdapterObjectAndChildren(objects, visited, DirectNamedValue(element, @"instance"), @[@"properties", @"allProperties", @"data", @"elementData", @"renderer", @"videoRenderer", @"model", @"video", @"videoDetails"]);
+    id controller = DirectNamedValue(node, @"controller");
+    AddAdapterObjectAndChildren(objects, visited, controller, @[@"elementEntry", @"entry"]);
+    id parentResponder = DirectNamedValue(node, @"parentResponder");
+    AddAdapterObjectAndChildren(objects, visited, parentResponder, @[@"elementEntry", @"entry", @"cell", @"parentResponder"]);
+    AddAdapterObjectAndChildren(objects, visited,
+                                DirectNamedValue(controller, @"elementEntry") ?: DirectNamedValue(controller, @"entry") ?: DirectNamedValue(parentResponder, @"elementEntry") ?: DirectNamedValue(parentResponder, @"entry"),
+                                @[@"renderer", @"videoRenderer", @"navigationEndpoint", @"watchEndpoint", @"data", @"elementData", @"video", @"videoDetails"]);
+    NSArray *subnodes = DirectNamedValue(node, @"subnodes");
+    NSUInteger subnodeCount = 0;
+    for (id subnode in subnodes) {
+        if (subnodeCount++ >= 16)
+            break;
+        AddAdapterObjectAndChildren(objects, visited, subnode,
+                                    @[@"element", @"context", @"properties", @"allProperties", @"data", @"renderer", @"videoRenderer", @"elementData", @"subnodes", @"text", @"attributedText", @"accessibilityLabel"]);
+        if ([NSStringFromClass([subnode class]).lowercaseString containsString:@"inlineplayback"])
+            AdaptInlinePlaybackNode(subnode, objects, visited);
         NSArray *nestedSubnodes = DirectNamedValue(subnode, @"subnodes");
         NSUInteger nestedSubnodeCount = 0;
         for (id nestedSubnode in nestedSubnodes) {
             if (nestedSubnodeCount++ >= 16)
                 break;
-            AddAdapterObject(objects, visited, nestedSubnode);
-            NSString *nestedClassName = NSStringFromClass([nestedSubnode class]).lowercaseString;
-            if ([nestedClassName containsString:@"inlineplayback"])
+            AddAdapterObjectAndChildren(objects, visited, nestedSubnode,
+                                        @[@"element", @"context", @"properties", @"allProperties", @"data", @"renderer", @"videoRenderer", @"elementData", @"text", @"attributedText", @"accessibilityLabel"]);
+            if ([NSStringFromClass([nestedSubnode class]).lowercaseString containsString:@"inlineplayback"])
                 AdaptInlinePlaybackNode(nestedSubnode, objects, visited);
         }
-
-        NSString *subnodeClassName = NSStringFromClass([subnode class]).lowercaseString;
-        if ([subnodeClassName containsString:@"inlineplayback"])
-            AdaptInlinePlaybackNode(subnode, objects, visited);
     }
-}
 
-static void AdaptElementsFeedNode(id node, NSMutableArray<id> *objects, NSMutableSet *visited) {
-    AddAdapterObjectAndChildren(objects, visited, node,
-                                @[@"element", @"controller", @"parentResponder", @"subnodes", @"childElements", @"view"]);
-    id element = DirectNamedValue(node, @"element");
-    AddAdapterObjectAndChildren(objects, visited, element, @[@"instance", @"properties", @"allProperties", @"context"]);
-    id controller = DirectNamedValue(node, @"controller");
-    AddAdapterObjectAndChildren(objects, visited, controller, @[@"elementEntry"]);
-    id parentResponder = DirectNamedValue(node, @"parentResponder");
-    AddAdapterObjectAndChildren(objects, visited, parentResponder, @[@"elementEntry"]);
-    AddAdapterObjectAndChildren(objects, visited,
-                                DirectNamedValue(controller, @"elementEntry") ?: DirectNamedValue(parentResponder, @"elementEntry"),
-                                @[@"renderer", @"videoRenderer", @"navigationEndpoint", @"watchEndpoint", @"data", @"elementData"]);
-
-    NSArray *subnodes = DirectNamedValue(node, @"subnodes");
-    NSUInteger subnodeCount = 0;
-    for (id subnode in subnodes) {
-        if (subnodeCount++ >= 24)
-            break;
-        AddAdapterObject(objects, visited, subnode);
-        AddAdapterObject(objects, visited, DirectObjectValue(subnode, @"view"));
-        NSArray *nestedSubnodes = DirectNamedValue(subnode, @"subnodes");
-        NSUInteger nestedSubnodeCount = 0;
-        for (id nestedSubnode in nestedSubnodes) {
-            if (nestedSubnodeCount++ >= 24)
-                break;
-            AddAdapterObject(objects, visited, nestedSubnode);
-            AddAdapterObject(objects, visited, DirectObjectValue(nestedSubnode, @"view"));
-            NSArray *deepSubnodes = DirectNamedValue(nestedSubnode, @"subnodes");
-            NSUInteger deepSubnodeCount = 0;
-            for (id deepSubnode in deepSubnodes) {
-                if (deepSubnodeCount++ >= 16)
-                    break;
-                AddAdapterObject(objects, visited, deepSubnode);
-                AddAdapterObject(objects, visited, DirectObjectValue(deepSubnode, @"view"));
-                NSString *deepClassName = NSStringFromClass([deepSubnode class]).lowercaseString;
-                if ([deepClassName containsString:@"inlineplayback"])
-                    AdaptInlinePlaybackNode(deepSubnode, objects, visited);
-            }
-            NSString *nestedClassName = NSStringFromClass([nestedSubnode class]).lowercaseString;
-            if ([nestedClassName containsString:@"inlineplayback"])
-                AdaptInlinePlaybackNode(nestedSubnode, objects, visited);
-        }
-        NSString *className = NSStringFromClass([subnode class]).lowercaseString;
-        if (ObjectIsClassNamed(subnode, @"YTVideoWithContextNode") || ObjectIsClassNamed(subnode, @"YTVideoNode"))
-            AdaptLongFormVideoNode(subnode, objects, visited);
-        else if ([className containsString:@"short"] || [className containsString:@"reel"])
-            AdaptShortsNode(subnode, objects, visited);
-        else if ([className containsString:@"inlineplayback"])
-            AdaptInlinePlaybackNode(subnode, objects, visited);
-    }
 }
 
 static void AdaptShortsNode(id node, NSMutableArray<id> *objects, NSMutableSet *visited) {
     NSArray<NSString *> *rootKeys = @[
         @"currentVideo", @"reelItem", @"reel", @"content", @"player", @"navigationEndpoint",
-        @"watchEndpoint", @"element", @"parentResponder", @"subnodes", @"childElements"
+        @"watchEndpoint", @"element", @"parentResponder", @"video", @"videoDetails", @"videoData",
+        @"singleVideo", @"metadata", @"watchModel", @"reelModel", @"playerResponse", @"channel",
+        @"channelName", @"channelTitle", @"channelHandle", @"channelNavigationEndpoint", @"owner",
+        @"ownerName", @"ownerDisplayName", @"ownerNavigationEndpoint", @"author", @"authorName",
+        @"creator", @"byline", @"subnodes", @"text", @"attributedText", @"accessibilityLabel",
+        @"accessibilityIdentifier", @"properties", @"allProperties", @"context"
     ];
     AddAdapterObjectAndChildren(objects, visited, node, rootKeys);
-    for (NSString *key in @[@"currentVideo", @"reelItem", @"reel", @"content", @"player", @"navigationEndpoint", @"watchEndpoint"]) {
+    AddBoundedShortsSubnodes(objects, visited, node, 0);
+    for (NSString *key in @[@"currentVideo", @"reelItem", @"reel", @"content", @"player", @"navigationEndpoint", @"watchEndpoint", @"videoData", @"singleVideo", @"metadata", @"watchModel", @"reelModel"]) {
         id child = DirectNamedValue(node, key);
         AddAdapterObjectAndChildren(objects, visited, child,
                                     @[@"video", @"videoDetails", @"metadata", @"renderer", @"navigationEndpoint",
-                                      @"watchEndpoint", @"content", @"reelItem", @"element", @"properties", @"allProperties"]);
+                                      @"watchEndpoint", @"content", @"reelItem", @"element", @"properties", @"allProperties",
+                                      @"videoData", @"singleVideo", @"channel", @"channelName", @"channelTitle", @"channelHandle",
+                                      @"channelNavigationEndpoint", @"owner", @"ownerName", @"ownerDisplayName",
+                                      @"ownerNavigationEndpoint", @"author", @"authorName", @"creator", @"byline", @"playerResponse",
+                                      @"subnodes", @"text", @"attributedText", @"accessibilityLabel", @"accessibilityIdentifier"]);
+    }
+}
+
+static void AdaptShortsWatchResponse(id response,
+                                     NSMutableArray<id> *objects,
+                                     NSMutableSet *visited) {
+    id overlay = DirectNamedValue(response, @"overlay");
+    id overlayRenderer = DirectNamedValue(overlay, @"reelPlayerOverlayRenderer");
+    id supportedRenderers = DirectNamedValue(overlayRenderer, @"reelPlayerHeaderSupportedRenderers");
+    id headerRenderer = DirectNamedValue(supportedRenderers, @"reelPlayerHeaderRenderer");
+    id accessibility = DirectNamedValue(headerRenderer, @"accessibility");
+    id accessibilityData = DirectNamedValue(accessibility, @"accessibilityData");
+
+    AddAdapterObject(objects, visited, overlay);
+    AddAdapterObject(objects, visited, overlayRenderer);
+    AddAdapterObject(objects, visited, supportedRenderers);
+    AddAdapterObject(objects, visited, headerRenderer);
+    AddAdapterObject(objects, visited, accessibility);
+    AddAdapterObject(objects, visited, accessibilityData);
+}
+
+static void AddBoundedShortsSubnodes(NSMutableArray<id> *objects,
+                                     NSMutableSet *visited,
+                                     id node,
+                                     NSUInteger depth) {
+    if (!node || depth >= 3 || objects.count >= 64)
+        return;
+
+    NSArray *subnodes = DirectNamedValue(node, @"subnodes");
+    if (![subnodes isKindOfClass:[NSArray class]])
+        return;
+
+    NSArray<NSString *> *keys = @[
+        @"currentVideo", @"reelItem", @"reel", @"content", @"player", @"navigationEndpoint", @"watchEndpoint",
+        @"video", @"videoDetails", @"videoData", @"singleVideo", @"metadata", @"watchModel", @"reelModel",
+        @"element", @"properties", @"allProperties", @"context", @"channel", @"channelName", @"channelTitle",
+        @"channelHandle", @"owner", @"ownerName", @"ownerDisplayName", @"author", @"authorName", @"creator",
+        @"byline", @"text", @"attributedText", @"accessibilityLabel", @"accessibilityIdentifier"
+    ];
+    NSUInteger count = 0;
+    for (id subnode in subnodes) {
+        if (count++ >= 16 || objects.count >= 64)
+            break;
+        AddAdapterObjectAndChildren(objects, visited, subnode, keys);
+        AddBoundedShortsSubnodes(objects, visited, subnode, depth + 1);
     }
 }
 
@@ -1114,6 +1424,16 @@ static void RecordAdapterObjects(NSArray<id> *objects,
                                  NSMutableArray<NSString *> *textValues) {
     for (id object in objects) {
         RecordDirectMetadataFields(object, result, priorities);
+        if ([(NSString *)result[@"id"] length] > 0 &&
+            [(NSString *)result[@"title"] length] > 0 &&
+            [(NSString *)result[@"channel"] length] > 0)
+            return;
+    }
+    for (id object in objects) {
+        if ([(NSString *)result[@"id"] length] > 0 &&
+            [(NSString *)result[@"title"] length] > 0 &&
+            [(NSString *)result[@"channel"] length] > 0)
+            break;
         RecordDirectTextMetadata(object, result, priorities, textValues);
         if (RendererDataObject(object)) {
             NSData *data = DirectObjectValue(object, @"data");
@@ -1195,6 +1515,76 @@ static NSDictionary *FastVideoInfoFromNode(id node) {
     return result.count > 0 ? result.copy : nil;
 }
 
+static NSDictionary *FastVideoInfoFromModel(id model) {
+    if (!model)
+        return nil;
+
+    NSString *className = NSStringFromClass([model class]).lowercaseString;
+    BOOL knownModelClass = [className containsString:@"ytvideo"] ||
+                           [className containsString:@"videomodel"] ||
+                           [className containsString:@"watchmodel"] ||
+                           [className containsString:@"reelmodel"] ||
+                           [className containsString:@"reelitem"] ||
+                           [className containsString:@"elementrenderer"] ||
+                           [className containsString:@"elemententry"] ||
+                           [className containsString:@"videoelement"] ||
+                           [className containsString:@"short"] ||
+                           [className containsString:@"reel"];
+    BOOL knownRendererClass = ObjectIsClassNamed(model, @"YTVideoNode") ||
+                              ObjectIsClassNamed(model, @"YTVideoWithContextNode") ||
+                              ObjectIsClassNamed(model, @"ELMCellNode") ||
+                              ObjectIsClassNamed(model, @"ELMContainerNode") ||
+                              ObjectIsClassNamed(model, @"ELMCollectionNode") ||
+                              [className containsString:@"short"] ||
+                              [className containsString:@"reel"] ||
+                              [className containsString:@"inlineplayback"];
+    if (knownRendererClass) {
+        NSDictionary *nodeInfo = FastVideoInfoFromNode(model);
+        if (nodeInfo.count > 0)
+            return nodeInfo;
+    }
+    if (!knownModelClass && [model isKindOfClass:[NSDictionary class]]) {
+        for (NSString *key in @[@"videoId", @"videoID", @"contentVideoId", @"renderer", @"videoRenderer", @"watchModel", @"reelModel", @"reelItem"]) {
+            if (DirectNamedValue(model, key)) {
+                knownModelClass = YES;
+                break;
+            }
+        }
+    }
+    if (!knownModelClass)
+        return nil;
+
+    NSMutableArray<id> *objects = [NSMutableArray arrayWithCapacity:16];
+    NSMutableSet *visited = [NSMutableSet set];
+    NSMutableDictionary *result = [NSMutableDictionary dictionaryWithCapacity:3];
+    NSMutableDictionary *priorities = [NSMutableDictionary dictionaryWithCapacity:3];
+    NSMutableArray<NSString *> *textValues = [NSMutableArray arrayWithCapacity:8];
+    AddBoundedModelGraph(objects,
+                         visited,
+                         model,
+                         @[@"renderer", @"videoRenderer", @"navigationEndpoint", @"watchEndpoint",
+                           @"video", @"videoDetails", @"content", @"reelItem", @"element",
+                           @"properties", @"allProperties", @"data", @"elementData", @"currentVideo",
+                           @"videoData", @"singleVideo", @"metadata", @"watchModel", @"reelModel",
+                           @"playerResponse", @"response", @"channel", @"channelName", @"channelTitle", @"channelHandle",
+                           @"channelNavigationEndpoint", @"owner", @"ownerName", @"ownerDisplayName",
+                           @"ownerNavigationEndpoint", @"author", @"authorName", @"creator", @"byline",
+                           @"overlay", @"reelPlayerOverlayRenderer", @"reelWatchEndpoint", @"header",
+                           @"reelPlayerHeaderSupportedRenderers", @"reelPlayerHeaderRenderer", @"accessibility",
+                           @"accessibilityData", @"label", @"contents", @"headerContent", @"supportedRenderers",
+                           @"renderers", @"items"],
+                         0);
+    if ([className containsString:@"watchresponse"])
+        AdaptShortsWatchResponse(model, objects, visited);
+    RecordAdapterObjects(objects, result, priorities, textValues);
+    if (([className containsString:@"short"] || [className containsString:@"reel"]) &&
+        !IsShortsMetadataTitleText(result[@"title"], result[@"channel"]))
+        [result removeObjectForKey:@"title"];
+    if ([result[@"title"] isEqualToString:result[@"channel"]])
+        [result removeObjectForKey:@"channel"];
+    return result.count > 0 ? result.copy : nil;
+}
+
 static NSString *DirectNodeText(id node) {
     NSString *text = TextFromValue(DirectObjectValue(node, @"attributedText"));
     if (text.length > 0)
@@ -1248,35 +1638,6 @@ static FeedMetadataRecord *MetadataRecordByCombining(FeedMetadataRecord *first,
     }];
 }
 
-+ (void)refreshFeedViews {
-    static BOOL refreshQueued = NO;
-    void (^refresh)(void) = ^{
-        if (refreshQueued)
-            return;
-        refreshQueued = YES;
-        NSArray<UICollectionView *> *feedViews = KnownFeedViews().allObjects;
-        for (UICollectionView *feedView in feedViews)
-            [feedView reloadData];
-        refreshQueued = NO;
-    };
-    if ([NSThread isMainThread])
-        refresh();
-    else
-        dispatch_async(dispatch_get_main_queue(), refresh);
-}
-
-+ (void)registerFeedView:(UICollectionView *)feedView {
-    if (!feedView)
-        return;
-    void (^registerView)(void) = ^{
-        [KnownFeedViews() addObject:feedView];
-    };
-    if ([NSThread isMainThread])
-        registerView();
-    else
-        dispatch_async(dispatch_get_main_queue(), registerView);
-}
-
 + (BOOL)filteringEnabled {
     return FilteringEnabledState;
 }
@@ -1300,21 +1661,34 @@ static FeedMetadataRecord *MetadataRecordByCombining(FeedMetadataRecord *first,
     NSMapTable *cache = FeedMetadataCache();
     @synchronized (cache) {
         FeedMetadataRecord *cached = [cache objectForKey:node];
-        if (cached)
+        NSString *currentVideoID = TextAtom(DirectNamedValue(node, @"videoId"));
+        if (currentVideoID.length == 0)
+            currentVideoID = TextAtom(DirectNamedValue(node, @"videoID"));
+        NSString *associatedVideoID = [self feedVideoIDForObject:node];
+        if (currentVideoID.length > 0 && associatedVideoID.length > 0 &&
+            ![currentVideoID isEqualToString:associatedVideoID])
+            [self setFeedVideoID:nil forObject:node];
+        if (currentVideoID.length == 0)
+            currentVideoID = [self feedVideoIDForObject:node];
+        if (cached && (currentVideoID.length == 0 || cached.videoID.length == 0 || [cached.videoID isEqualToString:currentVideoID]))
             return cached;
+        if (cached)
+            [cache removeObjectForKey:node];
     }
 
     NSDictionary *info = FastVideoInfoFromNode(node) ?: @{};
     FeedMetadataRecord *record = [[FeedMetadataRecord alloc] initWithVideoID:info[@"id"]
                                                                          title:info[@"title"]
                                                                        channel:info[@"channel"]];
+    if (record.dictionaryRepresentation.count == 0)
+        return record;
     @synchronized (cache) {
         FeedMetadataRecord *stableRecord = record.videoID.length > 0 ? FeedMetadataByVideoID()[record.videoID] : nil;
         if (stableRecord)
             record = MergedMetadataRecord(record, stableRecord);
         if (record.videoID.length > 0) {
             NSMutableDictionary *records = FeedMetadataByVideoID();
-            if (records.count >= 512)
+            if (records.count >= 512 && !records[record.videoID])
                 [records removeObjectForKey:records.allKeys.firstObject];
             records[record.videoID] = record;
         }
@@ -1323,10 +1697,36 @@ static FeedMetadataRecord *MetadataRecordByCombining(FeedMetadataRecord *first,
     return record;
 }
 
++ (FeedMetadataRecord *)feedVideoMetadataFromModel:(id)model {
+    if (!model)
+        return nil;
+    NSDictionary *info = FastVideoInfoFromModel(model) ?: @{};
+    FeedMetadataRecord *record = [[FeedMetadataRecord alloc] initWithVideoID:info[@"id"]
+                                                                         title:info[@"title"]
+                                                                       channel:info[@"channel"]];
+    [self rememberFeedVideoMetadata:record forNode:model];
+    return [self cachedFeedVideoMetadataForNode:model] ?: record;
+}
+
 + (FeedMetadataRecord *)feedVideoMetadataFromShortsContentView:(id)contentView {
     if (!contentView)
         return nil;
     return ShortsMetadataFromContentView(contentView);
+}
+
++ (void)invalidateShortsMetadataForContentView:(id)contentView {
+    if (!contentView)
+        return;
+    id contentNode = [contentView isKindOfClass:[UIView class]] ? DirectObjectValue(contentView, @"asyncdisplaykit_node") : nil;
+    NSMapTable *cache = FeedMetadataCache();
+    @synchronized (cache) {
+        [cache removeObjectForKey:contentView];
+        if (contentNode)
+            [cache removeObjectForKey:contentNode];
+    }
+    objc_setAssociatedObject(contentView, ShortsMetadataAssociationKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    if (contentNode)
+        [self resetFeedVideoMetadataForNode:contentNode];
 }
 
 + (void)rememberFeedVideoMetadata:(FeedMetadataRecord *)metadata forNode:(id)node {
@@ -1336,6 +1736,9 @@ static FeedMetadataRecord *MetadataRecordByCombining(FeedMetadataRecord *first,
     NSMapTable *cache = FeedMetadataCache();
     @synchronized (cache) {
         FeedMetadataRecord *current = [cache objectForKey:node];
+        if (current.videoID.length > 0 && metadata.videoID.length > 0 &&
+            ![current.videoID isEqualToString:metadata.videoID])
+            current = nil;
         FeedMetadataRecord *stable = nil;
         if (metadata.videoID.length > 0)
             stable = FeedMetadataByVideoID()[metadata.videoID];
@@ -1351,6 +1754,15 @@ static FeedMetadataRecord *MetadataRecordByCombining(FeedMetadataRecord *first,
             records[record.videoID] = record;
         }
         [cache setObject:record forKey:node];
+    }
+}
+
++ (FeedMetadataRecord *)cachedFeedVideoMetadataForNode:(id)node {
+    if (!node)
+        return nil;
+    NSMapTable *cache = FeedMetadataCache();
+    @synchronized (cache) {
+        return [cache objectForKey:node];
     }
 }
 
@@ -1407,6 +1819,13 @@ static FeedMetadataRecord *MetadataRecordByCombining(FeedMetadataRecord *first,
     }
 }
 
++ (void)resetFeedVideoMetadataForNode:(id)node {
+    if (!node)
+        return;
+    [self invalidateVideoInfoForNode:node];
+    [self setFeedVideoID:nil forObject:node];
+}
+
 + (void)extractVideoInfoFromNode:(id)node
                       completion:(void (^)(NSString *videoId, NSString *videoTitle, NSString *ownerName))completion {
     if (!completion)
@@ -1431,10 +1850,11 @@ static FeedMetadataRecord *MetadataRecordByCombining(FeedMetadataRecord *first,
     if (!FilteringEnabledState)
         return NO;
 
-    if ([VideoManager.sharedInstance isVideoBlocked:metadata.videoID] ||
-        [ChannelManager.sharedInstance isChannelBlocked:metadata.channel] ||
-        [WordManager.sharedInstance isWordBlocked:metadata.title] ||
-        [WordManager.sharedInstance isWordBlocked:metadata.channel])
+    BOOL videoBlocked = [VideoManager.sharedInstance isVideoBlocked:metadata.videoID];
+    BOOL channelBlocked = [ChannelManager.sharedInstance isChannelBlocked:metadata.channel];
+    BOOL titleBlocked = [WordManager.sharedInstance isWordBlocked:metadata.title];
+    BOOL metadataChannelBlocked = [WordManager.sharedInstance isWordBlocked:metadata.channel];
+    if (videoBlocked || channelBlocked || titleBlocked || metadataChannelBlocked)
         return YES;
 
     if (ObjectIsClassNamed(node, @"ASTextNode")) {

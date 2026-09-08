@@ -50,6 +50,28 @@ now_ms() {
 run_id="$(date -u +%Y%m%dT%H%M%SZ)-$$"
 run_dir="$output_root/$run_mode-$profile-$run_id"
 mkdir -p "$run_dir"
+preference_path=""
+preference_original_file=""
+run_finished=0
+restore_preferences() {
+    if [ -z "$preference_path" ] || [ ! -f "$preference_original_file" ]; then
+        return 0
+    fi
+
+    "$cli_bin" shell_exec --json --device "$device_id" --command "killall -9 YouTube >/dev/null 2>&1 || true" > "$run_dir/preference-restore-force-quit.json" 2>/dev/null || true
+    if "$cli_bin" file_transfer --json --device "$device_id" --direction upload --source "$preference_original_file" --destination "$preference_device_temp" > "$run_dir/preference-restore-upload.json" 2>/dev/null; then
+        "$cli_bin" shell_exec --json --device "$device_id" --command "chown mobile:mobile '$preference_device_temp' && chmod 600 '$preference_device_temp' && mv '$preference_device_temp' '$preference_path' && killall -9 cfprefsd >/dev/null 2>&1 || true" > "$run_dir/preference-restore-ownership.json" 2>/dev/null || true
+    fi
+}
+finish_run() {
+    if [ "$run_finished" -ne 0 ]; then
+        return 0
+    fi
+    run_finished=1
+    restore_preferences
+    "$cli_bin" ui_action --json --device "$device_id" --action screen_off > "$run_dir/screen-off.json" 2>/dev/null || true
+}
+trap finish_run EXIT INT TERM
 
 "$cli_bin" device_list --json > "$run_dir/device-list.json"
 "$cli_bin" device_status --json --device "$device_id" > "$run_dir/device-status.json"
@@ -71,7 +93,8 @@ if [ "$run_mode" = "enabled" ]; then
     preference_value=true
 fi
 
-"$cli_bin" device_action --json --device "$device_id" --action screen_on --reason "Gonerino performance run" > "$run_dir/screen-on.json"
+"$cli_bin" ui_action --json --device "$device_id" --action screen_on > "$run_dir/screen-on.json"
+"$cli_bin" ui_action --json --device "$device_id" --action button --button unlock > "$run_dir/unlock.json"
 "$cli_bin" shell_exec --json --device "$device_id" --command "killall -9 YouTube >/dev/null 2>&1 || true" > "$run_dir/force-quit.json"
 sleep 2
 
@@ -88,12 +111,14 @@ esac
 
 preference_device_temp="/tmp/gonerino-$run_id-youtube.plist"
 preference_file="$run_dir/youtube-preferences.plist"
+preference_original_file="$run_dir/youtube-preferences-original.plist"
 preference_copy_json="$run_dir/preference-copy.json"
 "$cli_bin" shell_exec --json --device "$device_id" --command "cp '$preference_path' '$preference_device_temp'" > "$preference_copy_json"
 if ! rg -q '"exitCode"[[:space:]]*:[[:space:]]*0' "$preference_copy_json"; then
     printf '%s\n' "could not stage YouTube's preferences" >&2
     exit 1
 fi
+"$cli_bin" file_transfer --json --device "$device_id" --direction download --source "$preference_device_temp" --destination "$preference_original_file" > "$run_dir/preference-download-original.json"
 "$cli_bin" file_transfer --json --device "$device_id" --direction download --source "$preference_device_temp" --destination "$preference_file" > "$run_dir/preference-download.json"
 if ! /usr/bin/plutil -replace GonerinoEnabled -bool "$preference_value" "$preference_file"; then
     /usr/bin/plutil -insert GonerinoEnabled -bool "$preference_value" "$preference_file"
@@ -174,7 +199,7 @@ case "$profile" in
         ;;
 esac
 
-printf '%b\n' 'index\tstarted_ms\tended_ms\tcommand_ms\tgesture_ms\tcalibration_ms\textra_ms\testimated_touch_delay_ms\tstall_over_50ms\thang\tstatus' > "$run_dir/touch-latency.tsv"
+printf '%b\n' 'index\tstarted_ms\tended_ms\tcommand_ms\tdevice_action_ms\tgesture_ms\ttouch_overhead_ms\tstall_over_50ms\thang\tstatus' > "$run_dir/touch-latency.tsv"
 printf '%b\n' 'sample\tstarted_ms\tended_ms\tcommand_ms\tscreen_status\tsnapshot_status' > "$run_dir/frame-responsiveness.tsv"
 
 calibration_start=$(now_ms)
@@ -182,11 +207,27 @@ calibration_status=0
 "$cli_bin" ui_action --json --device "$device_id" --action tap --x 1 --y 1 --deadlineMs 10000 > "$run_dir/touch-calibration.json" || calibration_status=$?
 calibration_end=$(now_ms)
 calibration_ms=$((calibration_end - calibration_start))
-printf '%s\n' "started_ms=$calibration_start" "ended_ms=$calibration_end" "command_ms=$calibration_ms" "status=$calibration_status" > "$run_dir/touch-calibration.txt"
+calibration_action_ms="$(jq -r '.data.actionDurationMs // empty' "$run_dir/touch-calibration.json")"
 if [ "$calibration_status" -ne 0 ]; then
     printf '%s\n' "touch calibration failed" >&2
     exit 1
 fi
+if [ -z "$calibration_action_ms" ]; then
+    printf '%s\n' "touch calibration did not return device-side action timing" >&2
+    exit 1
+fi
+calibration_action_ms="$(printf '%s\n' "$calibration_action_ms" | perl -ne 'chomp; printf "%.0f\n", $_')"
+printf '%s\n' "started_ms=$calibration_start" "ended_ms=$calibration_end" "command_ms=$calibration_ms" "device_action_ms=$calibration_action_ms" "status=$calibration_status" > "$run_dir/touch-calibration.txt"
+
+calibration_swipe_status=0
+"$cli_bin" ui_action --json --device "$device_id" --action swipe --x "$start_x" --y "$start_y" --points "[[${start_x},${start_y}],[${end_x},${end_y}]]" --durationMs "$gesture_duration_ms" --deadlineMs 10000 > "$run_dir/touch-calibration-swipe.json" || calibration_swipe_status=$?
+calibration_swipe_action_ms="$(jq -r '.data.actionDurationMs // empty' "$run_dir/touch-calibration-swipe.json")"
+if [ "$calibration_swipe_status" -ne 0 ] || [ -z "$calibration_swipe_action_ms" ]; then
+    printf '%s\n' "swipe calibration failed" >&2
+    exit 1
+fi
+calibration_swipe_action_ms="$(printf '%s\n' "$calibration_swipe_action_ms" | perl -ne 'chomp; printf "%.0f\n", $_')"
+printf '%s\n' "device_action_ms=$calibration_swipe_action_ms" "status=$calibration_swipe_status" > "$run_dir/touch-calibration-swipe.txt"
 
 capture_frame_sample() {
     sample_label="$1"
@@ -201,8 +242,7 @@ capture_frame_sample() {
 
 collect_process_metrics() {
     sample_label="$1"
-    metrics_command="pid=\$(ps -axo pid,comm,args | grep '/YouTube.app/YouTube' | grep -v grep | sed -n 's/^[[:space:]]*\\([0-9][0-9]*\\).*/\\1/p' | head -1); if [ -n \"\$pid\" ]; then ps -p \"\$pid\" -o pid,pcpu,rss,etime,comm; fi; /usr/bin/vm_stat 2>&1"
-    "$cli_bin" shell_exec --json --device "$device_id" --command "$metrics_command" > "$run_dir/metrics-$sample_label.json"
+    "$cli_bin" metrics_stream --json --device "$device_id" --process YouTube --durationMs 5000 --intervalMs 250 > "$run_dir/metrics-$sample_label.json"
 }
 
 collect_process_metrics before
@@ -215,25 +255,28 @@ while [ "$index" -eq 0 ] || [ $(( $(now_ms) - run_started_ms )) -lt "$duration_m
     "$cli_bin" ui_action --json --device "$device_id" --action swipe --x "$start_x" --y "$start_y" --points "[[${start_x},${start_y}],[${end_x},${end_y}]]" --durationMs "$gesture_duration_ms" --deadlineMs 10000 > "$run_dir/swipe-$index.json" || swipe_status=$?
     ended_ms=$(now_ms)
     command_ms=$((ended_ms - started_ms))
-    extra_ms=$((command_ms - gesture_duration_ms))
-    if [ "$extra_ms" -lt 0 ]; then
-        extra_ms=0
+    device_action_ms="$(jq -r '.data.actionDurationMs // empty' "$run_dir/swipe-$index.json")"
+    if [ -z "$device_action_ms" ]; then
+        printf '%s\n' "swipe $index did not return device-side action timing" >&2
+        exit 1
     fi
-    estimated_touch_delay_ms=$((command_ms - calibration_ms - gesture_duration_ms))
-    if [ "$estimated_touch_delay_ms" -lt 0 ]; then
-        estimated_touch_delay_ms=0
+    device_action_ms="$(printf '%s\n' "$device_action_ms" | perl -ne 'chomp; printf "%.0f\n", $_')"
+    touch_overhead_ms=$((device_action_ms - calibration_swipe_action_ms))
+    if [ "$touch_overhead_ms" -lt 0 ]; then
+        touch_overhead_ms=0
     fi
     stall_over_50ms=0
-    if [ "$estimated_touch_delay_ms" -gt 50 ]; then
+    if [ "$touch_overhead_ms" -gt 50 ]; then
         stall_over_50ms=1
     fi
     hang=0
     if [ "$swipe_status" -ne 0 ] || [ "$command_ms" -gt 5000 ]; then
         hang=1
     fi
-    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$index" "$started_ms" "$ended_ms" "$command_ms" "$gesture_duration_ms" "$calibration_ms" "$extra_ms" "$estimated_touch_delay_ms" "$stall_over_50ms" "$hang" "$swipe_status" >> "$run_dir/touch-latency.tsv"
+    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$index" "$started_ms" "$ended_ms" "$command_ms" "$device_action_ms" "$gesture_duration_ms" "$touch_overhead_ms" "$stall_over_50ms" "$hang" "$swipe_status" >> "$run_dir/touch-latency.tsv"
     if [ $((index % 3)) -eq 0 ]; then
         capture_frame_sample "$index"
+        collect_process_metrics "sample-$index"
     fi
     index=$((index + 1))
     sleep 1

@@ -17,9 +17,6 @@
 #import <rootless.h>
 #import <version.h>
 
-@interface YTCollectionViewController : UIViewController
-@end
-
 NS_ASSUME_NONNULL_BEGIN
 
 #define SECTION_HEADER(s)                                                                                              \
@@ -32,7 +29,7 @@ NS_ASSUME_NONNULL_BEGIN
                                                 return NO;                                                             \
                                             }]]
 
-static const NSInteger SettingsCategory = 2;
+static const NSInteger SettingsCategory = 0x676e726e;
 
 #define TWEAK_VERSION PACKAGE_VERSION
 

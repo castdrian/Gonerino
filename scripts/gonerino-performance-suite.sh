@@ -9,6 +9,8 @@ device_id="${GONERINO_DEVICE_ID:-00008030-001624583AF9402E}"
 duration_ms="${GONERINO_PERFORMANCE_DURATION_MS:-60000}"
 output_root="${GONERINO_PERFORMANCE_OUTPUT:-/tmp/gonerino-performance-suite}"
 performance_script="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)/gonerino-performance.sh"
+analysis_script="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)/analyze-gonerino-performance.py"
+backup_script="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)/gonerino-blocklist-backup.sh"
 package_path="${GONERINO_PACKAGE-}"
 
 if [ "$#" -eq 0 ]; then
@@ -18,6 +20,15 @@ else
 fi
 
 mkdir -p "$output_root"
+suite_finished=0
+finish_suite() {
+    if [ "$suite_finished" -ne 0 ]; then
+        return 0
+    fi
+    suite_finished=1
+    "$cli_bin" ui_action --json --device "$device_id" --action screen_off > "$output_root/screen-off.json" 2>/dev/null || true
+}
+trap finish_suite EXIT INT TERM
 "$cli_bin" device_list --json > "$output_root/device-list.json"
 if ! rg -q "\"id\"[[:space:]]*:[[:space:]]*\"$device_id\"" "$output_root/device-list.json"; then
     printf '%s\n' "the pinned SE UDID was not found" >&2
@@ -27,6 +38,13 @@ if ! rg -q '"productType"[[:space:]]*:[[:space:]]*"iPhone12,8"' "$output_root/de
     printf '%s\n' "the pinned UDID is not an iPhone SE" >&2
     exit 1
 fi
+"$cli_bin" device_status --json --device "$device_id" > "$output_root/device-status.json"
+if ! rg -q '"bridge"[[:space:]]*:[[:space:]]*true' "$output_root/device-status.json"; then
+    printf '%s\n' "the pinned SE bridge is unavailable" >&2
+    exit 1
+fi
+
+"$backup_script" "$device_id" "$output_root/blocklist-backup" > "$output_root/blocklist-backup-path.txt"
 
 if [ -n "$package_path" ]; then
     "$cli_bin" tweak_deploy --json --device "$device_id" --package "$package_path" --processes YouTube --reload none > "$output_root/deployment.json"
@@ -45,6 +63,9 @@ for profile in $profiles; do
 done
 
 printf '%s\n' "device=$device_id" "product_type=iPhone12,8" "duration_ms=$duration_ms" "profiles=$profiles" > "$output_root/suite.txt"
-"$cli_bin" device_action --json --device "$device_id" --action screen_off --reason "Gonerino performance suite complete" > "$output_root/screen-off.json" 2>/dev/null || true
+analysis_status=0
+"$analysis_script" "$output_root" > "$output_root/analysis.json" || analysis_status=$?
+if [ "$analysis_status" -ne 0 ]; then
+    exit "$analysis_status"
+fi
 printf '%s\n' "$output_root"
-

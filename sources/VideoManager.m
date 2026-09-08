@@ -22,7 +22,7 @@ static NSString *CleanVideoTitle(id value) {
 
 @interface VideoManager ()
 @property(nonatomic, strong) NSMutableArray<NSDictionary *> *blockedVideoArray;
-@property(nonatomic, copy) NSSet<NSString *> *blockedVideoIDLookup;
+@property(copy) NSSet<NSString *> *blockedVideoIDLookup;
 @end
 
 @implementation VideoManager
@@ -91,6 +91,8 @@ static NSString *CleanVideoTitle(id value) {
         self.blockedVideoIDLookup = lookup.copy;
         [self saveBlockedVideos];
     }
+    FeedMetadataRecord *metadata = [[FeedMetadataRecord alloc] initWithVideoID:videoId title:title channel:channel];
+    [[NSNotificationCenter defaultCenter] postNotificationName:FeedFilterStateDidChangeNotification object:metadata];
 }
 
 - (void)removeBlockedVideo:(NSString *)videoId {
@@ -105,6 +107,7 @@ static NSString *CleanVideoTitle(id value) {
         [lookup removeObject:videoId];
         self.blockedVideoIDLookup = lookup.copy;
         [self saveBlockedVideos];
+        [[NSNotificationCenter defaultCenter] postNotificationName:FeedFilterStateDidChangeNotification object:nil];
     }
 }
 
@@ -138,6 +141,7 @@ static NSString *CleanVideoTitle(id value) {
     self.blockedVideoArray = validVideos;
     self.blockedVideoIDLookup = [NSSet setWithArray:[validVideos valueForKey:@"id"]];
     [self saveBlockedVideos];
+    [[NSNotificationCenter defaultCenter] postNotificationName:FeedFilterStateDidChangeNotification object:nil];
 }
 
 @end

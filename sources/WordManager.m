@@ -1,8 +1,9 @@
 #import "WordManager.h"
+#import "Util.h"
 
 @interface WordManager ()
 @property(nonatomic, strong) NSMutableSet<NSString *> *blockedWordSet;
-@property(nonatomic, copy) NSSet<NSString *> *blockedWordLookup;
+@property(copy) NSSet<NSString *> *blockedWordLookup;
 @end
 
 static NSString *WordLookupKey(NSString *word) {
@@ -49,6 +50,7 @@ static NSString *WordLookupKey(NSString *word) {
         [lookup addObject:WordLookupKey(normalizedWord)];
         self.blockedWordLookup = lookup.copy;
         [self saveBlockedWords];
+        [[NSNotificationCenter defaultCenter] postNotificationName:FeedFilterStateDidChangeNotification object:nil];
     }
 }
 
@@ -59,11 +61,14 @@ static NSString *WordLookupKey(NSString *word) {
         [lookup removeObject:WordLookupKey(word)];
         self.blockedWordLookup = lookup.copy;
         [self saveBlockedWords];
+        [[NSNotificationCenter defaultCenter] postNotificationName:FeedFilterStateDidChangeNotification object:nil];
     }
 }
 
 - (BOOL)isWordBlocked:(NSString *)text {
     if (![text isKindOfClass:[NSString class]] || text.length == 0)
+        return NO;
+    if (self.blockedWordLookup.count == 0)
         return NO;
 
     NSString *normalizedText = text.lowercaseString;
@@ -94,6 +99,7 @@ static NSString *WordLookupKey(NSString *word) {
     }
     self.blockedWordLookup = lookup.copy;
     [self saveBlockedWords];
+    [[NSNotificationCenter defaultCenter] postNotificationName:FeedFilterStateDidChangeNotification object:nil];
 }
 
 @end

@@ -26,14 +26,16 @@ static UIButton *NavigationBackButton(NSString *title, id target, SEL action) {
         configuration.image = [UIImage systemImageNamed:@"chevron.backward"];
         configuration.title = title;
         configuration.imagePadding = 4.0;
-        configuration.contentInsets = NSDirectionalEdgeInsetsMake(0.0, 8.0, 0.0, 12.0);
+        configuration.contentInsets = NSDirectionalEdgeInsetsMake(0.0, 12.0, 0.0, 12.0);
         button.configuration = configuration;
     } else {
         [button setImage:[UIImage systemImageNamed:@"chevron.backward"] forState:UIControlStateNormal];
         [button setTitle:title forState:UIControlStateNormal];
         button.imageEdgeInsets = UIEdgeInsetsMake(0.0, 0.0, 0.0, 4.0);
-        button.contentEdgeInsets = UIEdgeInsetsMake(0.0, 8.0, 0.0, 12.0);
+        button.contentEdgeInsets = UIEdgeInsetsMake(0.0, 12.0, 0.0, 12.0);
     }
+    button.contentHorizontalAlignment = UIControlContentHorizontalAlignmentLeft;
+    button.frame = CGRectMake(0.0, 0.0, MAX(44.0, button.intrinsicContentSize.width), 44.0);
     button.accessibilityLabel = title;
     [button addTarget:target action:action forControlEvents:UIControlEventTouchUpInside];
     return button;
@@ -269,32 +271,38 @@ static UIButton *NavigationBackButton(NSString *title, id target, SEL action) {
 
 - (void)returnToYouTubeSettings {
     UINavigationController *navigationController = self.navigationController;
-    if (navigationController)
+    if (navigationController && navigationController.viewControllers.count > 1) {
         [navigationController popToRootViewControllerAnimated:YES];
-    else
-        [self dismissViewControllerAnimated:YES completion:nil];
+        return;
+    }
+    if (navigationController.presentingViewController) {
+        [navigationController dismissViewControllerAnimated:YES completion:nil];
+        return;
+    }
+    [self dismissViewControllerAnimated:YES completion:nil];
 }
 
 - (void)viewDidLoad {
     [super viewDidLoad];
     self.view.backgroundColor = UIColor.systemBackgroundColor;
     self.tableView = [[UITableView alloc] initWithFrame:self.view.bounds style:UITableViewStyleInsetGrouped];
-    self.tableView.translatesAutoresizingMaskIntoConstraints = NO;
+    self.tableView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    self.tableView.backgroundColor = UIColor.systemBackgroundColor;
     self.tableView.dataSource = self;
     self.tableView.delegate = self;
     [self.view addSubview:self.tableView];
-    [NSLayoutConstraint activateConstraints:@[
-        [self.tableView.topAnchor constraintEqualToAnchor:self.view.topAnchor],
-        [self.tableView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
-        [self.tableView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
-        [self.tableView.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor]
-    ]];
     self.tableView.rowHeight = UITableViewAutomaticDimension;
     self.tableView.estimatedRowHeight = 56.0;
     self.navigationItem.largeTitleDisplayMode = UINavigationItemLargeTitleDisplayModeNever;
     self.navigationItem.hidesBackButton = YES;
     self.navigationItem.leftBarButtonItem = [[UIBarButtonItem alloc]
         initWithCustomView:NavigationBackButton(LocalizedString(@"Settings"), self, @selector(returnToYouTubeSettings))];
+    [self.tableView reloadData];
+}
+
+- (void)viewDidLayoutSubviews {
+    [super viewDidLayoutSubviews];
+    self.tableView.frame = self.view.bounds;
 }
 
 - (void)viewWillAppear:(BOOL)animated {
@@ -400,8 +408,6 @@ static UIButton *NavigationBackButton(NSString *title, id target, SEL action) {
     [[NSUserDefaults standardUserDefaults] synchronize];
     [Util refreshPreferenceSnapshot];
     [[NSNotificationCenter defaultCenter] postNotificationName:FeedFilterStateDidChangeNotification object:nil];
-    if (sender.tag == 0 || sender.tag >= 2)
-        [Util refreshFeedViews];
 }
 
 - (void)actionButtonTapped:(UIButton *)sender {
@@ -698,7 +704,6 @@ static UIButton *NavigationBackButton(NSString *title, id target, SEL action) {
     [[NSNotificationCenter defaultCenter] postNotificationName:FeedFilterStateDidChangeNotification object:nil];
     [self.tableView reloadData];
     [self.settingsManager settingsIntegrationReloadSection];
-    [Util refreshFeedViews];
 }
 
 - (void)documentPicker:(UIDocumentPickerViewController *)controller didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {

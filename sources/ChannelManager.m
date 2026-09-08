@@ -1,4 +1,5 @@
 #import "ChannelManager.h"
+#import "Util.h"
 
 static BOOL IsGeneratedActionLabel(NSString *channel) {
     NSString *normalized = [[channel stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]] lowercaseString];
@@ -7,15 +8,19 @@ static BOOL IsGeneratedActionLabel(NSString *channel) {
 
 @interface ChannelManager ()
 @property(nonatomic, strong) NSMutableSet<NSString *> *blockedChannelSet;
-@property(nonatomic, copy) NSSet<NSString *> *blockedChannelLookup;
+@property(copy) NSSet<NSString *> *blockedChannelLookup;
 @end
 
 static NSString *ChannelLookupKey(NSString *channel) {
     NSString *normalized = [channel.lowercaseString stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
-    if ([normalized hasPrefix:@"@"]) {
-        normalized = [normalized substringFromIndex:1];
+    NSMutableString *key = [NSMutableString stringWithCapacity:normalized.length];
+    NSCharacterSet *allowedCharacters = [NSCharacterSet alphanumericCharacterSet];
+    for (NSUInteger index = 0; index < normalized.length; index++) {
+        unichar character = [normalized characterAtIndex:index];
+        if ([allowedCharacters characterIsMember:character])
+            [key appendFormat:@"%C", character];
     }
-    return normalized;
+    return key.copy;
 }
 
 @implementation ChannelManager
@@ -58,18 +63,22 @@ static NSString *ChannelLookupKey(NSString *channel) {
 
 - (void)addBlockedChannel:(NSString *)channelName {
     NSString *channel = [channelName stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
-    if (channel.length > 0 && !IsGeneratedActionLabel(channel)) {
+    if (channel.length == 0 || IsGeneratedActionLabel(channel))
+        return;
+    if (![self isChannelBlocked:channel]) {
         [self.blockedChannelSet addObject:channel];
         NSMutableSet *lookup = [self.blockedChannelLookup mutableCopy];
         [lookup addObject:ChannelLookupKey(channel)];
         self.blockedChannelLookup = lookup.copy;
         [self saveBlockedChannels];
     }
+    FeedMetadataRecord *metadata = [[FeedMetadataRecord alloc] initWithVideoID:nil title:nil channel:channel];
+    [[NSNotificationCenter defaultCenter] postNotificationName:FeedFilterStateDidChangeNotification object:metadata];
 }
 
 - (void)removeBlockedChannel:(NSString *)channelName {
     NSString *channel = [channelName stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
-    if (channel.length > 0) {
+    if (channel.length > 0 && [self isChannelBlocked:channel]) {
         for (NSString *value in [self.blockedChannelSet copy]) {
             if ([value caseInsensitiveCompare:channel] == NSOrderedSame)
                 [self.blockedChannelSet removeObject:value];
@@ -78,6 +87,7 @@ static NSString *ChannelLookupKey(NSString *channel) {
         [lookup removeObject:ChannelLookupKey(channel)];
         self.blockedChannelLookup = lookup.copy;
         [self saveBlockedChannels];
+        [[NSNotificationCenter defaultCenter] postNotificationName:FeedFilterStateDidChangeNotification object:nil];
     }
 }
 
@@ -108,6 +118,7 @@ static NSString *ChannelLookupKey(NSString *channel) {
     }
     self.blockedChannelLookup = lookup.copy;
     [self saveBlockedChannels];
+    [[NSNotificationCenter defaultCenter] postNotificationName:FeedFilterStateDidChangeNotification object:nil];
 }
 
 @end
