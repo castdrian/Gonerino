@@ -1,0 +1,43 @@
+name: Merge Crowdin translations
+
+on:
+  pull_request_target:
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+    branches:
+      - main
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  merge:
+    if: >-
+      github.event.pull_request.base.ref == 'main' &&
+      github.event.pull_request.head.ref == 'l10n_crowdin_translations' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate changed files
+        env:
+          GH_TOKEN: ${{ secrets.REPO_ACCESS_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          files=$(gh api --paginate "repos/${REPOSITORY}/pulls/${PR_NUMBER}/files" --jq '.[].filename')
+          test -n "$files"
+          while IFS= read -r file; do
+            case "$file" in
+              "layout/Library/Application Support/Gonerino.bundle/"*.lproj/Localizable.strings) ;;
+              *) exit 1 ;;
+            esac
+          done <<< "$files"
+      - name: Enable automatic merge
+        env:
+          GH_TOKEN: ${{ secrets.REPO_ACCESS_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: gh pr merge "$PR_NUMBER" --squash --auto --delete-branch

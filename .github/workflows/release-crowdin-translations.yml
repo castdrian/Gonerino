@@ -1,0 +1,66 @@
+name: Release Crowdin translations
+
+on:
+  pull_request_target:
+    types:
+      - closed
+    branches:
+      - main
+
+permissions:
+  contents: write
+  pull-requests: read
+
+concurrency:
+  group: crowdin-translation-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: >-
+      github.event.pull_request.merged == true &&
+      github.event.pull_request.base.ref == 'main' &&
+      github.event.pull_request.head.ref == 'l10n_crowdin_translations' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ secrets.REPO_ACCESS_TOKEN }}
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.x"
+      - name: Validate changed files
+        env:
+          GH_TOKEN: ${{ secrets.REPO_ACCESS_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          files=$(gh api --paginate "repos/${REPOSITORY}/pulls/${PR_NUMBER}/files" --jq '.[].filename')
+          test -n "$files"
+          while IFS= read -r file; do
+            case "$file" in
+              "layout/Library/Application Support/Gonerino.bundle/"*.lproj/Localizable.strings) ;;
+              *) exit 1 ;;
+            esac
+          done <<< "$files"
+      - name: Bump patch version
+        id: version
+        run: echo "version=$(python3 scripts/bump_patch_version.py)" >> "$GITHUB_OUTPUT"
+      - name: Commit patch bump
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add control
+          git commit -m "chore(i18n): bump patch version to ${VERSION}"
+          git fetch origin main
+          git rebase origin/main
+          git push origin HEAD:main
+      - name: Dispatch release workflow
+        env:
+          GH_TOKEN: ${{ secrets.REPO_ACCESS_TOKEN }}
+        run: gh workflow run release.yml --repo "$GITHUB_REPOSITORY" --ref main

@@ -1,48 +1,47 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="960" height="484" viewBox="0 0 960 484" role="img" aria-labelledby="title description">
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="436" viewBox="0 0 1080 436" role="img" aria-labelledby="title description">
 <title id="title">Gonerino compatibility</title>
 <desc id="description">Verified against the current development environment</desc>
-<rect width="960" height="484" rx="22" fill="#f8fafc" stroke="#cbd5e1"/>
-<rect width="960" height="116" rx="22" fill="#111827"/>
-<rect y="82" width="960" height="34" fill="#111827"/>
-<circle cx="54" cy="55" r="22" fill="#ef4444"/>
-<path d="M45 55h18M54 46v18" stroke="#fff" stroke-width="4" stroke-linecap="round"/>
-<text x="92" y="53" fill="#fff" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="27" font-weight="700">Gonerino compatibility</text>
-<text x="92" y="82" fill="#cbd5e1" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="16">Verified against the current development environment</text>
-<rect x="20" y="116" width="920" height="54" fill="#ffffff"/>
-<text x="48" y="150" fill="#0f172a" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="18" font-weight="600">iOS</text>
-<text x="300" y="150" fill="#334155" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="17">26.0.1</text>
-<rect x="794" y="128" width="122" height="30" rx="15" fill="#dcfce7"/>
-<circle cx="814" cy="143" r="5" fill="#15803d"/>
-<text x="827" y="149" fill="#15803d" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="14" font-weight="700">Verified</text>
-<rect x="20" y="170" width="920" height="54" fill="#f1f5f9"/>
-<text x="48" y="204" fill="#0f172a" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="18" font-weight="600">YouTube</text>
-<text x="300" y="204" fill="#334155" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="17">21.35.3</text>
-<rect x="794" y="182" width="122" height="30" rx="15" fill="#dcfce7"/>
-<circle cx="814" cy="197" r="5" fill="#15803d"/>
-<text x="827" y="203" fill="#15803d" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="14" font-weight="700">Verified</text>
-<rect x="20" y="224" width="920" height="54" fill="#ffffff"/>
-<text x="48" y="258" fill="#0f172a" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="18" font-weight="600">ElleKit</text>
-<text x="300" y="258" fill="#334155" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="17">palera1n · Dopamine · Sideloaded</text>
-<rect x="794" y="236" width="122" height="30" rx="15" fill="#dcfce7"/>
-<circle cx="814" cy="251" r="5" fill="#15803d"/>
-<text x="827" y="257" fill="#15803d" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="14" font-weight="700">Verified</text>
-<rect x="20" y="278" width="920" height="54" fill="#f1f5f9"/>
-<text x="48" y="312" fill="#0f172a" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="18" font-weight="600">TrollFools</text>
-<text x="300" y="312" fill="#334155" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="17">TrollStore</text>
-<rect x="794" y="290" width="122" height="30" rx="15" fill="#fef9c3"/>
-<circle cx="814" cy="305" r="5" fill="#a16207"/>
-<text x="827" y="311" fill="#a16207" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="14" font-weight="700">Partial</text>
-<rect x="20" y="332" width="920" height="54" fill="#ffffff"/>
-<text x="48" y="366" fill="#0f172a" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="18" font-weight="600">CydiaSubstrate</text>
-<text x="300" y="366" fill="#334155" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="17"></text>
-<rect x="794" y="344" width="122" height="30" rx="15" fill="#e2e8f0"/>
-<circle cx="814" cy="359" r="5" fill="#475569"/>
-<text x="827" y="365" fill="#475569" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="14" font-weight="700">Not tested</text>
-<rect x="20" y="386" width="920" height="54" fill="#f1f5f9"/>
-<text x="48" y="420" fill="#0f172a" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="18" font-weight="600">TweakLoader</text>
-<text x="300" y="420" fill="#334155" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="17">LiveContainer</text>
-<rect x="794" y="398" width="122" height="30" rx="15" fill="#fef9c3"/>
-<circle cx="814" cy="413" r="5" fill="#a16207"/>
-<text x="827" y="419" fill="#a16207" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="14" font-weight="700">Partial</text>
-<text x="48" y="469" fill="#64748b" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="14">Updated automatically from .github/compatibility.json</text>
+<rect width="1080" height="436" rx="28" fill="#0d1118" stroke="#293241" stroke-width="2"/>
+<rect x="26" y="26" width="500" height="104" rx="18" fill="#151b25" stroke="#222b39"/>
+<rect x="26" y="26" width="5" height="104" rx="2.5" fill="#15803d"/>
+<text x="48" y="57" fill="#f8fafc" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="19" font-weight="700">iOS</text>
+<text x="48" y="88" fill="#aab5c5" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="15">26.0.1</text>
+<rect x="368" y="48" width="136" height="32" rx="16" fill="#dcfce7"/>
+<circle cx="386" cy="64" r="5" fill="#15803d"/>
+<text x="398" y="69" fill="#15803d" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="13" font-weight="700">Verified</text>
+<rect x="26" y="140" width="500" height="104" rx="18" fill="#151b25" stroke="#222b39"/>
+<rect x="26" y="140" width="5" height="104" rx="2.5" fill="#15803d"/>
+<text x="48" y="171" fill="#f8fafc" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="19" font-weight="700">YouTube</text>
+<text x="48" y="202" fill="#aab5c5" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="15">21.35.3</text>
+<rect x="368" y="162" width="136" height="32" rx="16" fill="#dcfce7"/>
+<circle cx="386" cy="178" r="5" fill="#15803d"/>
+<text x="398" y="183" fill="#15803d" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="13" font-weight="700">Verified</text>
+<rect x="26" y="254" width="500" height="104" rx="18" fill="#151b25" stroke="#222b39"/>
+<rect x="26" y="254" width="5" height="104" rx="2.5" fill="#15803d"/>
+<text x="48" y="285" fill="#f8fafc" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="19" font-weight="700">ElleKit</text>
+<text x="48" y="316" fill="#aab5c5" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="15">palera1n · Dopamine · Sideloaded</text>
+<rect x="368" y="276" width="136" height="32" rx="16" fill="#dcfce7"/>
+<circle cx="386" cy="292" r="5" fill="#15803d"/>
+<text x="398" y="297" fill="#15803d" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="13" font-weight="700">Verified</text>
+<rect x="554" y="26" width="500" height="104" rx="18" fill="#151b25" stroke="#222b39"/>
+<rect x="554" y="26" width="5" height="104" rx="2.5" fill="#a16207"/>
+<text x="576" y="57" fill="#f8fafc" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="19" font-weight="700">TrollFools</text>
+<text x="576" y="88" fill="#aab5c5" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="15">TrollStore</text>
+<rect x="896" y="48" width="136" height="32" rx="16" fill="#fef9c3"/>
+<circle cx="914" cy="64" r="5" fill="#a16207"/>
+<text x="926" y="69" fill="#a16207" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="13" font-weight="700">Partial</text>
+<rect x="554" y="140" width="500" height="104" rx="18" fill="#151b25" stroke="#222b39"/>
+<rect x="554" y="140" width="5" height="104" rx="2.5" fill="#475569"/>
+<text x="576" y="171" fill="#f8fafc" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="19" font-weight="700">CydiaSubstrate</text>
+<text x="576" y="202" fill="#aab5c5" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="15">Not specified</text>
+<rect x="896" y="162" width="136" height="32" rx="16" fill="#e2e8f0"/>
+<circle cx="914" cy="178" r="5" fill="#475569"/>
+<text x="926" y="183" fill="#475569" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="13" font-weight="700">Not tested</text>
+<rect x="554" y="254" width="500" height="104" rx="18" fill="#151b25" stroke="#222b39"/>
+<rect x="554" y="254" width="5" height="104" rx="2.5" fill="#a16207"/>
+<text x="576" y="285" fill="#f8fafc" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="19" font-weight="700">TweakLoader</text>
+<text x="576" y="316" fill="#aab5c5" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="15">LiveContainer</text>
+<rect x="896" y="276" width="136" height="32" rx="16" fill="#fef9c3"/>
+<circle cx="914" cy="292" r="5" fill="#a16207"/>
+<text x="926" y="297" fill="#a16207" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="13" font-weight="700">Partial</text>
 </svg>

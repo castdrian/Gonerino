@@ -18,7 +18,7 @@ A YouTube tweak that allows you to block specific channels and automatically rem
 
 ## Screenshots
 
-<p align="center"><img src="assets/screenshots.svg" alt="Gonerino custom settings, long-form controls, and Shorts controls" width="100%"></p>
+<p align="center"><img src="assets/screenshots.svg" alt="Gonerino custom settings, long-form controls, and Shorts controls in iPhone SE frames" width="100%"></p>
 
 ## Compatibility
 
