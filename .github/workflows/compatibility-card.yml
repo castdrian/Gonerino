@@ -14,10 +14,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-go@v6
         with:
-          python-version: "3.x"
-      - run: python3 scripts/generate-compatibility-card.py
+          go-version: stable
+      - run: go run scripts/generate-compatibility-card.go
       - name: Commit compatibility card
         run: |
           if git diff --quiet -- .github/compatibility.svg; then

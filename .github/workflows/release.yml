@@ -18,6 +18,11 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Prepare Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: stable
+
       - name: Prepare Theos
         uses: Randomblock1/theos-action@v1.5
 
@@ -41,7 +46,7 @@ jobs:
           echo "ROOTLESS_DEB_FILE_NAME=$ROOTLESS_DEB_FILE_NAME" >> $GITHUB_ENV
 
       - name: Generate changelog
-        run: python3 scripts/generate_changelog.py --version "${{ env.VERSION }}"
+        run: go run scripts/generate_changelog.go --version "${{ env.VERSION }}"
 
       - name: Build packages
         run: gmake package FINALPACKAGE=1

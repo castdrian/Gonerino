@@ -5,6 +5,7 @@ Architecture: iphoneos-arm
 Description: Remove videos uploaded by specific channels
 Maintainer: Adrian Castro
 Author: Adrian Castro
+Icon: https://repo.adriancastro.dev/assets/gonerino.svg
 Section: Tweaks
 Depends: ellekit
 Depiction: https://repo.adriancastro.dev/depictions/web/?p=dev.adrian.gonerino

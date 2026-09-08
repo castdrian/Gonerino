@@ -1,0 +1,52 @@
+title = "Compatibility"
+subtitle = "Verified against the current development environment"
+
+[[rows]]
+label = "iOS"
+value = "26.0.1 and newer"
+status = "verified"
+
+[[rows]]
+label = "YouTube"
+value = "21.35.3 and newer"
+status = "verified"
+
+[[rows]]
+label = "ElleKit"
+value = "palera1n, Dopamine, Sideloaded"
+status = "verified"
+
+[[rows]]
+label = "TrollFools"
+value = "TrollStore"
+status = "partial"
+
+[[rows]]
+label = "CydiaSubstrate"
+value = ""
+status = "untested"
+
+[[rows]]
+label = "TweakLoader"
+value = "LiveContainer"
+status = "partial"
+
+[[legend]]
+status = "verified"
+label = "Verified"
+description = "Tested in the current environment"
+
+[[legend]]
+status = "partial"
+label = "Partial"
+description = "Works with known limitations"
+
+[[legend]]
+status = "untested"
+label = "Untested"
+description = "No current verification"
+
+[[legend]]
+status = "unsupported"
+label = "Unsupported"
+description = "Known not to work"

@@ -15,7 +15,7 @@ $(TWEAK_NAME)_CFLAGS = -fobjc-arc -DPACKAGE_VERSION='@"$(shell grep '^Version:' 
 include $(THEOS_MAKE_PATH)/tweak.mk
 
 before-all::
-	$(ECHO_NOTHING)python3 scripts/generate_changelog_header.py$(ECHO_END)
+	$(ECHO_NOTHING)go run scripts/generate_changelog_header.go$(ECHO_END)
 
 before-stage::
 	$(ECHO_NOTHING)find . -name ".DS_Store" -type f -delete$(ECHO_END)

@@ -34,13 +34,15 @@ jobs:
           REPOSITORY: ${{ github.repository }}
         run: |
           source_file="layout/Library/Application Support/Gonerino.bundle/en.lproj/Localizable.strings"
+          bundle_prefix="layout/Library/Application Support/Gonerino.bundle/"
           files=$(gh api --paginate "repos/${REPOSITORY}/pulls/${PR_NUMBER}/files" --jq '.[].filename')
           test -n "$files"
           while IFS= read -r file; do
             case "$file" in
-              "layout/Library/Application Support/Gonerino.bundle/de.lproj/Localizable.strings" | \
-              "layout/Library/Application Support/Gonerino.bundle/es.lproj/Localizable.strings" | \
-              "layout/Library/Application Support/Gonerino.bundle/tr.lproj/Localizable.strings")
+              "${bundle_prefix}en.lproj/Localizable.strings")
+                exit 1
+                ;;
+              "${bundle_prefix}"*.lproj/Localizable.strings)
                 test -f "$file"
                 if cmp -s "$source_file" "$file"; then
                   exit 1

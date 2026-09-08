@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 20 20" role="img" aria-labelledby="title description">
+<title id="title">Gonerino</title>
+<desc id="description">Blocked video mark</desc>
+<rect width="20" height="20" rx="5" fill="#ff453a"/>
+<rect x="4" y="6" width="12" height="8" rx="3" fill="none" stroke="#fff" stroke-width="1.5"/>
+<path d="M8 8 12 10 8 12V8Z" fill="#fff"/>
+<circle cx="10" cy="10" r="9" fill="none" stroke="#fff" stroke-width="1.5"/>
+<path d="m3.636 3.636 12.728 12.728" fill="none" stroke="#fff" stroke-width="1.5" stroke-linecap="round"/>
+</svg>

@@ -42,18 +42,18 @@
 <text x="940" y="304" text-anchor="middle" fill="#ffd60a" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="11" font-weight="600">Partial</text>
 <line x1="40" y1="368" x2="1000" y2="368" stroke="#2a2d33" stroke-width="1"/>
 <text x="40" y="392" fill="#98989f" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="11" font-weight="600" letter-spacing="1">STATUS</text>
-<circle cx="47.0" cy="418" r="5" fill="#30d158"/>
-<text x="60.0" y="423" fill="#f5f5f7" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="13" font-weight="600">Verified</text>
-<text x="40.0" y="444" fill="#98989f" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="11">Tested in the current</text>
-<text x="40.0" y="460" fill="#98989f" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="11">environment</text>
-<circle cx="287.0" cy="418" r="5" fill="#ffd60a"/>
-<text x="300.0" y="423" fill="#f5f5f7" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="13" font-weight="600">Partial</text>
-<text x="280.0" y="444" fill="#98989f" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="11">Works with known</text>
-<text x="280.0" y="460" fill="#98989f" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="11">limitations</text>
-<circle cx="527.0" cy="418" r="5" fill="#8e8e93"/>
-<text x="540.0" y="423" fill="#f5f5f7" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="13" font-weight="600">Untested</text>
-<text x="520.0" y="444" fill="#98989f" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="11">No current verification</text>
-<circle cx="767.0" cy="418" r="5" fill="#ff453a"/>
-<text x="780.0" y="423" fill="#f5f5f7" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="13" font-weight="600">Unsupported</text>
-<text x="760.0" y="444" fill="#98989f" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="11">Known not to work</text>
+<circle cx="47" cy="418" r="5" fill="#30d158"/>
+<text x="60" y="423" fill="#f5f5f7" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="13" font-weight="600">Verified</text>
+<text x="40" y="444" fill="#98989f" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="11">Tested in the current</text>
+<text x="40" y="460" fill="#98989f" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="11">environment</text>
+<circle cx="287" cy="418" r="5" fill="#ffd60a"/>
+<text x="300" y="423" fill="#f5f5f7" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="13" font-weight="600">Partial</text>
+<text x="280" y="444" fill="#98989f" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="11">Works with known</text>
+<text x="280" y="460" fill="#98989f" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="11">limitations</text>
+<circle cx="527" cy="418" r="5" fill="#8e8e93"/>
+<text x="540" y="423" fill="#f5f5f7" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="13" font-weight="600">Untested</text>
+<text x="520" y="444" fill="#98989f" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="11">No current verification</text>
+<circle cx="767" cy="418" r="5" fill="#ff453a"/>
+<text x="780" y="423" fill="#f5f5f7" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="13" font-weight="600">Unsupported</text>
+<text x="760" y="444" fill="#98989f" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="11">Known not to work</text>
 </svg>
