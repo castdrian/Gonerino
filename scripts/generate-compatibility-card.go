@@ -123,7 +123,7 @@ func parseConfig(path string) (config, error) {
 				result.legend = append(result.legend, item)
 				current = &result.legend[len(result.legend)-1]
 			default:
-				current = nil
+				return config{}, fmt.Errorf("unsupported TOML array table %q", section)
 			}
 			continue
 		}
@@ -143,6 +143,16 @@ func parseConfig(path string) (config, error) {
 		}
 	}
 	return result, nil
+}
+
+func validateEntries(name string, entries []entry) error {
+	for index, item := range entries {
+		status := field(item, "status")
+		if _, ok := statuses[status]; !ok {
+			return fmt.Errorf("%s entry %d has unsupported status %q", name, index+1, status)
+		}
+	}
+	return nil
 }
 
 func field(item entry, key string) string {
@@ -255,6 +265,12 @@ func main() {
 	root := projectRoot()
 	data, err := parseConfig(filepath.Join(root, ".github", "compatibility.toml"))
 	if err != nil {
+		panic(err)
+	}
+	if err := validateEntries("rows", data.rows); err != nil {
+		panic(err)
+	}
+	if err := validateEntries("legend", data.legend); err != nil {
 		panic(err)
 	}
 	if err := os.WriteFile(filepath.Join(root, ".github", "compatibility.svg"), []byte(render(data)), 0644); err != nil {

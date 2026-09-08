@@ -43,14 +43,22 @@ func main() {
 		}
 		os.Exit(1)
 	}
-	for _, line := range strings.Split(string(output), "\n") {
+	outputText := string(output)
+	hasTrailingNewline := strings.HasSuffix(outputText, "\n")
+	outputText = strings.TrimSuffix(outputText, "\n")
+	lines = strings.Split(outputText, "\n")
+	for index, line := range strings.Split(outputText, "\n") {
 		if strings.Contains(line, "@logosformat") {
 			line = strings.ReplaceAll(line, "@logosformat", "%")
 			if containsAny(line, specialTokens) {
 				line = strings.ReplaceAll(line, ";", "")
 			}
 		}
-		os.Stdout.WriteString(line + "\n")
+		lines[index] = line
+	}
+	os.Stdout.WriteString(strings.Join(lines, "\n"))
+	if hasTrailingNewline {
+		os.Stdout.WriteString("\n")
 	}
 }
 

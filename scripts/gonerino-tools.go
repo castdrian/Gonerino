@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"regexp"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -31,6 +32,12 @@ var blockListKeys = []string{
 func repoRoot() (string, error) {
 	if override := os.Getenv("GONERINO_ROOT"); override != "" {
 		return filepath.Abs(override)
+	}
+	if _, source, _, ok := runtime.Caller(0); ok {
+		directory := filepath.Dir(filepath.Dir(source))
+		if _, err := os.Stat(filepath.Join(directory, "control")); err == nil {
+			return directory, nil
+		}
 	}
 	directory, err := os.Getwd()
 	if err != nil {
@@ -96,7 +103,10 @@ func cliPath() string {
 	if value := os.Getenv("JB_P1LOT_BIN"); value != "" {
 		return value
 	}
-	return "/Users/adrian/go/bin/jb-p1lot"
+	if value, err := exec.LookPath("jb-p1lot"); err == nil {
+		return value
+	}
+	return "jb-p1lot"
 }
 
 func cliArgs(device, action string, args ...string) []string {
@@ -1665,7 +1675,11 @@ func settingsRegression(args []string) error {
 	}
 	pmd3 := os.Getenv("PYMOBILEDEVICE3_BIN")
 	if pmd3 == "" {
-		pmd3 = "/Users/adrian/.local/bin/pymobiledevice3"
+		if value, lookupErr := exec.LookPath("pymobiledevice3"); lookupErr == nil {
+			pmd3 = value
+		} else {
+			pmd3 = "pymobiledevice3"
+		}
 	}
 	captureText := func(name string) error {
 		imagePath := filepath.Join(outputDirectory, name+".png")
@@ -1950,8 +1964,12 @@ func main() {
 	case "generate-screenshot-strip":
 		var root string
 		root, err = repoRoot()
-		if err == nil && len(args) == 0 {
-			err = generateScreenshotStrip(root)
+		if err == nil {
+			if len(args) != 0 {
+				err = errors.New("usage: generate-screenshot-strip")
+			} else {
+				err = generateScreenshotStrip(root)
+			}
 		}
 	case "merge-blocklists":
 		if len(args) != 3 {
@@ -1962,14 +1980,18 @@ func main() {
 	case "test-blocklist-restore":
 		var root string
 		root, err = repoRoot()
-		if err == nil {
+		if err == nil && len(args) == 0 {
 			err = testBlocklistRestore(root)
+		} else if err == nil {
+			err = errors.New("usage: test-blocklist-restore")
 		}
 	case "test-metadata-fixtures":
 		var root string
 		root, err = repoRoot()
-		if err == nil {
+		if err == nil && len(args) == 0 {
 			err = testMetadataFixtures(root)
+		} else if err == nil {
+			err = errors.New("usage: test-metadata-fixtures")
 		}
 	case "blocklist-backup":
 		deviceID := pinnedDeviceID
@@ -2021,14 +2043,24 @@ func main() {
 	case "performance-suite":
 		err = performanceSuite(args)
 	case "settings-regression":
-		err = settingsRegression(args)
+		if len(args) > 3 {
+			err = errors.New("usage: settings-regression [DEVICE] [OUTPUT_DIRECTORY] [OPEN_COUNT]")
+		} else {
+			err = settingsRegression(args)
+		}
 	case "test-feed-data-source-adapter-simulator":
-		err = testFeedAdapterSimulator(args)
+		if len(args) != 0 {
+			err = errors.New("usage: test-feed-data-source-adapter-simulator")
+		} else {
+			err = testFeedAdapterSimulator(args)
+		}
 	case "verify-architecture":
 		var root string
 		root, err = repoRoot()
-		if err == nil {
+		if err == nil && len(args) == 0 {
 			err = verifyArchitecture(root)
+		} else if err == nil {
+			err = errors.New("usage: verify-architecture")
 		}
 	default:
 		printUsage()
