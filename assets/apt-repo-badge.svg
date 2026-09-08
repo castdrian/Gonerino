@@ -1,11 +1,17 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="320" height="60" viewBox="0 0 320 60" role="img" aria-labelledby="title description">
-<title id="title">Add Gonerino to your package manager</title>
-<desc id="description">Open Adrian Castro's package repository</desc>
-<rect width="320" height="60" rx="16" fill="#1d1d1f"/>
-<circle cx="31" cy="30" r="16" fill="#ff453a"/>
-<path d="M23.8 22.8h14.4a3.2 3.2 0 0 1 3.2 3.2v8a3.2 3.2 0 0 1-3.2 3.2H23.8a3.2 3.2 0 0 1-3.2-3.2v-8a3.2 3.2 0 0 1 3.2-3.2Z" fill="none" stroke="#fff" stroke-width="1.6"/>
-<path d="m27.8 28.2 6.4 3.8-6.4 3.8v-7.6Z" fill="#fff"/>
-<path d="m20.4 19.4 21.2 21.2" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/>
-<text x="58" y="25" fill="#f5f5f7" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="12" font-weight="600">ADD TO YOUR PACKAGE MANAGER</text>
-<text x="58" y="43" fill="#98989f" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="12">repo.adriancastro.dev</text>
+<svg xmlns="http://www.w3.org/2000/svg" width="240" height="60" viewBox="0 0 240 60" role="img" aria-labelledby="title description">
+<title id="title">Add Gonerino to Sileo</title>
+<desc id="description">Open Adrian Castro's package repository in Sileo</desc>
+<defs>
+<linearGradient id="sileo" x1="0" y1="0" x2="1" y2="1">
+<stop offset="0" stop-color="#36d8c8"/>
+<stop offset="1" stop-color="#10a9b4"/>
+</linearGradient>
+</defs>
+<rect x="1" y="1" width="238" height="58" rx="18" fill="#000" stroke="#373737" stroke-width="2"/>
+<rect x="7" y="7" width="46" height="46" rx="13" fill="url(#sileo)"/>
+<path d="M30 13.5c-3 0-6 1-8.7 2.6L11.5 22.8A10 10 0 0 0 7 31.5v8.8a10 10 0 0 0 4.8 8.6l9.5 5.7a17 17 0 0 0 17.4 0l9.5-5.7a10 10 0 0 0 4.8-8.6v-8.8a10 10 0 0 0-4.5-8.7l-9.8-6.7A16 16 0 0 0 30 13.5Z" transform="translate(0 -2)" fill="#fff"/>
+<path d="m18 31 6.4 3.9v6.4c0 1.7-1.8 2.7-3.3 1.8l-3.1-1.9A4.2 4.2 0 0 1 16 37.6V31Z" fill="#18b5b6"/>
+<path d="m31 37 13-7.6v5.8L31 42.8V37Zm0 9 13-7.6v5.8L31 51.8V46Z" fill="#18b5b6"/>
+<text x="65" y="25" fill="#f5f5f7" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="11" font-weight="500">Add to</text>
+<text x="65" y="46" fill="#f5f5f7" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="17" font-weight="700">Sileo</text>
 </svg>

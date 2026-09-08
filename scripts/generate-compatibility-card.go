@@ -16,10 +16,8 @@ type entry struct {
 }
 
 type config struct {
-	title    string
-	subtitle string
-	rows     []entry
-	legend   []entry
+	rows   []entry
+	legend []entry
 }
 
 type statusInfo struct {
@@ -89,12 +87,7 @@ func parseConfig(path string) (config, error) {
 			return config{}, err
 		}
 		if section == "" {
-			switch key {
-			case "title":
-				result.title = value
-			case "subtitle":
-				result.subtitle = value
-			}
+			continue
 		} else if current != nil {
 			current.fields[key] = value
 		}
@@ -158,34 +151,27 @@ func renderLegendItem(x, y float64, item entry) []string {
 func render(data config) string {
 	width := 1040.0
 	margin := 40.0
-	headerHeight := 76.0
-	rowHeight := 78.0
+	rowHeight := 72.0
 	rowGap := 2.0
-	legendHeight := 112.0
+	legendHeight := 104.0
 	columns := 2.0
 	columnGap := 36.0
 	columnWidth := (width - margin*2 - columnGap) / columns
 	rowsPerColumn := math.Max(math.Ceil(float64(len(data.rows))/columns), 1)
 	rowsHeight := rowsPerColumn*rowHeight + math.Max(rowsPerColumn-1, 0)*rowGap
-	height := margin + headerHeight + rowsHeight + 28 + legendHeight + margin
-	title := data.title
-	if title == "" {
-		title = "Compatibility"
-	}
+	height := margin + rowsHeight + 28 + legendHeight + margin
 	parts := []string{
 		fmt.Sprintf(`<svg xmlns="http://www.w3.org/2000/svg" width="%.0f" height="%.0f" viewBox="0 0 %.0f %.0f" role="img" aria-labelledby="title description">`, width, height, width, height),
-		fmt.Sprintf(`<title id="title">%s</title>`, html.EscapeString(title)),
-		fmt.Sprintf(`<desc id="description">%s</desc>`, html.EscapeString(data.subtitle)),
+		`<title id="title">Compatibility</title>`,
+		`<desc id="description">Gonerino compatibility information and status legend.</desc>`,
 		`<rect width="100%" height="100%" rx="26" fill="#121316" stroke="#2a2d33" stroke-width="2"/>`,
-		fmt.Sprintf(`<text x="%.0f" y="%.0f" fill="#f5f5f7" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="22" font-weight="700">%s</text>`, margin, margin+28, html.EscapeString(title)),
-		fmt.Sprintf(`<text x="%.0f" y="%.0f" fill="#98989f" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="13">%s</text>`, margin, margin+52, html.EscapeString(data.subtitle)),
 	}
 	for index, row := range data.rows {
 		column := float64(index) / rowsPerColumn
 		column = math.Floor(column)
 		rowIndex := float64(index) - column*rowsPerColumn
 		x := margin + column*(columnWidth+columnGap)
-		y := margin + headerHeight + rowIndex*(rowHeight+rowGap)
+		y := margin + rowIndex*(rowHeight+rowGap)
 		status := statusData(field(row, "status"))
 		label := html.EscapeString(field(row, "label"))
 		value := field(row, "value")
@@ -202,7 +188,7 @@ func render(data config) string {
 			fmt.Sprintf(`<text x="%.0f" y="%.0f" text-anchor="middle" fill="%s" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="11" font-weight="600">%s</text>`, x+columnWidth-60, y+28, status.color, html.EscapeString(status.label)),
 		)
 	}
-	legendY := margin + headerHeight + rowsHeight + 28
+	legendY := margin + rowsHeight + 28
 	parts = append(parts,
 		fmt.Sprintf(`<line x1="%.0f" y1="%.0f" x2="%.0f" y2="%.0f" stroke="#2a2d33" stroke-width="1"/>`, margin, legendY-14, width-margin, legendY-14),
 		fmt.Sprintf(`<text x="%.0f" y="%.0f" fill="#98989f" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="11" font-weight="600" letter-spacing="1">STATUS</text>`, margin, legendY+10),

@@ -18,9 +18,10 @@
 	],
 	"externalFormatters.languages": {
 		"logos": {
-			"command": "python3",
+			"command": "go",
 			"arguments": [
-				".vscode/logos-format.py",
+				"run",
+				"scripts/logos-format.go",
 				"--assume-filename",
 				"objc"
 			]

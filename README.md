@@ -10,7 +10,8 @@ YouTube tweak that allows you to block and automatically remove items from your 
 ## Download
 
 <p>
-  <a href="https://repo.adriancastro.dev"><img src="assets/apt-repo-badge.svg" alt="Add Gonerino to your package manager" height="60"></a>
+  <a href="https://repo.adriancastro.dev"><img src="assets/apt-repo-badge.svg" alt="Add Gonerino to Sileo" height="60"></a>
+  &nbsp;
   <a href="https://github.com/castdrian/Gonerino/releases/latest"><img src="assets/github-release-badge.svg" alt="Download the latest Gonerino release" height="60"></a>
 </p>
 
