@@ -1330,7 +1330,11 @@ func runPerformance(args []string) (string, error) {
 	if err := cliToFile(preferenceCopyJSON, deviceID, "shell_exec", "--command", "cp '"+preferencePath+"' '"+preferenceDeviceTemp+"'"); err != nil {
 		return "", err
 	}
-	if !strings.Contains(commandOutput(preferenceCopyJSON), "\"exitCode\":0") && !strings.Contains(commandOutput(preferenceCopyJSON), "\"exitCode\": 0") {
+	copyContents, err := os.ReadFile(preferenceCopyJSON)
+	if err != nil {
+		return "", err
+	}
+	if !strings.Contains(string(copyContents), "\"exitCode\":0") && !strings.Contains(string(copyContents), "\"exitCode\": 0") {
 		return "", errors.New("could not stage YouTube's preferences")
 	}
 	if err := cliToFile(filepath.Join(runDirectory, "preference-download-original.json"), deviceID, "file_transfer", "--direction", "download", "--source", preferenceDeviceTemp, "--destination", preferenceOriginalFile); err != nil {
@@ -1665,7 +1669,7 @@ func settingsRegression(args []string) error {
 	}
 	captureText := func(name string) error {
 		imagePath := filepath.Join(outputDirectory, name+".png")
-		if err := runToFile("", imagePath, pmd3, "developer", "dvt", "screenshot", "--userspace", "--udid", deviceID, imagePath); err != nil {
+		if err := runDiscard(pmd3, "developer", "dvt", "screenshot", "--userspace", "--udid", deviceID, imagePath); err != nil {
 			return err
 		}
 		textBase := filepath.Join(outputDirectory, name)
