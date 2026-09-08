@@ -1,6 +1,7 @@
 #import "Tweak.h"
 #import "FeedDataSourceAdapter.h"
 #import "Localization.h"
+#import "UpdateChecker.h"
 #import <objc/runtime.h>
 #import <objc/message.h>
 
@@ -1310,6 +1311,7 @@ static void RefreshNavigationButtons(void) {
 
 %ctor {
     %init;
+    GonerinoStartUpdateChecker();
     [[NSNotificationCenter defaultCenter] addObserverForName:FeedFilterStateDidChangeNotification
                                                       object:nil
                                                   queue:[NSOperationQueue mainQueue]

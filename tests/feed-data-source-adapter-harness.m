@@ -179,6 +179,14 @@ static NSMutableSet<NSString *> *BlockedIdentifiers(void) {
     return MetadataByNode()[NodeKey(node)];
 }
 
++ (FeedMetadataRecord *)cachedFeedVideoMetadataForVideoID:(NSString *)videoID {
+    for (FeedMetadataRecord *metadata in MetadataByNode().allValues) {
+        if ([metadata.videoID isEqualToString:videoID])
+            return metadata;
+    }
+    return nil;
+}
+
 + (NSString *)feedVideoIDForObject:(id)object {
     return MetadataByNode()[NodeKey(object)].videoID;
 }

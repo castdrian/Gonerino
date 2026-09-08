@@ -1,5 +1,6 @@
 #import "Settings.h"
 #import "CustomSettings.h"
+#import "ChangelogData.h"
 #import "Localization.h"
 #import "Util.h"
 
@@ -238,6 +239,82 @@ static UIButton *NavigationBackButton(NSString *title, id target, SEL action) {
 
 @end
 
+static NSAttributedString *RenderedGonerinoChangelog(void) {
+    UIFont *bodyFont = [UIFont preferredFontForTextStyle:UIFontTextStyleBody];
+    UIFont *sectionFont = [UIFont preferredFontForTextStyle:UIFontTextStyleTitle3];
+    UIFont *titleFont = [UIFont preferredFontForTextStyle:UIFontTextStyleTitle1];
+    NSMutableAttributedString *rendered = [NSMutableAttributedString new];
+    for (NSString *line in [GONERINO_CHANGELOG componentsSeparatedByString:@"\n"]) {
+        NSString *text = line;
+        UIFont *font = bodyFont;
+        CGFloat paragraphSpacing = 4.0;
+        if ([line hasPrefix:@"### "]) {
+            text = [line substringFromIndex:4];
+            font = [UIFont systemFontOfSize:sectionFont.pointSize weight:UIFontWeightBold];
+            paragraphSpacing = 14.0;
+        } else if ([line hasPrefix:@"## "]) {
+            text = [line substringFromIndex:3];
+            font = [UIFont systemFontOfSize:titleFont.pointSize weight:UIFontWeightBold];
+            paragraphSpacing = 16.0;
+        } else if ([line hasPrefix:@"# "]) {
+            text = [line substringFromIndex:2];
+            font = [UIFont systemFontOfSize:titleFont.pointSize + 4.0 weight:UIFontWeightBold];
+            paragraphSpacing = 18.0;
+        } else if ([line hasPrefix:@"- "]) {
+            text = [NSString stringWithFormat:@"• %@", [line substringFromIndex:2]];
+        }
+        NSMutableParagraphStyle *paragraphStyle = [NSMutableParagraphStyle new];
+        paragraphStyle.paragraphSpacing = paragraphSpacing;
+        if ([line hasPrefix:@"- "]) {
+            paragraphStyle.firstLineHeadIndent = 0.0;
+            paragraphStyle.headIndent = 18.0;
+        }
+        NSDictionary *attributes = @{ NSFontAttributeName: font,
+                                      NSForegroundColorAttributeName: UIColor.labelColor,
+                                      NSParagraphStyleAttributeName: paragraphStyle };
+        [rendered appendAttributedString:[[NSAttributedString alloc] initWithString:[NSString stringWithFormat:@"%@\n", text]
+                                                                            attributes:attributes]];
+    }
+    return rendered;
+}
+
+@interface ChangelogViewController : UIViewController
+@property(nonatomic, strong) UITextView *textView;
+@end
+
+@implementation ChangelogViewController
+
+- (void)viewDidLoad {
+    [super viewDidLoad];
+    self.title = LocalizedString(@"What's New");
+    self.view.backgroundColor = UIColor.systemBackgroundColor;
+    self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemDone
+                                                                                            target:self
+                                                                                            action:@selector(close)];
+    self.textView = [UITextView new];
+    self.textView.translatesAutoresizingMaskIntoConstraints = NO;
+    self.textView.editable = NO;
+    self.textView.selectable = YES;
+    self.textView.alwaysBounceVertical = YES;
+    self.textView.backgroundColor = UIColor.systemBackgroundColor;
+    self.textView.textColor = UIColor.labelColor;
+    self.textView.font = [UIFont preferredFontForTextStyle:UIFontTextStyleBody];
+    self.textView.attributedText = RenderedGonerinoChangelog();
+    [self.view addSubview:self.textView];
+    [NSLayoutConstraint activateConstraints:@[
+        [self.textView.topAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor],
+        [self.textView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
+        [self.textView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
+        [self.textView.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor]
+    ]];
+}
+
+- (void)close {
+    [self dismissViewControllerAnimated:YES completion:nil];
+}
+
+@end
+
 @interface SettingsPageViewController : UIViewController <UITableViewDataSource, UITableViewDelegate, UIDocumentPickerDelegate>
 @property(nonatomic, strong) UITableView *tableView;
 @property(nonatomic, weak) YTSettingsSectionItemManager *settingsManager;
@@ -359,7 +436,7 @@ static UIButton *NavigationBackButton(NSString *title, id target, SEL action) {
         return LocalizedString(@[@"Channels", @"Videos", @"Words"][indexPath.row]);
     if (indexPath.section == 3)
         return LocalizedString(@[@"Export Settings", @"Import Settings"][indexPath.row]);
-    return LocalizedString(@"GitHub");
+    return [NSString stringWithFormat:@"%@ %@", LocalizedString(@"Version"), TWEAK_VERSION];
 }
 
 - (NSString *)subtitleForRow:(NSIndexPath *)indexPath {
@@ -377,14 +454,15 @@ static UIButton *NavigationBackButton(NSString *title, id target, SEL action) {
         return LocalizedCount(@"blocked word", @"blocked words", [WordManager sharedInstance].blockedWords.count);
     }
 
+    if (indexPath.section == 4)
+        return LocalizedString(@"Read the latest changes");
+
     return nil;
 }
 
 - (NSString *)tableView:(UITableView *)tableView titleForFooterInSection:(NSInteger)section {
     if (section == 0)
         return LocalizedString(@"Support Gonerino development");
-    if (section == 4)
-        return [NSString stringWithFormat:@"%@ %@", LocalizedString(@"Version"), TWEAK_VERSION];
     return nil;
 }
 
@@ -421,12 +499,26 @@ static UIButton *NavigationBackButton(NSString *title, id target, SEL action) {
             [self exportSettings];
         else
             [self importSettings];
+    } else if (section == 4) {
+        [self openChangelog];
     }
-    else if (section == 4)
-        URLString = @"https://github.com/castdrian/Gonerino";
-
     if (URLString.length > 0)
         [[UIApplication sharedApplication] openURL:[NSURL URLWithString:URLString] options:@{} completionHandler:nil];
+}
+
+- (BOOL)hasUnreadChangelog {
+    NSString *lastOpenedVersion = [[NSUserDefaults standardUserDefaults] stringForKey:@"GonerinoLastOpenedChangelogVersion"];
+    return ![lastOpenedVersion isEqualToString:TWEAK_VERSION];
+}
+
+- (void)openChangelog {
+    [[NSUserDefaults standardUserDefaults] setObject:TWEAK_VERSION forKey:@"GonerinoLastOpenedChangelogVersion"];
+    [[NSUserDefaults standardUserDefaults] synchronize];
+    [self.tableView reloadData];
+    ChangelogViewController *changelogViewController = [ChangelogViewController new];
+    UINavigationController *navigationController = [[UINavigationController alloc] initWithRootViewController:changelogViewController];
+    navigationController.modalPresentationStyle = UIModalPresentationFullScreen;
+    [self presentViewController:navigationController animated:YES completion:nil];
 }
 
 - (UITableViewCell *)buttonCellForTableView:(UITableView *)tableView indexPath:(NSIndexPath *)indexPath {
@@ -440,10 +532,11 @@ static UIButton *NavigationBackButton(NSString *title, id target, SEL action) {
 
     NSString *title = [self titleForRow:indexPath];
     BOOL prominent = indexPath.section == 0;
+    BOOL changelog = indexPath.section == 4;
     UIButton *button = [UIButton buttonWithType:UIButtonTypeSystem];
     if (@available(iOS 15.0, *)) {
         UIButtonConfiguration *configuration = prominent ? [UIButtonConfiguration tintedButtonConfiguration] : [UIButtonConfiguration plainButtonConfiguration];
-        configuration.image = [UIImage systemImageNamed:prominent ? @"heart.fill" : (indexPath.section == 4 ? @"safari" : (indexPath.row == 0 ? @"square.and.arrow.up" : @"square.and.arrow.down"))];
+        configuration.image = [UIImage systemImageNamed:prominent ? @"heart.fill" : (changelog ? @"sparkles" : (indexPath.row == 0 ? @"square.and.arrow.up" : @"square.and.arrow.down"))];
         configuration.title = title;
         configuration.imagePadding = prominent ? 8.0 : 6.0;
         configuration.contentInsets = prominent ? NSDirectionalEdgeInsetsMake(12.0, 12.0, 12.0, 12.0) : NSDirectionalEdgeInsetsMake(8.0, 0.0, 8.0, 0.0);
@@ -451,7 +544,7 @@ static UIButton *NavigationBackButton(NSString *title, id target, SEL action) {
             configuration.cornerStyle = UIButtonConfigurationCornerStyleMedium;
         button.configuration = configuration;
     } else {
-        NSString *symbol = prominent ? @"heart.fill" : (indexPath.section == 4 ? @"safari" : (indexPath.row == 0 ? @"square.and.arrow.up" : @"square.and.arrow.down"));
+        NSString *symbol = prominent ? @"heart.fill" : (changelog ? @"sparkles" : (indexPath.row == 0 ? @"square.and.arrow.up" : @"square.and.arrow.down"));
         [button setImage:[UIImage systemImageNamed:symbol] forState:UIControlStateNormal];
         [button setTitle:title forState:UIControlStateNormal];
         button.imageEdgeInsets = UIEdgeInsetsMake(0.0, 0.0, 0.0, 6.0);
@@ -462,11 +555,32 @@ static UIButton *NavigationBackButton(NSString *title, id target, SEL action) {
     button.contentHorizontalAlignment = prominent ? UIControlContentHorizontalAlignmentCenter : UIControlContentHorizontalAlignmentLeft;
     button.translatesAutoresizingMaskIntoConstraints = NO;
     [button addTarget:self action:@selector(actionButtonTapped:) forControlEvents:UIControlEventTouchUpInside];
+    UILabel *badge = nil;
+    if (changelog && [self hasUnreadChangelog]) {
+        badge = [UILabel new];
+        badge.translatesAutoresizingMaskIntoConstraints = NO;
+        badge.text = LocalizedString(@"NEW");
+        badge.textColor = UIColor.whiteColor;
+        badge.backgroundColor = UIColor.systemRedColor;
+        badge.font = [UIFont systemFontOfSize:11.0 weight:UIFontWeightBold];
+        badge.textAlignment = NSTextAlignmentCenter;
+        badge.layer.cornerRadius = 8.0;
+        badge.clipsToBounds = YES;
+        [cell.contentView addSubview:badge];
+        [NSLayoutConstraint activateConstraints:@[
+            [badge.centerYAnchor constraintEqualToAnchor:cell.contentView.centerYAnchor],
+            [badge.trailingAnchor constraintEqualToAnchor:cell.contentView.trailingAnchor constant:-16.0],
+            [badge.widthAnchor constraintEqualToConstant:42.0],
+            [badge.heightAnchor constraintEqualToConstant:22.0]
+        ]];
+    }
     [cell.contentView addSubview:button];
+    NSLayoutXAxisAnchor *buttonTrailingAnchor = badge ? badge.leadingAnchor : cell.contentView.trailingAnchor;
+    CGFloat buttonTrailingConstant = badge ? -12.0 : -16.0;
     [NSLayoutConstraint activateConstraints:@[
         [button.topAnchor constraintEqualToAnchor:cell.contentView.topAnchor constant:4.0],
         [button.leadingAnchor constraintEqualToAnchor:cell.contentView.leadingAnchor constant:16.0],
-        [button.trailingAnchor constraintEqualToAnchor:cell.contentView.trailingAnchor constant:-16.0],
+        [button.trailingAnchor constraintEqualToAnchor:buttonTrailingAnchor constant:buttonTrailingConstant],
         [button.bottomAnchor constraintEqualToAnchor:cell.contentView.bottomAnchor constant:-4.0]
     ]];
     cell.accessoryView = nil;
@@ -756,7 +870,7 @@ static UIButton *NavigationBackButton(NSString *title, id target, SEL action) {
         return;
     }
     if (indexPath.section == 4)
-        [[UIApplication sharedApplication] openURL:[NSURL URLWithString:@"https://github.com/castdrian/Gonerino"] options:@{} completionHandler:nil];
+        [self openChangelog];
 }
 
 @end

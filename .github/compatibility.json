@@ -1,0 +1,36 @@
+{
+  "title": "Gonerino compatibility",
+  "subtitle": "Verified against the current development environment",
+  "rows": [
+    {
+      "label": "iOS",
+      "value": "26.0.1",
+      "status": "verified"
+    },
+    {
+      "label": "YouTube",
+      "value": "21.35.3",
+      "status": "verified"
+    },
+    {
+      "label": "ElleKit",
+      "value": "palera1n · Dopamine · Sideloaded",
+      "status": "verified"
+    },
+    {
+      "label": "TrollFools",
+      "value": "TrollStore",
+      "status": "partial"
+    },
+    {
+      "label": "CydiaSubstrate",
+      "value": "",
+      "status": "untested"
+    },
+    {
+      "label": "TweakLoader",
+      "value": "LiveContainer",
+      "status": "partial"
+    }
+  ]
+}

@@ -28,9 +28,6 @@ jobs:
           brew install make
           gmake --version
 
-      - name: Build packages
-        run: gmake package FINALPACKAGE=1
-
       - name: Extract Values
         run: |
           NAME=$(grep '^Name:' control | cut -d ' ' -f 2)
@@ -41,6 +38,12 @@ jobs:
           ROOTLESS_DEB_FILE_NAME="${PACKAGE}_${VERSION}_iphoneos-arm64.deb"
           echo "ROOTLESS_DEB_FILE_NAME=$ROOTLESS_DEB_FILE_NAME" >> $GITHUB_ENV
 
+      - name: Generate changelog
+        run: python3 scripts/generate_changelog.py --version "${{ env.VERSION }}"
+
+      - name: Build packages
+        run: gmake package FINALPACKAGE=1
+
       - name: Create GitHub Release
         id: create_release
         uses: softprops/action-gh-release@v3
@@ -49,6 +52,8 @@ jobs:
           name: ${{ env.VERSION }}
           files: |
             packages/${{ env.ROOTLESS_DEB_FILE_NAME }}
+            CHANGELOG.md
+          body_path: .github/release-notes.md
           generate_release_notes: true
           fail_on_unmatched_files: true
           token: ${{ env.GITHUB_TOKEN }}
@@ -62,9 +67,10 @@ jobs:
           script: |
             const assets = JSON.parse('${{ steps.create_release.outputs.assets }}');
             const debAsset = assets.find(asset => asset.name === '${{ env.ROOTLESS_DEB_FILE_NAME }}');
+            const changelogAsset = assets.find(asset => asset.name === 'CHANGELOG.md');
             
-            if (!debAsset) {
-              core.setFailed('Could not find DEB asset in release');
+            if (!debAsset || !changelogAsset) {
+              core.setFailed('Could not find release assets');
               return;
             }
             
@@ -74,6 +80,9 @@ jobs:
               event_type: 'package-update',
               client_payload: {
                 package_url: debAsset.browser_download_url,
-                package_name: '${{ env.ROOTLESS_DEB_FILE_NAME }}'
+                package_name: '${{ env.ROOTLESS_DEB_FILE_NAME }}',
+                changelog_url: changelogAsset.browser_download_url,
+                release_url: 'https://github.com/castdrian/Gonerino/releases/tag/v${{ env.VERSION }}',
+                version: '${{ env.VERSION }}'
               }
             });

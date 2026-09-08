@@ -1,3 +1,5 @@
 .theos/
 packages/
+headers/ChangelogData.h
+.github/release-notes.md
 .DS_Store

@@ -26,6 +26,7 @@ typedef id _Nullable (^FeedNodeBlock)(void);
 @property(nonatomic, strong) NSMutableDictionary<NSString *, FeedMetadataRecord *> *metadataBySourcePath;
 @property(nonatomic, strong) NSMutableDictionary<NSString *, FeedMetadataRecord *> *metadataByIdentifier;
 @property(nonatomic, strong) NSMutableDictionary<NSString *, NSString *> *sourceIdentityByPath;
+@property(nonatomic, strong) NSMutableDictionary<NSString *, FeedMetadataRecord *> *forcedBlockedMetadataBySourcePath;
 @property(nonatomic, strong) NSMapTable *sourcePathByNode;
 @property(nonatomic, strong) NSMapTable *nodeBySourcePath;
 @property(nonatomic) NSUInteger generation;
@@ -36,9 +37,9 @@ typedef id _Nullable (^FeedNodeBlock)(void);
 - (nullable NSIndexPath *)sourceIndexPathForContentView:(UIView *)contentView collectionView:(UICollectionView *)collectionView;
 - (void)finishFilteredReloadWithToken:(NSUInteger)token;
 - (void)invalidateMetadataForNode:(id)node;
+- (void)markMetadataAsBlocked:(nullable FeedMetadataRecord *)metadata;
 - (FeedCollectionSnapshot *)snapshotForCountRequestWithRetryCount:(NSUInteger)retryCount;
 - (nullable NSString *)sourceIdentifierAtIndexPath:(NSIndexPath *)indexPath collectionNode:(nullable id)collectionNode;
-- (BOOL)filtersShortsPager;
 - (BOOL)filteringEnabledForAdapter;
 @end
 
@@ -210,13 +211,8 @@ static id EmptyFeedNode(void) {
 
 @implementation FeedDataSourceAdapter
 
-- (BOOL)filtersShortsPager {
-    NSString *dataSourceClass = NSStringFromClass([self.dataSource class]).lowercaseString;
-    return [dataSourceClass containsString:@"scrollablepage"];
-}
-
 - (BOOL)filteringEnabledForAdapter {
-    return [Util filteringEnabled] && ![self filtersShortsPager];
+    return [Util filteringEnabled];
 }
 
 - (BOOL)filteringEnabled {
@@ -242,6 +238,7 @@ static id EmptyFeedNode(void) {
     adapter.metadataBySourcePath = [NSMutableDictionary dictionary];
     adapter.metadataByIdentifier = [NSMutableDictionary dictionary];
     adapter.sourceIdentityByPath = [NSMutableDictionary dictionary];
+    adapter.forcedBlockedMetadataBySourcePath = [NSMutableDictionary dictionary];
     adapter.sourcePathByNode = FeedNodeToPathMap();
     adapter.nodeBySourcePath = [NSMapTable strongToWeakObjectsMapTable];
     adapter.generation = FeedPreferencesGeneration();
@@ -380,6 +377,7 @@ static id EmptyFeedNode(void) {
             @synchronized (adapter) {
                 adapter.generation = generation;
             }
+            [adapter markMetadataAsBlocked:metadata];
             [adapter queueFilteredReload];
         }
     };
@@ -411,6 +409,7 @@ static id EmptyFeedNode(void) {
         [self.metadataBySourcePath removeAllObjects];
         [self.metadataByIdentifier removeAllObjects];
         [self.sourceIdentityByPath removeAllObjects];
+        [self.forcedBlockedMetadataBySourcePath removeAllObjects];
         [self.nodeBySourcePath removeAllObjects];
         [self.sourcePathByNode removeAllObjects];
         self.snapshot = nil;
@@ -596,10 +595,12 @@ static id EmptyFeedNode(void) {
         NSDictionary<NSString *, FeedMetadataRecord *> *cachedPathMetadata;
         NSDictionary<NSString *, FeedMetadataRecord *> *cachedIdentifierMetadata;
         NSDictionary<NSString *, NSString *> *cachedSourceIdentityByPath;
+        NSDictionary<NSString *, FeedMetadataRecord *> *forcedBlockedMetadata;
         @synchronized (self) {
             cachedPathMetadata = [self.metadataBySourcePath copy];
             cachedIdentifierMetadata = [self.metadataByIdentifier copy];
             cachedSourceIdentityByPath = [self.sourceIdentityByPath copy];
+            forcedBlockedMetadata = [self.forcedBlockedMetadataBySourcePath copy];
         }
         for (NSUInteger section = 0; section < counts.count; section++) {
             NSInteger sourceCount = counts[section].integerValue;
@@ -608,6 +609,8 @@ static id EmptyFeedNode(void) {
             for (NSInteger sourceItem = 0; sourceItem < sourceCount; sourceItem++) {
                 if (filteringEnabled) {
                     NSString *sourcePath = FeedSourcePathKeyForItem((NSInteger)section, sourceItem);
+                    if (forcedBlockedMetadata[sourcePath])
+                        continue;
                     FeedMetadataRecord *metadata = cachedPathMetadata[sourcePath];
                     NSString *identifier = cachedSourceIdentityByPath[sourcePath];
                     metadata = MergedFeedMetadata(metadata, cachedIdentifierMetadata[identifier]);
@@ -767,6 +770,22 @@ static id EmptyFeedNode(void) {
         }
     }
     [Util resetFeedVideoMetadataForNode:node];
+}
+
+- (void)markMetadataAsBlocked:(FeedMetadataRecord *)metadata {
+    if (!metadata) {
+        @synchronized (self) {
+            [self.forcedBlockedMetadataBySourcePath removeAllObjects];
+        }
+        return;
+    }
+    @synchronized (self) {
+        for (NSString *sourcePath in self.metadataBySourcePath) {
+            FeedMetadataRecord *candidate = self.metadataBySourcePath[sourcePath];
+            if (FeedMetadataMatches(candidate, metadata))
+                self.forcedBlockedMetadataBySourcePath[sourcePath] = candidate;
+        }
+    }
 }
 
 - (void)rememberMetadata:(FeedMetadataRecord *)metadata forNode:(id)node {
@@ -1189,8 +1208,6 @@ static id EmptyFeedNode(void) {
         UICollectionView *collectionView = self.collectionView;
         if (!collectionView)
             return;
-        if ([self filtersShortsPager])
-            return;
         NSUInteger reloadToken;
         @synchronized (self) {
             self.snapshot = nil;
@@ -1206,10 +1223,6 @@ static id EmptyFeedNode(void) {
                 ((void (*)(id, SEL))objc_msgSend)(self.dataSource, @selector(reloadData));
                 if ([self.dataSource respondsToSelector:@selector(notifyDidReloadData)])
                     ((void (*)(id, SEL))objc_msgSend)(self.dataSource, @selector(notifyDidReloadData));
-                if ([self.dataSource respondsToSelector:@selector(resetContent)])
-                    ((void (*)(id, SEL))objc_msgSend)(self.dataSource, @selector(resetContent));
-                finishReload();
-                return;
             }
             id collectionNode = [self collectionNodeObject];
             if ([collectionNode respondsToSelector:@selector(reloadDataWithCompletion:)])
@@ -1219,8 +1232,10 @@ static id EmptyFeedNode(void) {
             else if ([collectionNode respondsToSelector:@selector(reloadData)]) {
                 [collectionNode reloadData];
                 finishReload();
-            } else {
+            } else if ([collectionView respondsToSelector:@selector(reloadData)]) {
                 [collectionView reloadData];
+                finishReload();
+            } else {
                 finishReload();
             }
         } @catch (__unused NSException *exception) {
@@ -1254,6 +1269,7 @@ static id EmptyFeedNode(void) {
             [self.sourcePathByNode removeAllObjects];
             [self.nodeBySourcePath removeAllObjects];
             [self.sourceIdentityByPath removeAllObjects];
+            [self.forcedBlockedMetadataBySourcePath removeAllObjects];
         }
     }
     for (id node in nodesToInvalidate)

@@ -9,10 +9,13 @@ include $(THEOS)/makefiles/common.mk
 TWEAK_NAME = Gonerino
 
 $(TWEAK_NAME)_FILES = $(shell find sources -name "*.x*" -o -name "*.m*")
-$(TWEAK_NAME)_FRAMEWORKS = UIKit Foundation UniformTypeIdentifiers MobileCoreServices
+$(TWEAK_NAME)_FRAMEWORKS = UIKit Foundation UserNotifications UniformTypeIdentifiers MobileCoreServices
 $(TWEAK_NAME)_CFLAGS = -fobjc-arc -DPACKAGE_VERSION='@"$(shell grep '^Version:' control | cut -d' ' -f2)"' -Iheaders
 
 include $(THEOS_MAKE_PATH)/tweak.mk
+
+before-all::
+	$(ECHO_NOTHING)python3 scripts/generate_changelog_header.py$(ECHO_END)
 
 before-stage::
 	$(ECHO_NOTHING)find . -name ".DS_Store" -type f -delete$(ECHO_END)

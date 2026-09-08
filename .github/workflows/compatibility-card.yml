@@ -1,0 +1,30 @@
+name: Update compatibility card
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.x"
+      - run: python3 scripts/generate-compatibility-card.py
+      - name: Commit compatibility card
+        run: |
+          if git diff --quiet -- .github/compatibility.svg; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .github/compatibility.svg
+          git commit -m "docs: refresh compatibility card [skip ci]"
+          git push origin HEAD:main

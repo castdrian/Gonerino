@@ -6,6 +6,7 @@ A YouTube tweak that allows you to block specific channels and automatically rem
 
 - [apt repo](https://repo.adriancastro.dev)
 - [github release](https://github.com/castdrian/Gonerino/releases/latest)
+- [changelog](CHANGELOG.md)
 
 ## Features
 
@@ -15,22 +16,13 @@ A YouTube tweak that allows you to block specific channels and automatically rem
 - Automatically removes blocked videos from the home and search feeds
 - Block "People also watched this video" and "You might also like this" suggestions
 
+## Screenshots
+
+<p align="center"><img src="assets/screenshots.svg" alt="Gonerino custom settings, long-form controls, and Shorts controls" width="100%"></p>
+
 ## Compatibility
 
-| Category | Version/Method | Status |
-|----------|---------------|---------|
-| **iOS Version** | 26.0.1+ | ✅ |
-| **YouTube Version** | 21.35.3+ | ✅ |
-| **Loading Methods** | ElleKit (palera1n) (Dopamine) (Sideloaded) | ✅ |
-| | TrollFools (TrollStore) | ⚠️ |
-| | CydiaSubstrate | ❓ |
-| | TweakLoader (LiveContainer) | ⚠️ |
-
-### Status Legend
-✅ - Fully Working\
-⚠️ - Partially Working/Known Issues\
-❓ - Not Tested\
-❌ - Not Working
+![Gonerino compatibility](.github/compatibility.svg)
 
 ## Contributors
 
