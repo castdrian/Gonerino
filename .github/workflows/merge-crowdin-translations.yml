@@ -22,18 +22,30 @@ jobs:
       github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 1
+          persist-credentials: false
       - name: Validate changed files
         env:
           GH_TOKEN: ${{ secrets.REPO_ACCESS_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           REPOSITORY: ${{ github.repository }}
         run: |
+          source_file="layout/Library/Application Support/Gonerino.bundle/en.lproj/Localizable.strings"
           files=$(gh api --paginate "repos/${REPOSITORY}/pulls/${PR_NUMBER}/files" --jq '.[].filename')
           test -n "$files"
           while IFS= read -r file; do
             case "$file" in
-              "layout/Library/Application Support/Gonerino.bundle/"*.lproj.lproj/Localizable.strings) exit 1 ;;
-              "layout/Library/Application Support/Gonerino.bundle/"*.lproj/Localizable.strings) ;;
+              "layout/Library/Application Support/Gonerino.bundle/de.lproj/Localizable.strings" | \
+              "layout/Library/Application Support/Gonerino.bundle/es.lproj/Localizable.strings" | \
+              "layout/Library/Application Support/Gonerino.bundle/tr.lproj/Localizable.strings")
+                test -f "$file"
+                if cmp -s "$source_file" "$file"; then
+                  exit 1
+                fi
+                ;;
               *) exit 1 ;;
             esac
           done <<< "$files"
