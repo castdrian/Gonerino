@@ -24,6 +24,10 @@ A YouTube tweak that allows you to block specific channels and automatically rem
 
 ![Gonerino compatibility](.github/compatibility.svg)
 
+## Translations
+
+[![Crowdin](https://badges.crowdin.net/gonerino/localized.svg)](https://crowdin.com/project/gonerino)
+
 ## Contributors
 
 [![Contributors](https://contrib.rocks/image?repo=castdrian/Gonerino)](https://github.com/castdrian/Gonerino/graphs/contributors)
