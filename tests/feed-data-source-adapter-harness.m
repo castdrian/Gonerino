@@ -2,6 +2,7 @@
 #import <UIKit/UIKit.h>
 
 #import "FeedDataSourceAdapter.h"
+#import "ReelSequenceFilter.h"
 #import "Util.h"
 
 NSString * const FeedFilterStateDidChangeNotification = @"FeedFilterStateDidChangeNotification";
@@ -27,7 +28,6 @@ NSString * const FeedFilterStateDidChangeNotification = @"FeedFilterStateDidChan
 
 - (void)reloadData {
     self.reloadCalls += 1;
-    [self.collectionView setContentOffset:CGPointZero];
 }
 
 @end
@@ -331,7 +331,37 @@ int main(void) {
         Require([directAdapter collectionView:(UICollectionView *)directCollectionView numberOfItemsInSection:0] == 2,
                 @"direct collection-view blocked snapshot");
 
-        NSLog(@"PASS: adapter snapshot, index translation, zero-node fallback, and stale block checks");
+        MetadataByNode()[NodeKey(first)] = Metadata(first.identifier);
+        MetadataByNode()[NodeKey(blocked)] = Metadata(blocked.identifier);
+        MetadataByNode()[NodeKey(third)] = Metadata(third.identifier);
+        FakeNode *unknown = [FakeNode new];
+        unknown.identifier = @"unknown12345";
+        FakeDataSource *reelDataSource = [FakeDataSource new];
+        NSOrderedSet *sourceReels = [NSOrderedSet orderedSetWithObjects:first, blocked, third, unknown, nil];
+        NSOrderedSet *filteredReels = [ReelSequenceFilter filteredReelsForDataSource:reelDataSource sourceReels:sourceReels];
+        Require(filteredReels.count == 3, @"shorts snapshot count");
+        Require([filteredReels objectAtIndex:0] == first && [filteredReels objectAtIndex:1] == third &&
+                [filteredReels objectAtIndex:2] == unknown, @"shorts snapshot order");
+        Require([ReelSequenceFilter sourceIndexForVisibleIndex:1 dataSource:reelDataSource] == 2,
+                @"shorts visible index did not translate to source index");
+        Require([ReelSequenceFilter visibleIndexForSourceIndex:2 dataSource:reelDataSource] == 1,
+                @"shorts source index did not translate to visible index");
+        Require([ReelSequenceFilter visibleIndexForObject:blocked dataSource:reelDataSource] == NSNotFound,
+                @"blocked shorts object remained addressable");
+        Require([ReelSequenceFilter visibleIndexForVideoID:third.identifier dataSource:reelDataSource] == 1,
+                @"shorts video identifier did not translate to visible index");
+        NSSet *sourceVideoIDs = [NSSet setWithObjects:first.identifier, blocked.identifier, third.identifier, nil];
+        NSSet *filteredVideoIDs = [ReelSequenceFilter filteredVideoIDsForDataSource:reelDataSource
+                                                                       sourceVideoIDs:sourceVideoIDs];
+        Require([filteredVideoIDs containsObject:first.identifier] && ![filteredVideoIDs containsObject:blocked.identifier],
+                @"shorts video identifier filtering");
+        [BlockedIdentifiers() addObject:third.identifier];
+        [ReelSequenceFilter invalidateDataSource:reelDataSource];
+        filteredReels = [ReelSequenceFilter filteredReelsForDataSource:reelDataSource sourceReels:sourceReels];
+        Require(filteredReels.count == 2 && [filteredReels objectAtIndex:1] == unknown,
+                @"shorts preference invalidation did not rebuild the snapshot");
+
+        NSLog(@"PASS: adapter snapshot, index translation, zero-node fallback, stale block checks, and reel sequence filtering");
     }
     return 0;
 }

@@ -229,17 +229,34 @@ func checkDeviceStatus(path, expectedID string) error {
 	if err := json.Unmarshal(contents, &value); err != nil {
 		return fmt.Errorf("device status was not JSON: %w", err)
 	}
-	if identifier, ok := findValue(value, "id"); !ok || identifier != expectedID {
+	device, ok := statusDeviceValue(value)
+	if !ok {
+		return errors.New("device status did not contain a device record")
+	}
+	if identifier, ok := device["id"]; !ok || identifier != expectedID {
 		return fmt.Errorf("device status did not match device %s", expectedID)
 	}
-	if product, ok := findValue(value, "productType"); !ok || product != "iPhone12,8" {
+	if product, ok := device["productType"]; !ok || product != "iPhone12,8" {
 		return errors.New("pinned device is not the iPhone SE")
 	}
-	bridge, ok := findValue(value, "bridge")
+	bridge, ok := device["bridge"]
 	if !ok || bridge != true {
 		return errors.New("pinned device bridge is unavailable")
 	}
 	return nil
+}
+
+func statusDeviceValue(value any) (map[string]any, bool) {
+	root, ok := value.(map[string]any)
+	if !ok {
+		return nil, false
+	}
+	data, ok := root["data"].(map[string]any)
+	if !ok {
+		return nil, false
+	}
+	device, ok := data["device"].(map[string]any)
+	return device, ok
 }
 
 type metadataFixture struct {
@@ -1765,6 +1782,7 @@ func testFeedAdapterSimulator(args []string) error {
 		"-I" + filepath.Join(root, "headers"),
 		filepath.Join(root, "tests", "feed-data-source-adapter-harness.m"),
 		filepath.Join(root, "sources", "FeedDataSourceAdapter.m"),
+		filepath.Join(root, "sources", "ReelSequenceFilter.m"),
 		"-framework", "UIKit",
 		"-framework", "CoreGraphics",
 		"-o", binaryPath,

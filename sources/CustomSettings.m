@@ -388,6 +388,11 @@ static NSAttributedString *RenderedGonerinoChangelog(void) {
 
 - (void)viewWillAppear:(BOOL)animated {
     [super viewWillAppear:animated];
+    if (UIDevice.currentDevice.userInterfaceIdiom == UIUserInterfaceIdiomPad) {
+        self.navigationItem.hidesBackButton = YES;
+        self.navigationItem.leftBarButtonItem = nil;
+        self.navigationItem.backBarButtonItem = nil;
+    }
     RequestPortraitOrientation(self);
     [self.tableView reloadData];
 }

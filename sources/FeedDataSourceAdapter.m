@@ -19,17 +19,6 @@ typedef id _Nullable (^FeedNodeBlock)(void);
 @implementation FeedCollectionSnapshot
 @end
 
-@interface FeedReloadAnchor : NSObject
-@property(nonatomic) CGPoint contentOffset;
-@property(nonatomic, copy, nullable) NSString *identifier;
-@property(nonatomic, strong, nullable) NSIndexPath *sourceIndexPath;
-@property(nonatomic) CGFloat visibleOffset;
-@property(nonatomic) BOOL paged;
-@end
-
-@implementation FeedReloadAnchor
-@end
-
 @interface FeedDataSourceAdapter ()
 @property(nonatomic, weak) UICollectionView *collectionView;
 @property(nonatomic, weak) id dataSource;
@@ -45,7 +34,6 @@ typedef id _Nullable (^FeedNodeBlock)(void);
 @property(nonatomic) BOOL reloadQueued;
 @property(nonatomic) BOOL performingFilteredReload;
 @property(nonatomic) NSUInteger filteredReloadToken;
-@property(nonatomic, strong, nullable) FeedReloadAnchor *reloadAnchor;
 - (nullable NSIndexPath *)sourceIndexPathForContentView:(UIView *)contentView collectionView:(UICollectionView *)collectionView;
 - (void)finishFilteredReloadWithToken:(NSUInteger)token;
 - (void)invalidateMetadataForNode:(id)node;
@@ -54,9 +42,6 @@ typedef id _Nullable (^FeedNodeBlock)(void);
 - (nullable NSString *)sourceIdentifierAtIndexPath:(NSIndexPath *)indexPath collectionNode:(nullable id)collectionNode;
 - (nullable id)collectionNodeObject;
 - (BOOL)filteringEnabledForAdapter;
-- (nullable FeedReloadAnchor *)captureReloadAnchor;
-- (void)restoreReloadAnchor:(nullable FeedReloadAnchor *)anchor;
-- (nullable NSIndexPath *)sourceIndexPathForIdentifier:(NSString *)identifier;
 @end
 
 static NSHashTable<FeedDataSourceAdapter *> *FeedAdapters(void) {
@@ -76,13 +61,6 @@ static NSObject *FeedPreferencesGenerationLock(void) {
         lock = [NSObject new];
     });
     return lock;
-}
-
-static BOOL FeedAdapterLooksLikeShorts(FeedDataSourceAdapter *adapter) {
-    NSString *collectionClass = NSStringFromClass([adapter.collectionView class]).lowercaseString;
-    NSString *dataSourceClass = NSStringFromClass([adapter.dataSource class]).lowercaseString;
-    NSString *classes = [NSString stringWithFormat:@"%@ %@", collectionClass, dataSourceClass];
-    return adapter.collectionView.isPagingEnabled || [classes containsString:@"short"] || [classes containsString:@"reel"] || [classes containsString:@"scrollablepage"];
 }
 
 static NSUInteger FeedPreferencesGeneration(void) {
@@ -1222,98 +1200,6 @@ static id EmptyFeedNode(void) {
     return metadata;
 }
 
-- (FeedReloadAnchor *)captureReloadAnchor {
-    UICollectionView *collectionView = self.collectionView;
-    if (!collectionView)
-        return nil;
-
-    FeedReloadAnchor *anchor = [FeedReloadAnchor new];
-    anchor.paged = FeedAdapterLooksLikeShorts(self);
-    if ([collectionView respondsToSelector:@selector(contentOffset)])
-        anchor.contentOffset = collectionView.contentOffset;
-    if (![collectionView respondsToSelector:@selector(indexPathsForVisibleItems)])
-        return anchor;
-
-    NSArray<NSIndexPath *> *visibleIndexPaths = [collectionView.indexPathsForVisibleItems sortedArrayUsingComparator:^NSComparisonResult(NSIndexPath *first, NSIndexPath *second) {
-        if (first.section != second.section)
-            return first.section < second.section ? NSOrderedAscending : NSOrderedDescending;
-        if (first.item == second.item)
-            return NSOrderedSame;
-        return first.item < second.item ? NSOrderedAscending : NSOrderedDescending;
-    }];
-    for (NSIndexPath *visibleIndexPath in visibleIndexPaths) {
-        NSIndexPath *sourceIndexPath = [self sourceIndexPathForVisibleIndexPath:visibleIndexPath];
-        if (!sourceIndexPath)
-            continue;
-        NSString *identifier = [self sourceIdentifierAtIndexPath:sourceIndexPath];
-        FeedMetadataRecord *metadata;
-        @synchronized (self) {
-            metadata = self.metadataBySourcePath[FeedSourcePathKey(sourceIndexPath)];
-        }
-        if (identifier.length == 0)
-            identifier = metadata.videoID;
-        if (identifier.length == 0) {
-            if (!anchor.sourceIndexPath)
-                anchor.sourceIndexPath = sourceIndexPath;
-            continue;
-        }
-
-        if ([Util nodeContainsBlockedVideo:[NSNull null] metadata:metadata])
-            continue;
-        anchor.identifier = identifier;
-        anchor.sourceIndexPath = sourceIndexPath;
-        UICollectionViewLayoutAttributes *attributes = [collectionView layoutAttributesForItemAtIndexPath:visibleIndexPath];
-        if (attributes)
-            anchor.visibleOffset = collectionView.contentOffset.y + collectionView.adjustedContentInset.top - attributes.frame.origin.y;
-        break;
-    }
-    return anchor;
-}
-
-- (void)restoreReloadAnchor:(FeedReloadAnchor *)anchor {
-    UICollectionView *collectionView = self.collectionView;
-    if (!collectionView || !anchor)
-        return;
-    if ([collectionView respondsToSelector:@selector(layoutIfNeeded)])
-        [collectionView layoutIfNeeded];
-    CGPoint contentOffset = anchor.contentOffset;
-    NSIndexPath *sourceIndexPath = anchor.identifier.length > 0 ? [self sourceIndexPathForIdentifier:anchor.identifier] : nil;
-    NSIndexPath *visibleIndexPath = sourceIndexPath ? [self visibleIndexPathForSourceIndexPath:sourceIndexPath] : nil;
-    UICollectionViewLayoutAttributes *attributes = visibleIndexPath ? [collectionView layoutAttributesForItemAtIndexPath:visibleIndexPath] : nil;
-    if (attributes && anchor.identifier.length > 0 && !anchor.paged)
-        contentOffset.y = attributes.frame.origin.y + anchor.visibleOffset - collectionView.adjustedContentInset.top;
-    if ([collectionView respondsToSelector:@selector(setContentOffset:)])
-        collectionView.contentOffset = contentOffset;
-}
-
-- (NSIndexPath *)sourceIndexPathForIdentifier:(NSString *)identifier {
-    if (identifier.length == 0)
-        return nil;
-    id collectionNode = [self collectionNodeObject];
-    if ([self.dataSource respondsToSelector:@selector(indexPathForElementWithModelIdentifier:inNode:)]) {
-        @try {
-            NSIndexPath *sourceIndexPath = ((id (*)(id, SEL, id, id))objc_msgSend)(self.dataSource,
-                                                                                   @selector(indexPathForElementWithModelIdentifier:inNode:),
-                                                                                   identifier,
-                                                                                   collectionNode);
-            if (sourceIndexPath)
-                return sourceIndexPath;
-        } @catch (__unused NSException *exception) {
-        }
-    }
-    @synchronized (self) {
-        for (NSString *sourcePath in self.sourceIdentityByPath) {
-            if (![self.sourceIdentityByPath[sourcePath] isEqualToString:identifier])
-                continue;
-            NSArray<NSString *> *components = [sourcePath componentsSeparatedByString:@":"];
-            if (components.count != 2)
-                continue;
-            return [NSIndexPath indexPathForItem:components[1].integerValue inSection:components[0].integerValue];
-        }
-    }
-    return nil;
-}
-
 - (void)queueFilteredReload {
     if (!NSThread.isMainThread) {
         dispatch_async(dispatch_get_main_queue(), ^{
@@ -1330,12 +1216,10 @@ static id EmptyFeedNode(void) {
         if (!collectionView)
             return;
         NSUInteger reloadToken;
-        FeedReloadAnchor *reloadAnchor = [self captureReloadAnchor];
         @synchronized (self) {
             self.snapshot = nil;
             reloadToken = ++self.filteredReloadToken;
             self.performingFilteredReload = YES;
-            self.reloadAnchor = reloadAnchor;
         }
         __weak FeedDataSourceAdapter *weakSelf = self;
         void (^finishReload)(void) = ^{
@@ -1344,13 +1228,6 @@ static id EmptyFeedNode(void) {
             });
         };
         @try {
-            if (FeedAdapterLooksLikeShorts(self) && [self.dataSource respondsToSelector:@selector(reloadData)]) {
-                ((void (*)(id, SEL))objc_msgSend)(self.dataSource, @selector(reloadData));
-                if ([self.dataSource respondsToSelector:@selector(notifyDidReloadData)])
-                    ((void (*)(id, SEL))objc_msgSend)(self.dataSource, @selector(notifyDidReloadData));
-                finishReload();
-                return;
-            }
             id collectionNode = [self collectionNodeObject];
             if ([collectionNode respondsToSelector:@selector(reloadDataWithCompletion:)]) {
                 ((void (*)(id, SEL, id))objc_msgSend)(collectionNode,
@@ -1378,17 +1255,11 @@ static id EmptyFeedNode(void) {
         });
         return;
     }
-    FeedReloadAnchor *reloadAnchor = nil;
     @synchronized (self) {
         if (self.filteredReloadToken == token) {
             self.performingFilteredReload = NO;
-            reloadAnchor = self.reloadAnchor;
-            self.reloadAnchor = nil;
         }
     }
-    dispatch_async(dispatch_get_main_queue(), ^{
-        [self restoreReloadAnchor:reloadAnchor];
-    });
 }
 
 - (void)upstreamWillReload {

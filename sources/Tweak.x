@@ -1,6 +1,7 @@
 #import "Tweak.h"
 #import "FeedDataSourceAdapter.h"
 #import "Localization.h"
+#import "ReelSequenceFilter.h"
 #import "UpdateChecker.h"
 #import <objc/runtime.h>
 #import <objc/message.h>
@@ -17,8 +18,21 @@ static void *ActionSheetBlockingActionsKey = &ActionSheetBlockingActionsKey;
 static void *ShortsResponseMetadataKey = &ShortsResponseMetadataKey;
 static void *BottomSheetBlockingActionsKey = &BottomSheetBlockingActionsKey;
 static void *ActionMetadataKey = &ActionMetadataKey;
+static void *MDCBlockingActionsKey = &MDCBlockingActionsKey;
 static NSDictionary *CachedActionVideoInfo(id sheet, UIView *sourceView, id sourceNode);
 static NSDictionary *FreshActionVideoInfo(id sheet, UIView *sourceView, id sourceNode);
+static void AddBlockingActions(id sheet, YTActionSheetAction *originalAction);
+static void InsertStoredBlockingActions(id sheet);
+
+static BOOL IsShortsDataSourceOrView(id view, id dataSource) {
+    Class reelDataSourceClass = NSClassFromString(@"YTReelDataSource");
+    if (reelDataSourceClass && [dataSource isKindOfClass:reelDataSourceClass])
+        return YES;
+    NSString *viewClass = NSStringFromClass([view class]).lowercaseString;
+    NSString *dataSourceClass = NSStringFromClass([dataSource class]).lowercaseString;
+    NSString *classes = [NSString stringWithFormat:@"%@ %@", viewClass, dataSourceClass];
+    return [classes containsString:@"short"] || [classes containsString:@"reel"] || [classes containsString:@"scrollablepage"];
+}
 
 static void InstallFeedDataSourceAdapter(UICollectionView *collectionView, id dataSource) {
     FeedDataSourceAdapter *existingAdapter = objc_getAssociatedObject(collectionView, FeedDataSourceAdapterKey);
@@ -108,7 +122,7 @@ static UICollectionView *ShortsCollectionViewForPlayer(id player) {
     return [collectionView isKindOfClass:[UICollectionView class]] ? collectionView : nil;
 }
 
-static void RememberShortsMetadataForPlayer(id player, FeedMetadataRecord *metadata, BOOL updateCollection) {
+static void RememberShortsMetadataForPlayer(id player, FeedMetadataRecord *metadata) {
     if (!player || metadata.dictionaryRepresentation.count == 0)
         return;
 
@@ -119,11 +133,6 @@ static void RememberShortsMetadataForPlayer(id player, FeedMetadataRecord *metad
     if (contentView)
         [Util rememberFeedVideoMetadata:metadata forNode:contentView];
 
-    UICollectionView *collectionView = ShortsCollectionViewForPlayer(player);
-    if (collectionView && updateCollection) {
-        if ([contentView isKindOfClass:[UIView class]])
-            [FeedDataSourceAdapter rememberMetadata:metadata forContentView:(UIView *)contentView inCollectionView:collectionView];
-    }
 }
 
 static void CaptureCurrentShortsMetadata(id player) {
@@ -145,7 +154,7 @@ static void CaptureCurrentShortsMetadata(id player) {
     if (metadata.dictionaryRepresentation.count == 0)
         return;
 
-    RememberShortsMetadataForPlayer(player, metadata, YES);
+    RememberShortsMetadataForPlayer(player, metadata);
     if (model)
         objc_setAssociatedObject(player, ShortsMetadataModelKey, model, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 }
@@ -358,7 +367,7 @@ static void RememberActionMetadata(NSDictionary *metadata, UIView *sourceView, i
     if (!shortsPlayer && !sourceView)
         shortsPlayer = CurrentShortsPlayer;
     if (shortsPlayer)
-        RememberShortsMetadataForPlayer(shortsPlayer, actionMetadata, NO);
+        RememberShortsMetadataForPlayer(shortsPlayer, actionMetadata);
     if (!sourceNode && sourceView)
         [Util rememberFeedVideoMetadata:actionMetadata forNode:sourceView];
 }
@@ -411,33 +420,76 @@ static NSArray *MenuBlockingActions(NSDictionary *metadata,
     return @[blockChannelAction, blockVideoAction];
 }
 
-static NSArray *AppendCurrentShortsBlockingActions(id sheet, NSArray *actions) {
+static NSArray *MDCBlockingActionsForSheet(id sheet, NSArray *actions) {
     if (!CurrentShortsPlayer || ![actions isKindOfClass:[NSArray class]] || actions.count == 0)
         return actions;
+    if (objc_getAssociatedObject(sheet, MDCBlockingActionsKey))
+        return [objc_getAssociatedObject(sheet, MDCBlockingActionsKey) arrayByAddingObjectsFromArray:actions];
 
     UIView *sourceView = ActionSheetSourceView(sheet);
     if (!sourceView && [CurrentShortsPlayer isKindOfClass:[UIViewController class]])
         sourceView = ((UIViewController *)CurrentShortsPlayer).view;
     NSDictionary *metadata = CachedActionVideoInfo(sheet, sourceView, nil);
-    NSArray *blockingActions = MenuBlockingActions(metadata, actions.firstObject, sourceView);
-    if (blockingActions.count == 0)
+    if (![metadata[@"id"] isKindOfClass:[NSString class]] ||
+        ![metadata[@"channel"] isKindOfClass:[NSString class]] ||
+        [(NSString *)metadata[@"id"] length] == 0 ||
+        [(NSString *)metadata[@"channel"] length] == 0)
         return actions;
 
-    NSMutableArray *result = [NSMutableArray arrayWithArray:blockingActions];
-    [result addObjectsFromArray:actions];
-    for (YTActionSheetAction *action in blockingActions) {
-        NSString *title = action.title.lowercaseString;
-        BOOL alreadyPresent = NO;
-        for (YTActionSheetAction *existingAction in result) {
-            if ([existingAction.title.lowercaseString isEqualToString:title]) {
-                alreadyPresent = YES;
-                break;
-            }
-        }
-        if (!alreadyPresent)
-            [result addObject:action];
-    }
-    return result.copy;
+    Class actionClass = NSClassFromString(@"MDCActionSheetAction");
+    if (!actionClass)
+        return actions;
+
+    UIImage *originalImage = ExplicitObjectValue(actions.firstObject, @"image");
+    CGSize iconSize = originalImage.size;
+    if (iconSize.width <= 0.0 || iconSize.height <= 0.0)
+        iconSize = CGSizeMake(24.0, 24.0);
+    NSString *videoID = [metadata[@"id"] copy];
+    NSString *videoTitle = [Util isUsableVideoTitle:metadata[@"title"]] ? [metadata[@"title"] copy] : @"";
+    NSString *channel = [metadata[@"channel"] copy];
+    __weak UIView *weakSourceView = sourceView;
+    __weak id weakSheet = sheet;
+
+    void (^channelHandler)(id) = ^(__unused id action) {
+        [[ChannelManager sharedInstance] addBlockedChannel:channel];
+        SendToast(weakSourceView,
+                  [NSString stringWithFormat:LocalizedString(@"Blocked %@"), channel]);
+        id strongSheet = weakSheet;
+        if ([strongSheet respondsToSelector:@selector(dismissViewControllerAnimated:completion:)])
+            [strongSheet dismissViewControllerAnimated:YES completion:nil];
+    };
+    void (^videoHandler)(id) = ^(__unused id action) {
+        [[VideoManager sharedInstance] addBlockedVideo:videoID title:videoTitle channel:channel];
+        SendToast(weakSourceView,
+                  [NSString stringWithFormat:LocalizedString(@"Blocked video: %@"),
+                                             videoTitle.length > 0 ? videoTitle : videoID]);
+        id strongSheet = weakSheet;
+        if ([strongSheet respondsToSelector:@selector(dismissViewControllerAnimated:completion:)])
+            [strongSheet dismissViewControllerAnimated:YES completion:nil];
+    };
+    SEL initializer = NSSelectorFromString(@"initWithTitle:image:handler:");
+    id blockChannelAction = ((id (*)(id, SEL, id, id, id))objc_msgSend)(
+        [actionClass alloc],
+        initializer,
+        LocalizedString(@"Block channel"),
+        [Util createBlockChannelIconWithSize:iconSize],
+        channelHandler);
+    id blockVideoAction = ((id (*)(id, SEL, id, id, id))objc_msgSend)(
+        [actionClass alloc],
+        initializer,
+        LocalizedString(@"Block video"),
+        [Util createBlockVideoIconWithSize:iconSize],
+        videoHandler);
+    if (!blockChannelAction || !blockVideoAction)
+        return actions;
+
+    if ([blockChannelAction respondsToSelector:@selector(setAccessibilityIdentifier:)])
+        [blockChannelAction setAccessibilityIdentifier:@"GonerinoBlockChannel"];
+    if ([blockVideoAction respondsToSelector:@selector(setAccessibilityIdentifier:)])
+        [blockVideoAction setAccessibilityIdentifier:@"GonerinoBlockVideo"];
+    NSArray *blockingActions = @[blockChannelAction, blockVideoAction];
+    objc_setAssociatedObject(sheet, MDCBlockingActionsKey, blockingActions, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    return [blockingActions arrayByAddingObjectsFromArray:actions];
 }
 
 static void InjectShortsBottomSheetActions(id contentViewController) {
@@ -501,6 +553,51 @@ static NSArray *MenuActionsWithBlockingActions(NSArray *actions, UIView *sourceV
     NSArray *blockingActions = MenuBlockingActions(metadata, actions.firstObject, sourceView);
     NSArray *result = blockingActions.count > 0 ? [blockingActions arrayByAddingObjectsFromArray:actions] : actions;
     return result;
+}
+
+static void PrepareMenuControllerSheet(id menuController, UIView *sourceView) {
+    id sheet = ExplicitObjectValue(menuController, @"actionSheetController");
+    if (!sheet)
+        return;
+    if (sourceView)
+        objc_setAssociatedObject(sheet, ActionSheetSourceViewKey, sourceView, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    NSDictionary *metadata = CachedActionVideoInfo(sheet, sourceView, nil);
+    if (metadata.count > 0)
+        objc_setAssociatedObject(sheet, ActionMetadataKey, metadata, OBJC_ASSOCIATION_COPY_NONATOMIC);
+    NSArray *actions = [sheet respondsToSelector:@selector(actions)] ? [[sheet actions] copy] : @[];
+    if (actions.count > 0 && [sheet respondsToSelector:@selector(addAction:)])
+        AddBlockingActions(sheet, actions.firstObject);
+    InsertStoredBlockingActions(sheet);
+}
+
+static void InsertStoredBlockingActions(id sheet) {
+    NSMutableArray *storedActions = DirectObjectIvar(sheet, @"actions");
+    NSArray *blockingActions = objc_getAssociatedObject(sheet, ActionSheetBlockingActionsKey);
+    if (![storedActions isKindOfClass:[NSMutableArray class]] || blockingActions.count == 0)
+        return;
+
+    for (id action in blockingActions) {
+        if ([storedActions containsObject:action])
+            return;
+    }
+    for (id action in [blockingActions reverseObjectEnumerator])
+        [storedActions insertObject:action atIndex:0];
+    if ([sheet respondsToSelector:@selector(relayoutActionSheet)])
+        [sheet performSelector:@selector(relayoutActionSheet)];
+}
+
+static void *ScrollablePageDataSourceKey = &ScrollablePageDataSourceKey;
+static void *RootReelDataSourceKey = &RootReelDataSourceKey;
+
+static id ScrollablePageReelDataSource(id adapter) {
+    id dataSource = objc_getAssociatedObject(adapter, ScrollablePageDataSourceKey);
+    Class reelDataSourceClass = NSClassFromString(@"YTReelDataSource");
+    if (reelDataSourceClass && [dataSource isKindOfClass:reelDataSourceClass])
+        return dataSource;
+    id nestedDataSource = ExplicitObjectValue(dataSource, @"reelsDataSource") ?: objc_getAssociatedObject(dataSource, RootReelDataSourceKey);
+    if (reelDataSourceClass && [nestedDataSource isKindOfClass:reelDataSourceClass])
+        return nestedDataSource;
+    return nil;
 }
 
 static NSDictionary *CachedActionVideoInfo(id sheet, UIView *sourceView, id sourceNode) {
@@ -739,8 +836,14 @@ static NSArray *ActionsWithBlockingActions(id sheet, NSArray *actions) {
     if (blockingActions.count == 0 && actions.count > 0)
         AddBlockingActions(sheet, actions.firstObject);
     blockingActions = objc_getAssociatedObject(sheet, ActionSheetBlockingActionsKey);
-    NSArray *result = blockingActions.count > 0 ? [blockingActions arrayByAddingObjectsFromArray:actions] : actions;
-    return AppendCurrentShortsBlockingActions(sheet, result);
+    if (blockingActions.count == 0)
+        return actions;
+    NSMutableArray *result = [actions mutableCopy];
+    for (YTActionSheetAction *action in [blockingActions reverseObjectEnumerator]) {
+        if (![result containsObject:action])
+            [result insertObject:action atIndex:0];
+    }
+    return result.copy;
 }
 
 static UICollectionViewCell *FeedCellForSourceView(UIView *sourceView) {
@@ -775,6 +878,10 @@ static UICollectionViewCell *FeedCellForSourceView(UIView *sourceView) {
 }
 
 - (void)setAsyncDataSource:(id)dataSource {
+    if (IsShortsDataSourceOrView(self, dataSource)) {
+        %orig(dataSource);
+        return;
+    }
     if (dataSource && ![FeedDataSourceAdapter isAdapter:dataSource])
         InstallFeedDataSourceAdapter((UICollectionView *)self, dataSource);
     id adaptedDataSource = dataSource ? (objc_getAssociatedObject(self, FeedDataSourceAdapterKey) ?: dataSource) : nil;
@@ -791,6 +898,10 @@ static UICollectionViewCell *FeedCellForSourceView(UIView *sourceView) {
 %hook YTAsyncCollectionView
 
 - (void)setAsyncDataSource:(id)dataSource {
+    if (IsShortsDataSourceOrView(self, dataSource)) {
+        %orig(dataSource);
+        return;
+    }
     if (dataSource && ![FeedDataSourceAdapter isAdapter:dataSource])
         InstallFeedDataSourceAdapter((UICollectionView *)self, dataSource);
     id adaptedDataSource = dataSource ? (objc_getAssociatedObject(self, FeedDataSourceAdapterKey) ?: dataSource) : nil;
@@ -809,6 +920,200 @@ static UICollectionViewCell *FeedCellForSourceView(UIView *sourceView) {
 - (void)reloadDataWithCompletion:(void (^)(void))completion {
     PrepareCollectionNodeForReload(self);
     %orig(completion);
+}
+
+%end
+
+%hook YTReelDataSource
+
+- (NSOrderedSet *)reels {
+    NSOrderedSet *sourceReels = %orig;
+    NSOrderedSet *result = [ReelSequenceFilter filteredReelsForDataSource:self sourceReels:sourceReels];
+    return result;
+}
+
+- (NSSet *)reelVideoIDs {
+    NSSet *sourceVideoIDs = %orig;
+    return [ReelSequenceFilter filteredVideoIDsForDataSource:self sourceVideoIDs:sourceVideoIDs];
+}
+
+- (void)setReels:(NSOrderedSet *)reels {
+    %orig(reels);
+    [ReelSequenceFilter invalidateDataSource:self];
+}
+
+- (void)replaceModelAtIndex:(NSInteger)index withModel:(id)model {
+    %orig(index, model);
+    [ReelSequenceFilter invalidateDataSource:self];
+}
+
+- (NSUInteger)insertContentModel:(id)model atIndex:(NSInteger)index {
+    NSUInteger result = %orig(model, index);
+    [ReelSequenceFilter invalidateDataSource:self];
+    return result;
+}
+
+- (NSUInteger)insertEndpoint:(id)endpoint atIndex:(NSInteger)index {
+    NSUInteger result = %orig(endpoint, index);
+    [ReelSequenceFilter invalidateDataSource:self];
+    return result;
+}
+
+- (void)updateReelsDataSourceWithContentModels:(id)contentModels
+                                     prevItems:(id)prevItems
+                                     nextItems:(id)nextItems
+                                  refreshItems:(id)refreshItems {
+    %orig(contentModels, prevItems, nextItems, refreshItems);
+    [ReelSequenceFilter invalidateDataSource:self];
+}
+
+- (void)processReelWatchSequenceResponse:(id)response withModel:(id)model {
+    %orig(response, model);
+    [ReelSequenceFilter invalidateDataSource:self];
+}
+
+- (void)refreshModel {
+    [ReelSequenceFilter invalidateDataSource:self];
+    %orig;
+}
+
+- (void)softRefreshModel {
+    [ReelSequenceFilter invalidateDataSource:self];
+    %orig;
+}
+
+%end
+
+%hook YTReelSequenceViewController
+
+- (void)setReelsDataSource:(id)dataSource {
+    %orig(dataSource);
+    [ReelSequenceFilter registerSequenceController:self dataSource:dataSource];
+}
+
+- (id)reelsDataSource {
+    id dataSource = %orig;
+    [ReelSequenceFilter registerSequenceController:self dataSource:dataSource];
+    return dataSource;
+}
+
+- (void)viewDidLoad {
+    %orig;
+    [ReelSequenceFilter registerSequenceController:self dataSource:ExplicitObjectValue(self, @"reelsDataSource")];
+}
+
+- (void)refreshContent {
+    [ReelSequenceFilter registerSequenceController:self dataSource:ExplicitObjectValue(self, @"reelsDataSource")];
+    %orig;
+}
+
+- (id)pageViewController:(id)pageViewController viewControllerAtIndex:(NSInteger)index {
+    id dataSource = ExplicitObjectValue(self, @"reelsDataSource");
+    NSInteger sourceIndex = [ReelSequenceFilter sourceIndexForVisibleIndex:index dataSource:dataSource];
+    if (sourceIndex != NSNotFound)
+        index = sourceIndex;
+    return %orig(pageViewController, index);
+}
+
+- (id)playbackSequentialItemControllerForIndex:(NSUInteger)index {
+    id dataSource = ExplicitObjectValue(self, @"reelsDataSource");
+    NSInteger sourceIndex = [ReelSequenceFilter sourceIndexForVisibleIndex:(NSInteger)index dataSource:dataSource];
+    if (sourceIndex != NSNotFound)
+        index = (NSUInteger)sourceIndex;
+    return %orig(index);
+}
+
+%end
+
+%hook YTScrollablePageViewControllerPagedDataSourceAdapter
+
+- (instancetype)initWithPageViewController:(id)pageViewController dataSource:(id)dataSource {
+    id result = %orig(pageViewController, dataSource);
+    objc_setAssociatedObject(result, ScrollablePageDataSourceKey, dataSource, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    return result;
+}
+
+- (instancetype)initWithPageViewController:(id)pageViewController
+                                 dataSource:(id)dataSource
+                     cachedControllersCount:(NSInteger)cachedControllersCount {
+    id result = %orig(pageViewController, dataSource, cachedControllersCount);
+    objc_setAssociatedObject(result, ScrollablePageDataSourceKey, dataSource, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    return result;
+}
+
+- (id)pageViewController:(id)pageViewController viewControllerAtIndex:(NSInteger)index {
+    id reelDataSource = ScrollablePageReelDataSource(self);
+    NSInteger sourceIndex = [ReelSequenceFilter sourceIndexForVisibleIndex:index dataSource:reelDataSource];
+    if (sourceIndex != NSNotFound)
+        index = sourceIndex;
+    return %orig(pageViewController, index);
+}
+
+%end
+
+%hook YTScrollablePageViewControllerConfigurableAdapter
+
+- (instancetype)initWithPageViewController:(id)pageViewController
+                                 dataSource:(id)dataSource
+                       backwardWindowLength:(NSInteger)backwardWindowLength
+                        forwardWindowLength:(NSInteger)forwardWindowLength
+                 dynamicForwardSwipingEnabled:(BOOL)dynamicForwardSwipingEnabled {
+    id result = %orig(pageViewController,
+                      dataSource,
+                      backwardWindowLength,
+                      forwardWindowLength,
+                      dynamicForwardSwipingEnabled);
+    objc_setAssociatedObject(result, ScrollablePageDataSourceKey, dataSource, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    return result;
+}
+
+- (id)pageViewController:(id)pageViewController viewControllerAtIndex:(NSInteger)index {
+    id reelDataSource = ScrollablePageReelDataSource(self);
+    NSInteger sourceIndex = [ReelSequenceFilter sourceIndexForVisibleIndex:index dataSource:reelDataSource];
+    if (sourceIndex != NSNotFound)
+        index = sourceIndex;
+    return %orig(pageViewController, index);
+}
+
+%end
+
+%hook YTReelWatchRootViewController
+
+- (void)setReelsDataSource:(id)dataSource {
+    %orig(dataSource);
+    objc_setAssociatedObject(self, RootReelDataSourceKey, dataSource, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    [ReelSequenceFilter registerSequenceController:self dataSource:dataSource];
+}
+
+- (id)reelsDataSource {
+    id result = %orig;
+    if (result)
+        objc_setAssociatedObject(self, RootReelDataSourceKey, result, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    [ReelSequenceFilter registerSequenceController:self dataSource:result];
+    return result;
+}
+
+- (void)dataSource:(id)dataSource didDropAndReplaceItemsAfterIndex:(NSInteger)index {
+    %orig(dataSource, index);
+    [ReelSequenceFilter invalidateDataSource:dataSource];
+}
+
+- (void)dataSource:(id)dataSource didInsertModel:(id)model atIndex:(NSInteger)index {
+    %orig(dataSource, model, index);
+    [ReelSequenceFilter invalidateDataSource:dataSource];
+}
+
+- (void)dataSource:(id)dataSource didReplaceModelAtIndex:(NSInteger)index withModel:(id)model {
+    %orig(dataSource, index, model);
+    [ReelSequenceFilter invalidateDataSource:dataSource];
+}
+
+- (void)dataSource:(id)dataSource
+didUpdateWithPrevItems:(id)prevItems
+          nextItems:(id)nextItems
+       refreshItems:(id)refreshItems {
+    %orig(dataSource, prevItems, nextItems, refreshItems);
+    [ReelSequenceFilter invalidateDataSource:dataSource];
 }
 
 %end
@@ -857,16 +1162,31 @@ static UICollectionViewCell *FeedCellForSourceView(UIView *sourceView) {
 - (void)addActionsContentView:(UIView *)contentView {
     InjectShortsBottomSheetActions(self);
     %orig(contentView);
+    InsertStoredBlockingActions(self);
 }
 
 - (void)relayoutActionSheet {
     InjectShortsBottomSheetActions(self);
     %orig;
+    InsertStoredBlockingActions(self);
+}
+
+- (void)viewDidLoad {
+    %orig;
+    InjectShortsBottomSheetActions(self);
+    InsertStoredBlockingActions(self);
 }
 
 - (void)addAction:(YTActionSheetAction *)action {
-    %orig;
-    AddBlockingActions(self, action);
+    NSArray *blockingActions = objc_getAssociatedObject(self, ActionSheetBlockingActionsKey);
+    if (blockingActions.count == 0) {
+        AddBlockingActions(self, action);
+        blockingActions = objc_getAssociatedObject(self, ActionSheetBlockingActionsKey);
+        for (YTActionSheetAction *blockingAction in blockingActions)
+            %orig(blockingAction);
+    }
+    %orig(action);
+    InsertStoredBlockingActions(self);
 }
 
 - (NSArray *)actions {
@@ -876,11 +1196,13 @@ static UICollectionViewCell *FeedCellForSourceView(UIView *sourceView) {
 
 - (void)presentFromView:(UIView *)view {
     PrimeBlockingActionsForPresentation(self, view);
+    InsertStoredBlockingActions(self);
     %orig(view);
 }
 
 - (void)presentFromView:(UIView *)view completion:(id)completion {
     PrimeBlockingActionsForPresentation(self, view);
+    InsertStoredBlockingActions(self);
     %orig(view, completion);
 }
 
@@ -889,8 +1211,15 @@ static UICollectionViewCell *FeedCellForSourceView(UIView *sourceView) {
 %hook YTActionSheetController
 
 - (void)addAction:(YTActionSheetAction *)action {
-    %orig;
-    AddBlockingActions(self, action);
+    NSArray *blockingActions = objc_getAssociatedObject(self, ActionSheetBlockingActionsKey);
+    if (blockingActions.count == 0) {
+        AddBlockingActions(self, action);
+        blockingActions = objc_getAssociatedObject(self, ActionSheetBlockingActionsKey);
+        for (YTActionSheetAction *blockingAction in blockingActions)
+            %orig(blockingAction);
+    }
+    %orig(action);
+    InsertStoredBlockingActions(self);
 }
 
 - (NSArray *)actions {
@@ -910,7 +1239,123 @@ static UICollectionViewCell *FeedCellForSourceView(UIView *sourceView) {
 
 %end
 
+%hook MDCActionSheetController
+
+- (NSArray *)actions {
+    NSArray *originalActions = %orig;
+    return MDCBlockingActionsForSheet(self, originalActions);
+}
+
+- (void)addAction:(id)action {
+    %orig(action);
+    [(id)self actions];
+}
+
+- (void)viewDidLoad {
+    %orig;
+    [(id)self actions];
+}
+
+%end
+
 %hook YTMenuController
+
+- (void)setActionSheetController:(id)actionSheetController {
+    %orig(actionSheetController);
+    PrepareMenuControllerSheet(self, nil);
+}
+
+- (void)showMenuWithMenuRenderer:(id)renderer
+                       fromView:(UIView *)view
+                          entry:(id)entry
+                  firstResponder:(id)firstResponder {
+    %orig(renderer, view, entry, firstResponder);
+    PrepareMenuControllerSheet(self, view);
+}
+
+- (void)showMenuWithMenuRenderer:(id)renderer
+                       fromView:(UIView *)view
+                          entry:(id)entry
+                skipCollapsedState:(BOOL)skipCollapsedState
+                  firstResponder:(id)firstResponder {
+    %orig(renderer, view, entry, skipCollapsedState, firstResponder);
+    PrepareMenuControllerSheet(self, view);
+}
+
+- (void)showMenuWithMenuRenderer:(id)renderer
+                       fromView:(UIView *)view
+                          entry:(id)entry
+                 dismissalBlock:(id)dismissalBlock
+                addCancelAction:(BOOL)addCancelAction
+                  firstResponder:(id)firstResponder {
+    %orig(renderer, view, entry, dismissalBlock, addCancelAction, firstResponder);
+    PrepareMenuControllerSheet(self, view);
+}
+
+- (void)showMenuWithMenuRenderer:(id)renderer
+                       fromView:(UIView *)view
+                          entry:(id)entry
+                 dismissalBlock:(id)dismissalBlock
+                addCancelAction:(BOOL)addCancelAction
+                shouldLogItems:(BOOL)shouldLogItems
+                  firstResponder:(id)firstResponder {
+    %orig(renderer, view, entry, dismissalBlock, addCancelAction, shouldLogItems, firstResponder);
+    PrepareMenuControllerSheet(self, view);
+}
+
+- (void)showMenuWithMenuRenderer:(id)renderer
+                       fromView:(UIView *)view
+                          entry:(id)entry
+                 dismissalBlock:(id)dismissalBlock
+                addCancelAction:(BOOL)addCancelAction
+                shouldLogItems:(BOOL)shouldLogItems
+                firstResponder:(id)firstResponder
+                       completion:(id)completion {
+    %orig(renderer, view, entry, dismissalBlock, addCancelAction, shouldLogItems, firstResponder, completion);
+    PrepareMenuControllerSheet(self, view);
+}
+
+- (void)showMenuWithMenuRenderer:(id)renderer
+                       fromView:(UIView *)view
+                          entry:(id)entry
+                 dismissalBlock:(id)dismissalBlock
+                addCancelAction:(BOOL)addCancelAction
+                shouldLogItems:(BOOL)shouldLogItems
+                skipCollapsedState:(BOOL)skipCollapsedState
+                  firstResponder:(id)firstResponder
+                       completion:(id)completion {
+    %orig(renderer, view, entry, dismissalBlock, addCancelAction, shouldLogItems, skipCollapsedState, firstResponder, completion);
+    PrepareMenuControllerSheet(self, view);
+}
+
+- (void)showMenuWithMenuRenderer:(id)renderer
+                       fromView:(UIView *)view
+                          entry:(id)entry
+                 dismissalBlock:(id)dismissalBlock
+                  firstResponder:(id)firstResponder {
+    %orig(renderer, view, entry, dismissalBlock, firstResponder);
+    PrepareMenuControllerSheet(self, view);
+}
+
+- (id)newActionSheetControllerWithMessage:(NSString *)message
+                                 fromView:(UIView *)view {
+    id result = %orig(message, view);
+    if (view)
+        objc_setAssociatedObject(result, ActionSheetSourceViewKey, view, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    PrepareMenuControllerSheet(self, view);
+    return result;
+}
+
+- (id)newDefaultSheetControllerWithMessage:(NSString *)message
+                           parentResponder:(id)parentResponder
+                                  fromView:(UIView *)view
+                           forcedSheetStyle:(NSInteger)forcedSheetStyle {
+    id result = %orig(message, parentResponder, view, forcedSheetStyle);
+    if (view)
+        objc_setAssociatedObject(result, ActionSheetSourceViewKey, view, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    PrepareMenuControllerSheet(self, view);
+    return result;
+}
 
 - (NSArray *)actionsForRenderers:(id)renderers
                         fromView:(UIView *)view
@@ -953,11 +1398,15 @@ static UICollectionViewCell *FeedCellForSourceView(UIView *sourceView) {
 - (void)viewDidLoad {
     InjectShortsBottomSheetActions(self);
     %orig;
+    InjectShortsBottomSheetActions(self);
+    InsertStoredBlockingActions(ExplicitObjectValue(self, @"delegate"));
 }
 
 - (void)setPreferredContentSize:(CGSize)preferredContentSize {
     InjectShortsBottomSheetActions(self);
     %orig(preferredContentSize);
+    InjectShortsBottomSheetActions(self);
+    InsertStoredBlockingActions(ExplicitObjectValue(self, @"delegate"));
 }
 
 %end
@@ -1010,7 +1459,7 @@ static UICollectionViewCell *FeedCellForSourceView(UIView *sourceView) {
         FeedMetadataRecord *contentMetadata = [Util cachedFeedVideoMetadataForNode:contentView];
         FeedMetadataRecord *metadata = CombinedShortsMetadata(CombinedShortsMetadata(modelMetadata, responseMetadata), contentMetadata);
         objc_setAssociatedObject(self, ShortsResponseMetadataKey, metadata, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        RememberShortsMetadataForPlayer(self, metadata, YES);
+        RememberShortsMetadataForPlayer(self, metadata);
     }
     CaptureCurrentShortsMetadata(self);
 }
@@ -1023,6 +1472,14 @@ static UICollectionViewCell *FeedCellForSourceView(UIView *sourceView) {
 %end
 
 %hook YTReelPlayerViewController
+
+- (id)sequenceController {
+    return %orig;
+}
+
+- (id)model {
+    return %orig;
+}
 
 - (id)initWithParentResponder:(id)parentResponder
        pivotBarViewController:(id)pivotBarViewController
@@ -1051,6 +1508,27 @@ static UICollectionViewCell *FeedCellForSourceView(UIView *sourceView) {
 - (id)contentView {
     CurrentShortsPlayer = self;
     return %orig;
+}
+
+- (id)currentVideo {
+    CurrentShortsPlayer = self;
+    id result = %orig;
+    FeedMetadataRecord *metadata = [Util feedVideoMetadataFromModel:result];
+    if (metadata.dictionaryRepresentation.count > 0)
+        RememberShortsMetadataForPlayer(self, metadata);
+    return result;
+}
+
+- (void)reelContentView:(id)contentView updateOverflowMenu:(id)menu {
+    %orig(contentView, menu);
+}
+
+- (void)reelContentView:(id)contentView updateOverflowMenuWithCommand:(id)command {
+    %orig(contentView, command);
+}
+
+- (void)reelContentViewDidLongPressForOverflowMenu:(id)contentView {
+    %orig(contentView);
 }
 
 %end
