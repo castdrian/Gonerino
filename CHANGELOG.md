@@ -1,5 +1,51 @@
 # Changelog
 
+## 1.7.0 - 2026-09-09
+
+### Features
+
+- harden feed filtering and settings navigation, resolves #32 and resolves #33 (32c989e)
+
+### Fixes
+
+- enlarge GitHub badge icon (72d2994)
+- shorten package manager badge label (d5ea01b)
+- normalize download badge icons (f5f1000)
+- harden repository tooling portability (15eafb8)
+- repair Crowdin translation lifecycle (ee77394)
+- harden Go device harness IO (f3e464f)
+- keep changelog out of release assets (d807f88)
+- preserve existing translation baselines (d4ef94b)
+- correct patch version generation (61becd8)
+- make automated pull request merging reliable (b36eacd)
+- correct Crowdin localization paths (9ad3cd4)
+
+### Documentation
+
+- restore Crowdin badge (fe88758)
+- simplify Crowdin badge (6d9d041)
+- refine README presentation (30b8f70)
+
+### CI
+
+- guard Crowdin translation imports (ebc6c2b)
+- align automation with native Crowdin integration (86d83b5)
+- fetch history for changelog generation (05947bb)
+
+### Maintenance
+
+- consolidate repository tooling in Go (ec11ae7)
+- update readme (e46df0e)
+- update readme (8941751)
+- modernize repository tooling and metadata (7df650a)
+- bump patch version to 1.6.1 (f265215)
+- refresh repository presentation and automation (c4176bb)
+
+### Other changes
+
+- New Crowdin updates (#29) (122b5e6)
+- Update Crowdin configuration file (216544e)
+
 ## 1.6.0 - 2026-09-08
 
 ### Features
