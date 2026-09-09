@@ -5,7 +5,7 @@
 
 YouTube tweak that allows you to block and automatically remove items from your feeds.
 
-<p align="center"><img src="assets/screenshots.svg" alt="Gonerino custom settings, long-form controls, and Shorts controls in official iPhone 16 frames" width="100%"></p>
+<p align="center"><img src="assets/screenshots.svg" alt="Gonerino custom settings and long-form controls in official iPhone 16 frames" width="100%"></p>
 
 ## Download
 
@@ -25,20 +25,6 @@ YouTube tweak that allows you to block and automatically remove items from your 
 ## Compatibility
 
 ![Gonerino compatibility](.github/compatibility.svg)
-
-## Simulator debugging
-
-The repository tooling can inject a simulator build with simforge, verify the slim simslim profile, capture YouTube logs, and run repeated custom-settings navigation checks.
-
-```sh
-GONERINO_CYDIASUBSTRATE=/path/to/CydiaSubstrate \
-GONERINO_SIMFORGE_BIN=/path/to/simforge \
-go run ./scripts/gonerino-tools.go simulator-debug <simulator-udid> ./test-artifacts/simulator
-
-GONERINO_CYDIASUBSTRATE=/path/to/CydiaSubstrate \
-GONERINO_SIMFORGE_BIN=/path/to/simforge \
-go run ./scripts/gonerino-tools.go simulator-settings-regression <simulator-udid> ./test-artifacts/simulator-settings 20
-```
 
 ## Contributors
 

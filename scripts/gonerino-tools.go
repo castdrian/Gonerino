@@ -1136,9 +1136,8 @@ func generateScreenshotStrip(root string) error {
 	screenshots := []screenshot{
 		{filename: "settings.png"},
 		{filename: "long-form-menu.png"},
-		{filename: "shorts-menu.png"},
 	}
-	const canvasWidth = 1500
+	const canvasWidth = 990
 	const canvasHeight = 930
 	const frameWidth = 572
 	const frameHeight = 1198
@@ -1150,7 +1149,7 @@ func generateScreenshotStrip(root string) error {
 	const screenSourceWidth = 536
 	const screenSourceHeight = 1158
 	const screenSourceRadius = 72
-	positions := []int{25, 535, 1045}
+	positions := []int{25, 535}
 	scale := float64(phoneWidth) / float64(frameWidth)
 	screenXOffset := int(math.Round(float64(screenSourceX) * scale))
 	screenYOffset := int(math.Round(float64(screenSourceY) * scale))
@@ -1176,7 +1175,7 @@ func generateScreenshotStrip(root string) error {
 	parts := []string{
 		fmt.Sprintf(`<svg xmlns="http://www.w3.org/2000/svg" width="%d" height="%d" viewBox="0 0 %d %d" role="img" aria-labelledby="title description">`, canvasWidth, canvasHeight, canvasWidth, canvasHeight),
 		`<title id="title">Gonerino screenshots</title>`,
-		`<desc id="description">Gonerino custom settings, long-form blocking actions, and Shorts blocking actions shown in official iPhone 16 frames.</desc>`,
+		`<desc id="description">Gonerino custom settings and long-form blocking actions shown in official iPhone 16 frames.</desc>`,
 		"<defs>",
 	}
 	parts = append(parts, definitions...)
