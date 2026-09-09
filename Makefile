@@ -3,6 +3,7 @@ ARCHS = arm64
 INSTALL_TARGET_PROCESSES = YouTube
 THEOS_PACKAGE_SCHEME = rootless
 FINALPACKAGE = 1
+GONERINO_SETTINGS_DEBUG ?= 0
 
 include $(THEOS)/makefiles/common.mk
 
@@ -10,7 +11,7 @@ TWEAK_NAME = Gonerino
 
 $(TWEAK_NAME)_FILES = $(shell find sources -name "*.x*" -o -name "*.m*")
 $(TWEAK_NAME)_FRAMEWORKS = UIKit Foundation UserNotifications UniformTypeIdentifiers MobileCoreServices
-$(TWEAK_NAME)_CFLAGS = -fobjc-arc -DPACKAGE_VERSION='@"$(shell grep '^Version:' control | cut -d' ' -f2)"' -Iheaders
+$(TWEAK_NAME)_CFLAGS = -fobjc-arc -DGONERINO_SETTINGS_DEBUG=$(GONERINO_SETTINGS_DEBUG) -DPACKAGE_VERSION='@"$(shell grep '^Version:' control | cut -d' ' -f2)"' -Iheaders
 
 include $(THEOS_MAKE_PATH)/tweak.mk
 

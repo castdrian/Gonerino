@@ -372,8 +372,12 @@ static NSAttributedString *RenderedGonerinoChangelog(void) {
     self.tableView.estimatedRowHeight = 56.0;
     self.navigationItem.largeTitleDisplayMode = UINavigationItemLargeTitleDisplayModeNever;
     self.navigationItem.hidesBackButton = YES;
-    self.navigationItem.leftBarButtonItem = [[UIBarButtonItem alloc]
-        initWithCustomView:NavigationBackButton(LocalizedString(@"Settings"), self, @selector(returnToYouTubeSettings))];
+    if (UIDevice.currentDevice.userInterfaceIdiom == UIUserInterfaceIdiomPad) {
+        self.navigationItem.leftBarButtonItem = nil;
+    } else {
+        self.navigationItem.leftBarButtonItem = [[UIBarButtonItem alloc]
+            initWithCustomView:NavigationBackButton(LocalizedString(@"Settings"), self, @selector(returnToYouTubeSettings))];
+    }
     [self.tableView reloadData];
 }
 
