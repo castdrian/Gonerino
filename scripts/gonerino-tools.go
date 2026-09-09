@@ -5,7 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"html"
+	"image"
+	_ "image/png"
 	"math"
 	"os"
 	"os/exec"
@@ -20,6 +21,8 @@ import (
 )
 
 const pinnedDeviceID = "00008030-001624583AF9402E"
+
+const pinnedSimulatorID = "31AF7034-F48F-488A-B2AA-B20097BB3E66"
 
 const youtubeBundleID = "com.google.ios.youtube"
 
@@ -1129,45 +1132,51 @@ func analyzePerformanceCommand(args []string) error {
 func generateScreenshotStrip(root string) error {
 	type screenshot struct {
 		filename string
-		label    string
 	}
 	screenshots := []screenshot{
-		{filename: "settings.png", label: "Custom settings"},
-		{filename: "long-form-menu.png", label: "Long-form controls"},
-		{filename: "shorts-menu.png", label: "Shorts controls"},
+		{filename: "settings.png"},
+		{filename: "long-form-menu.png"},
+		{filename: "shorts-menu.png"},
 	}
 	const canvasWidth = 1500
 	const canvasHeight = 930
-	const bodyWidth = 410
-	const bodyHeight = 850
+	const frameWidth = 572
+	const frameHeight = 1198
+	const phoneWidth = 430
+	const phoneHeight = 900
 	const bodyY = 20
-	const screenXOffset = 22
-	const screenYOffset = 75
-	const screenWidth = 366
-	const screenHeight = 651
-	positions := []int{25, 545, 1065}
+	const screenSourceX = 18
+	const screenSourceY = 20
+	const screenSourceWidth = 536
+	const screenSourceHeight = 1158
+	const screenSourceRadius = 72
+	positions := []int{25, 535, 1045}
+	scale := float64(phoneWidth) / float64(frameWidth)
+	screenXOffset := int(math.Round(float64(screenSourceX) * scale))
+	screenYOffset := int(math.Round(float64(screenSourceY) * scale))
+	screenWidth := int(math.Round(float64(screenSourceWidth) * scale))
+	screenHeight := int(math.Round(float64(screenSourceHeight) * scale))
+	screenRadius := int(math.Round(float64(screenSourceRadius) * scale))
+	framePath := filepath.Join(root, "assets", "device-iPhone16-dark.png")
+	frame, err := os.ReadFile(framePath)
+	if err != nil {
+		return err
+	}
 	definitions := []string{
-		`<linearGradient id="body" x1="0" y1="0" x2="1" y2="1">`,
-		`<stop offset="0" stop-color="#555b65"/>`,
-		`<stop offset="0.1" stop-color="#242932"/>`,
-		`<stop offset="0.5" stop-color="#0d0f13"/>`,
-		`<stop offset="0.9" stop-color="#252a32"/>`,
-		`<stop offset="1" stop-color="#626873"/>`,
-		`</linearGradient>`,
 		`<filter id="shadow" x="-25%" y="-15%" width="150%" height="145%">`,
-		`<feDropShadow dx="0" dy="14" stdDeviation="12" flood-color="#000000" flood-opacity="0.28"/>`,
+		`<feDropShadow dx="0" dy="12" stdDeviation="10" flood-color="#000000" flood-opacity="0.3"/>`,
 		`</filter>`,
 	}
 	for index, _ := range screenshots {
 		x := positions[index]
 		screenX := x + screenXOffset
 		screenY := bodyY + screenYOffset
-		definitions = append(definitions, fmt.Sprintf(`<clipPath id="screen-%d"><rect x="%d" y="%d" width="%d" height="%d" rx="18"/></clipPath>`, index, screenX, screenY, screenWidth, screenHeight))
+		definitions = append(definitions, fmt.Sprintf(`<clipPath id="screen-%d"><rect x="%d" y="%d" width="%d" height="%d" rx="%d"/></clipPath>`, index, screenX, screenY, screenWidth, screenHeight, screenRadius))
 	}
 	parts := []string{
 		fmt.Sprintf(`<svg xmlns="http://www.w3.org/2000/svg" width="%d" height="%d" viewBox="0 0 %d %d" role="img" aria-labelledby="title description">`, canvasWidth, canvasHeight, canvasWidth, canvasHeight),
 		`<title id="title">Gonerino screenshots</title>`,
-		`<desc id="description">Gonerino custom settings, long-form blocking actions, and Shorts blocking actions shown in second-generation iPhone SE frames.</desc>`,
+		`<desc id="description">Gonerino custom settings, long-form blocking actions, and Shorts blocking actions shown in official iPhone 16 frames.</desc>`,
 		"<defs>",
 	}
 	parts = append(parts, definitions...)
@@ -1180,26 +1189,11 @@ func generateScreenshotStrip(root string) error {
 		x := positions[index]
 		screenX := x + screenXOffset
 		screenY := bodyY + screenYOffset
-		bodyRight := x + bodyWidth
-		leftButtonX := x - 7
 		parts = append(parts,
 			`<g filter="url(#shadow)">`,
-			fmt.Sprintf(`<rect x="%d" y="%d" width="%d" height="%d" rx="52" fill="url(#body)" stroke="#747a84" stroke-width="2"/>`, x, bodyY, bodyWidth, bodyHeight),
-			fmt.Sprintf(`<rect x="%d" y="%d" width="%d" height="%d" rx="46" fill="none" stroke="#050608" stroke-opacity="0.75" stroke-width="3"/>`, x+7, bodyY+7, bodyWidth-14, bodyHeight-14),
-			fmt.Sprintf(`<rect x="%d" y="%d" width="%d" height="%d" rx="20" fill="#050608" stroke="#6b7079" stroke-opacity="0.35" stroke-width="2"/>`, screenX-2, screenY-2, screenWidth+4, screenHeight+4),
-			fmt.Sprintf(`<image x="%d" y="%d" width="%d" height="%d" preserveAspectRatio="none" clip-path="url(#screen-%d)" href="data:image/png;base64,%s"/>`, screenX, screenY, screenWidth, screenHeight, index, base64.StdEncoding.EncodeToString(encoded)),
-			fmt.Sprintf(`<rect x="%d" y="%d" width="%d" height="%d" rx="18" fill="none" stroke="#000000" stroke-opacity="0.55" stroke-width="2"/>`, screenX, screenY, screenWidth, screenHeight),
-			fmt.Sprintf(`<rect x="%d" y="%d" width="86" height="8" rx="4" fill="#08090b"/>`, x+162, bodyY+35),
-			fmt.Sprintf(`<circle cx="%d" cy="%d" r="5" fill="#08090b" stroke="#696f78" stroke-opacity="0.4"/>`, x+273, bodyY+39),
-			fmt.Sprintf(`<circle cx="%d" cy="%d" r="2" fill="#30343b"/>`, x+291, bodyY+39),
-			fmt.Sprintf(`<rect x="%d" y="%d" width="7" height="32" rx="3.5" fill="#20242a" stroke="#626872" stroke-width="1"/>`, leftButtonX, bodyY+150),
-			fmt.Sprintf(`<rect x="%d" y="%d" width="7" height="66" rx="3.5" fill="#20242a" stroke="#626872" stroke-width="1"/>`, leftButtonX, bodyY+205),
-			fmt.Sprintf(`<rect x="%d" y="%d" width="7" height="66" rx="3.5" fill="#20242a" stroke="#626872" stroke-width="1"/>`, leftButtonX, bodyY+286),
-			fmt.Sprintf(`<rect x="%d" y="%d" width="7" height="96" rx="3.5" fill="#20242a" stroke="#626872" stroke-width="1"/>`, bodyRight, bodyY+214),
-			fmt.Sprintf(`<circle cx="%d" cy="%d" r="34" fill="#090b0e" stroke="#666c76" stroke-width="2"/>`, x+bodyWidth/2, bodyY+774),
-			fmt.Sprintf(`<circle cx="%d" cy="%d" r="27" fill="none" stroke="#20242a" stroke-width="2"/>`, x+bodyWidth/2, bodyY+774),
+			fmt.Sprintf(`<image x="%d" y="%d" width="%d" height="%d" preserveAspectRatio="xMidYMid slice" clip-path="url(#screen-%d)" href="data:image/png;base64,%s"/>`, screenX, screenY, screenWidth, screenHeight, index, base64.StdEncoding.EncodeToString(encoded)),
+			fmt.Sprintf(`<image x="%d" y="%d" width="%d" height="%d" preserveAspectRatio="none" href="data:image/png;base64,%s"/>`, x, bodyY, phoneWidth, phoneHeight, base64.StdEncoding.EncodeToString(frame)),
 			`</g>`,
-			fmt.Sprintf(`<text x="%d" y="%d" text-anchor="middle" fill="#3f4753" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="20" font-weight="600">%s</text>`, x+bodyWidth/2, bodyY+bodyHeight+40, html.EscapeString(item.label)),
 		)
 	}
 	parts = append(parts, "</svg>")
@@ -1687,7 +1681,8 @@ func settingsRegression(args []string) error {
 			return err
 		}
 		textBase := filepath.Join(outputDirectory, name)
-		command := exec.Command("tesseract", imagePath, textBase)
+		command := exec.Command("tesseract", filepath.Base(imagePath), filepath.Base(textBase))
+		command.Dir = outputDirectory
 		command.Stdout = nil
 		command.Stderr = nil
 		_ = command.Run()
@@ -1820,6 +1815,472 @@ func copyFile(source, destination string) error {
 	return nil
 }
 
+func runToFileWithEnvironment(directory, outputPath, name string, environment []string, args ...string) error {
+	if err := ensureParent(outputPath); err != nil {
+		return err
+	}
+	file, err := os.Create(outputPath)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	command := exec.Command(name, args...)
+	if directory != "" {
+		command.Dir = directory
+	}
+	command.Env = append(os.Environ(), environment...)
+	command.Stdout = file
+	command.Stderr = file
+	return command.Run()
+}
+
+func simulatorToolPath(environmentName, commandName string) string {
+	if value := os.Getenv(environmentName); value != "" {
+		return value
+	}
+	if value, err := exec.LookPath(commandName); err == nil {
+		return value
+	}
+	return commandName
+}
+
+func simulatorOutputDirectory(root string, requested, prefix string) (string, error) {
+	if requested != "" {
+		if err := os.MkdirAll(requested, 0755); err != nil {
+			return "", err
+		}
+		return requested, nil
+	}
+	directory := filepath.Join(root, "test-artifacts", prefix+runID())
+	if err := os.MkdirAll(directory, 0755); err != nil {
+		return "", err
+	}
+	return directory, nil
+}
+
+func simulatorIdentifier(args []string) (string, error) {
+	identifier := os.Getenv("GONERINO_SIMULATOR_ID")
+	if identifier == "" {
+		identifier = pinnedSimulatorID
+	}
+	if len(args) > 0 && args[0] != "" {
+		identifier = args[0]
+	}
+	return identifier, nil
+}
+
+func simulatorBoot(simulatorID string) error {
+	if _, err := runOutput("", "xcrun", "simctl", "bootstatus", simulatorID, "-b"); err == nil {
+		return nil
+	}
+	if _, err := runOutput("", "xcrun", "simctl", "boot", simulatorID); err != nil {
+		return err
+	}
+	_, err := runOutput("", "xcrun", "simctl", "bootstatus", simulatorID, "-b")
+	return err
+}
+
+func simulatorRuntime(root, outputDirectory string) (string, error) {
+	if runtimeDirectory := os.Getenv("GONERINO_SIMULATOR_RUNTIME"); runtimeDirectory != "" {
+		if _, err := os.Stat(filepath.Join(runtimeDirectory, "Gonerino.dylib")); err != nil {
+			return "", err
+		}
+		return runtimeDirectory, nil
+	}
+	dylibPath := os.Getenv("GONERINO_SIMULATOR_DYLIB")
+	if dylibPath == "" {
+		dylibPath = filepath.Join(root, ".theos", "obj", "arm64", "Gonerino.dylib")
+	}
+	substratePath := os.Getenv("GONERINO_CYDIASUBSTRATE")
+	if substratePath == "" {
+		return "", errors.New("GONERINO_CYDIASUBSTRATE is required to inject the tweak into a simulator")
+	}
+	if _, err := os.Stat(dylibPath); err != nil {
+		return "", err
+	}
+	if _, err := os.Stat(substratePath); err != nil {
+		return "", err
+	}
+	simforgePath := simulatorToolPath("GONERINO_SIMFORGE_BIN", "simforge")
+	runtimeDirectory, err := os.MkdirTemp(outputDirectory, "runtime-")
+	if err != nil {
+		return "", err
+	}
+	frameworkDirectory := filepath.Join(runtimeDirectory, "CydiaSubstrate.framework")
+	if err := os.MkdirAll(frameworkDirectory, 0755); err != nil {
+		return "", err
+	}
+	convertedDylib := filepath.Join(runtimeDirectory, "Gonerino.dylib")
+	convertedSubstrate := filepath.Join(frameworkDirectory, "CydiaSubstrate")
+	if err := copyFile(dylibPath, convertedDylib); err != nil {
+		return "", err
+	}
+	if err := copyFile(substratePath, convertedSubstrate); err != nil {
+		return "", err
+	}
+	if err := runToFile("", filepath.Join(outputDirectory, "simforge-convert.log"), simforgePath, "convert", convertedDylib); err != nil {
+		return "", err
+	}
+	convertedSubstratePath := convertedSubstrate + ".sim"
+	if err := runToFile("", filepath.Join(outputDirectory, "simulator-vtool.log"), "xcrun", "vtool", "-set-build-version", "iossim", "14.0", "14.0", "-replace", "-output", convertedSubstratePath, convertedSubstrate); err != nil {
+		return "", err
+	}
+	if err := os.Rename(convertedSubstratePath, convertedSubstrate); err != nil {
+		return "", err
+	}
+	if err := runToFile("", filepath.Join(outputDirectory, "simulator-install-name.log"), "install_name_tool", "-add_rpath", runtimeDirectory, convertedDylib); err != nil {
+		return "", err
+	}
+	if err := runToFile("", filepath.Join(outputDirectory, "simulator-codesign.log"), "codesign", "-f", "-s", "-", convertedSubstrate, convertedDylib); err != nil {
+		return "", err
+	}
+	return runtimeDirectory, nil
+}
+
+func launchSimulatorYouTube(simulatorID, runtimeDirectory, outputPath string) error {
+	_ = runDiscard("xcrun", "simctl", "terminate", simulatorID, youtubeBundleID)
+	environment := []string{}
+	if runtimeDirectory != "" {
+		environment = []string{
+			"SIMCTL_CHILD_DYLD_FRAMEWORK_PATH=" + runtimeDirectory,
+			"SIMCTL_CHILD_DYLD_INSERT_LIBRARIES=" + filepath.Join(runtimeDirectory, "Gonerino.dylib"),
+		}
+	}
+	return runToFileWithEnvironment("", outputPath, "xcrun", environment, "simctl", "launch", simulatorID, youtubeBundleID)
+}
+
+func captureSimulatorScreenshot(simulatorID, outputPath string) (int, int, error) {
+	if err := runDiscard("xcrun", "simctl", "io", simulatorID, "screenshot", outputPath); err != nil {
+		return 0, 0, err
+	}
+	file, err := os.Open(outputPath)
+	if err != nil {
+		return 0, 0, err
+	}
+	defer file.Close()
+	configuration, _, err := image.DecodeConfig(file)
+	if err != nil {
+		return 0, 0, err
+	}
+	return configuration.Width, configuration.Height, nil
+}
+
+func simulatorWindowBounds() ([4]int, error) {
+	var bounds [4]int
+	output, err := runOutput("", "osascript", "-e", `tell application "System Events" to tell process "Simulator" to get {position,size} of group 1 of window 1`)
+	if err != nil {
+		return bounds, err
+	}
+	if _, err := fmt.Sscanf(strings.TrimSpace(string(output)), "%d, %d, %d, %d", &bounds[0], &bounds[1], &bounds[2], &bounds[3]); err != nil {
+		return bounds, err
+	}
+	return bounds, nil
+}
+
+func simulatorClick(simulatorID, screenshotPath string, deviceX, deviceY int) error {
+	width, height, err := captureSimulatorScreenshot(simulatorID, screenshotPath)
+	if err != nil {
+		return err
+	}
+	if err := runDiscard("open", "-a", "Simulator"); err != nil {
+		return err
+	}
+	sleepMillis(300)
+	bounds, err := simulatorWindowBounds()
+	if err != nil {
+		return err
+	}
+	hostX := bounds[0] + int(math.Round(float64(deviceX)*float64(bounds[2])/float64(width)))
+	hostY := bounds[1] + int(math.Round(float64(deviceY)*float64(bounds[3])/float64(height)))
+	cliclickPath := simulatorToolPath("GONERINO_CLICLICK_BIN", "cliclick")
+	return runDiscard(cliclickPath, fmt.Sprintf("c:%d,%d", hostX, hostY))
+}
+
+func simulatorOCR(imagePath, textPath string) (string, error) {
+	tesseractPath := simulatorToolPath("GONERINO_TESSERACT_BIN", "tesseract")
+	base := strings.TrimSuffix(textPath, filepath.Ext(textPath))
+	command := exec.Command(tesseractPath, filepath.Base(imagePath), filepath.Base(base))
+	command.Dir = filepath.Dir(imagePath)
+	command.Stdout = nil
+	command.Stderr = nil
+	if err := command.Run(); err != nil {
+		return "", err
+	}
+	contents, err := os.ReadFile(textPath)
+	if err != nil {
+		return "", err
+	}
+	return strings.ToLower(string(contents)), nil
+}
+
+func simulatorCustomPageHasLeftStrip(imagePath string) (bool, error) {
+	file, err := os.Open(imagePath)
+	if err != nil {
+		return false, err
+	}
+	defer file.Close()
+	source, _, err := image.Decode(file)
+	if err != nil {
+		return false, err
+	}
+	bounds := source.Bounds()
+	leftEdge := bounds.Min.X + bounds.Dx()/28
+	top := bounds.Min.Y + bounds.Dy()/7
+	bottom := bounds.Min.Y + bounds.Dy()*5/6
+	brightPixels := 0
+	for y := top; y < bottom; y += 4 {
+		for x := bounds.Min.X; x < leftEdge; x += 4 {
+			red, green, blue, alpha := source.At(x, y).RGBA()
+			if alpha > 0x8000 && red+green+blue > 0x18000 {
+				brightPixels++
+				if brightPixels >= 12 {
+					return true, nil
+				}
+			}
+		}
+	}
+	return false, nil
+}
+
+func simulatorSettingsListVisible(simulatorID, imagePath, textPath string) (bool, error) {
+	if _, _, err := captureSimulatorScreenshot(simulatorID, imagePath); err != nil {
+		return false, err
+	}
+	text, err := simulatorOCR(imagePath, textPath)
+	if err != nil {
+		return false, err
+	}
+	return strings.Contains(text, "settings") && strings.Contains(text, "general"), nil
+}
+
+func simulatorReturnToSettingsList(simulatorID, outputDirectory, name string) error {
+	for attempt := 1; attempt <= 3; attempt++ {
+		beforePath := filepath.Join(outputDirectory, fmt.Sprintf("%s-before-%d.png", name, attempt))
+		if err := simulatorClick(simulatorID, beforePath, 55, 260); err != nil {
+			return err
+		}
+		sleepMillis(350)
+		listPath := filepath.Join(outputDirectory, fmt.Sprintf("%s-list-%d.png", name, attempt))
+		textPath := filepath.Join(outputDirectory, fmt.Sprintf("%s-list-%d.txt", name, attempt))
+		visible, err := simulatorSettingsListVisible(simulatorID, listPath, textPath)
+		if err != nil {
+			return err
+		}
+		if visible {
+			return nil
+		}
+	}
+	return fmt.Errorf("simulator did not return to YouTube settings after %s", name)
+}
+
+func simulatorDebug(args []string) error {
+	root, err := repoRoot()
+	if err != nil {
+		return err
+	}
+	simulatorID, err := simulatorIdentifier(args)
+	if err != nil {
+		return err
+	}
+	if len(args) > 2 {
+		return errors.New("usage: simulator-debug [SIMULATOR] [OUTPUT_DIRECTORY]")
+	}
+	outputDirectory := ""
+	if len(args) > 1 {
+		outputDirectory = args[1]
+	}
+	outputDirectory, err = simulatorOutputDirectory(root, outputDirectory, "simulator-debug-")
+	if err != nil {
+		return err
+	}
+	if err := simulatorBoot(simulatorID); err != nil {
+		return err
+	}
+	if err := runToFile("", filepath.Join(outputDirectory, "simulator-devices.txt"), "xcrun", "simctl", "list", "devices"); err != nil {
+		return err
+	}
+	simslimPath := simulatorToolPath("GONERINO_SIMSLIM_BIN", "simslim")
+	_ = runToFile("", filepath.Join(outputDirectory, "simslim-status.txt"), simslimPath, "status", simulatorID)
+	_ = runToFile("", filepath.Join(outputDirectory, "simslim-verify.txt"), simslimPath, "verify", simulatorID)
+	if err := runToFile("", filepath.Join(outputDirectory, "youtube-app.txt"), "xcrun", "simctl", "listapps", simulatorID); err != nil {
+		return err
+	}
+	apps, err := os.ReadFile(filepath.Join(outputDirectory, "youtube-app.txt"))
+	if err != nil {
+		return err
+	}
+	if !strings.Contains(string(apps), `"`+youtubeBundleID+`"`) {
+		return errors.New("YouTube is not installed on the selected simulator")
+	}
+	runtimeDirectory, err := simulatorRuntime(root, outputDirectory)
+	if err != nil {
+		return err
+	}
+	if err := writeText(filepath.Join(outputDirectory, "runtime-path.txt"), runtimeDirectory+"\n"); err != nil {
+		return err
+	}
+	if err := launchSimulatorYouTube(simulatorID, runtimeDirectory, filepath.Join(outputDirectory, "launch.json")); err != nil {
+		return err
+	}
+	if _, _, err := captureSimulatorScreenshot(simulatorID, filepath.Join(outputDirectory, "launch.png")); err != nil {
+		return err
+	}
+	_ = runToFile("", filepath.Join(outputDirectory, "youtube-logs.txt"), "xcrun", "simctl", "spawn", simulatorID, "log", "show", "--style", "compact", "--last", "5m", "--predicate", `process == "YouTube" OR eventMessage CONTAINS[c] "Gonerino"`)
+	_ = runToFile("", filepath.Join(outputDirectory, "simulator-memory.txt"), simslimPath, "measure", simulatorID)
+	metadata := fmt.Sprintf("simulator=%s\nyoutube=%s\noutput=%s\n", simulatorID, youtubeBundleID, outputDirectory)
+	if err := writeText(filepath.Join(outputDirectory, "manifest.txt"), metadata); err != nil {
+		return err
+	}
+	fmt.Println(outputDirectory)
+	return nil
+}
+
+func simulatorSettingsRegression(args []string) error {
+	root, err := repoRoot()
+	if err != nil {
+		return err
+	}
+	simulatorID, err := simulatorIdentifier(args)
+	if err != nil {
+		return err
+	}
+	outputDirectory := ""
+	if len(args) > 1 {
+		outputDirectory = args[1]
+	}
+	openCount := 20
+	if len(args) > 2 && args[2] != "" {
+		openCount, err = strconv.Atoi(args[2])
+		if err != nil || openCount < 1 {
+			return errors.New("open count must be a positive integer")
+		}
+	}
+	if len(args) > 3 {
+		return errors.New("usage: simulator-settings-regression [SIMULATOR] [OUTPUT_DIRECTORY] [OPEN_COUNT]")
+	}
+	outputDirectory, err = simulatorOutputDirectory(root, outputDirectory, "simulator-settings-")
+	if err != nil {
+		return err
+	}
+	if err := simulatorBoot(simulatorID); err != nil {
+		return err
+	}
+	runtimeDirectory, err := simulatorRuntime(root, outputDirectory)
+	if err != nil {
+		return err
+	}
+	if err := launchSimulatorYouTube(simulatorID, runtimeDirectory, filepath.Join(outputDirectory, "launch.json")); err != nil {
+		return err
+	}
+	sleepMillis(1500)
+	settingsList := filepath.Join(outputDirectory, "settings-list.png")
+	if err := simulatorClick(simulatorID, settingsList, 1050, 2430); err != nil {
+		return err
+	}
+	sleepMillis(500)
+	gear := filepath.Join(outputDirectory, "settings-gear.png")
+	if err := simulatorClick(simulatorID, gear, 1115, 260); err != nil {
+		return err
+	}
+	sleepMillis(800)
+	if _, _, err := captureSimulatorScreenshot(simulatorID, settingsList); err != nil {
+		return err
+	}
+	settingsText, err := simulatorOCR(settingsList, filepath.Join(outputDirectory, "settings-list.txt"))
+	if err != nil {
+		return err
+	}
+	if !strings.Contains(settingsText, "settings") || !strings.Contains(settingsText, "general") || !strings.Contains(settingsText, "gonerino") {
+		return errors.New("simulator YouTube settings are unavailable; sign in without erasing app data and rerun the regression")
+	}
+	for index := 1; index <= openCount; index++ {
+		firstPath := filepath.Join(outputDirectory, fmt.Sprintf("open-%d-first.png", index))
+		firstTextPath := filepath.Join(outputDirectory, fmt.Sprintf("open-%d-first.txt", index))
+		firstText := ""
+		opened := false
+		for attempt := 1; attempt <= 3; attempt++ {
+			beforePath := filepath.Join(outputDirectory, fmt.Sprintf("open-%d-before-%d.png", index, attempt))
+			attemptPath := firstPath
+			attemptTextPath := firstTextPath
+			if attempt > 1 {
+				attemptPath = filepath.Join(outputDirectory, fmt.Sprintf("open-%d-attempt-%d-first.png", index, attempt))
+				attemptTextPath = filepath.Join(outputDirectory, fmt.Sprintf("open-%d-attempt-%d-first.txt", index, attempt))
+			}
+			if err := simulatorClick(simulatorID, beforePath, 180, 440); err != nil {
+				return err
+			}
+			sleepMillis(100)
+			if _, _, err := captureSimulatorScreenshot(simulatorID, attemptPath); err != nil {
+				return err
+			}
+			leftStrip, err := simulatorCustomPageHasLeftStrip(attemptPath)
+			if err != nil {
+				return err
+			}
+			if leftStrip {
+				return fmt.Errorf("simulator custom settings first frame retained the previous settings page on iteration %d", index)
+			}
+			firstText, err = simulatorOCR(attemptPath, attemptTextPath)
+			if err != nil {
+				return err
+			}
+			if strings.Contains(firstText, "donate on ko-fi") || strings.Contains(firstText, "support") {
+				if attempt > 1 {
+					if err := copyFile(attemptPath, firstPath); err != nil {
+						return err
+					}
+					if err := copyFile(attemptTextPath, firstTextPath); err != nil {
+						return err
+					}
+				}
+				opened = true
+				break
+			}
+			sleepMillis(350)
+		}
+		if !opened {
+			return fmt.Errorf("simulator custom settings first frame failed on iteration %d", index)
+		}
+		sleepMillis(750)
+		settledPath := filepath.Join(outputDirectory, fmt.Sprintf("open-%d-settled.png", index))
+		if _, _, err := captureSimulatorScreenshot(simulatorID, settledPath); err != nil {
+			return err
+		}
+		settledText, settledErr := simulatorOCR(settledPath, filepath.Join(outputDirectory, fmt.Sprintf("open-%d-settled.txt", index)))
+		if settledErr != nil {
+			return settledErr
+		}
+		if !strings.Contains(settledText, "donate on ko-fi") && !strings.Contains(settledText, "support") {
+			return fmt.Errorf("simulator custom settings settled frame failed on iteration %d", index)
+		}
+		if err := simulatorReturnToSettingsList(simulatorID, outputDirectory, fmt.Sprintf("back-%d", index)); err != nil {
+			return err
+		}
+		generalBeforePath := filepath.Join(outputDirectory, fmt.Sprintf("general-%d-before.png", index))
+		generalPath := filepath.Join(outputDirectory, fmt.Sprintf("general-%d.png", index))
+		if err := simulatorClick(simulatorID, generalBeforePath, 180, 805); err != nil {
+			return err
+		}
+		sleepMillis(500)
+		if _, _, err := captureSimulatorScreenshot(simulatorID, generalPath); err != nil {
+			return err
+		}
+		generalText, generalErr := simulatorOCR(generalPath, filepath.Join(outputDirectory, fmt.Sprintf("general-%d.txt", index)))
+		if generalErr != nil {
+			return generalErr
+		}
+		if !strings.Contains(generalText, "general") || strings.Contains(generalText, "donate on ko-fi") {
+			return fmt.Errorf("simulator unrelated General settings navigation failed on iteration %d", index)
+		}
+		if err := simulatorReturnToSettingsList(simulatorID, outputDirectory, fmt.Sprintf("general-back-%d", index)); err != nil {
+			return err
+		}
+	}
+	_ = runToFile("", filepath.Join(outputDirectory, "youtube-logs.txt"), "xcrun", "simctl", "spawn", simulatorID, "log", "show", "--style", "compact", "--last", "10m", "--predicate", `process == "YouTube" OR eventMessage CONTAINS[c] "Gonerino"`)
+	fmt.Println(outputDirectory)
+	return nil
+}
+
 func requireFileContains(root, relativePath, value string) error {
 	contents, err := os.ReadFile(filepath.Join(root, relativePath))
 	if err != nil {
@@ -1842,6 +2303,39 @@ func requireFileExcludes(root, relativePath string, values []string) error {
 			return fmt.Errorf("%s contains forbidden %q", relativePath, value)
 		}
 	}
+	return nil
+}
+
+func verifySettings(root string) error {
+	if err := requireFileExcludes(root, "sources/Settings.x", []string{
+		"SettingsCategoryPending",
+		"CurrentSettingsManager",
+		"YTCollectionViewController",
+		"setTitle:",
+	}); err != nil {
+		return errors.New("legacy settings lifecycle or title redirect state is still present: " + err.Error())
+	}
+	for _, value := range []string{
+		"SettingsCategoryValueFromDescription",
+		"SettingsCandidateIsGonerino",
+		"SettingsManagerForController",
+		"CreateSettingsDestinationForCandidate",
+		"PushSettingsDestination",
+		"AssociateSettingsManager",
+		"pushViewController",
+	} {
+		if err := requireFileContains(root, "sources/Settings.x", value); err != nil {
+			return err
+		}
+	}
+	contents, err := os.ReadFile(filepath.Join(root, "sources", "Settings.x"))
+	if err != nil {
+		return err
+	}
+	if !strings.Contains(string(contents), "category_id:") {
+		return errors.New("settings category description adapter is missing")
+	}
+	fmt.Println("Gonerino settings architecture checks passed")
 	return nil
 }
 
@@ -1895,7 +2389,7 @@ func verifyArchitecture(root string) error {
 		"sources/Util.m":                  {"AdaptLongFormVideoNode", "AdaptElementsFeedNode", "AdaptShortsNode"},
 		"sources/Tweak.x":                 {"setAsyncDataSource", "presentFromView", "shouldDismissOnAction = YES", "FeedFilterStateDidChangeNotification"},
 		"sources/FeedDataSourceAdapter.m": {"nodeForItemAtIndexPath", "sourceItemsBySection", "EmptyFeedNode", "calculateSizeThatFits", "FeedEmptyCellNode", "snapshotForCountRequestWithRetryCount"},
-		"sources/Settings.x":              {"pushViewController", "expectedCategory", "SettingsNavigationTransactionKey"},
+		"sources/Settings.x":              {"pushViewController", "SettingsCandidateIsGonerino", "CreateSettingsDestinationForCandidate", "AssociateSettingsManager"},
 	}
 	for relativePath, values := range required {
 		for _, value := range values {
@@ -1947,7 +2441,7 @@ func verifyArchitecture(root string) error {
 
 func printUsage() {
 	fmt.Fprintln(os.Stderr, "usage: gonerino-tools COMMAND [ARGS]")
-	fmt.Fprintln(os.Stderr, "commands: analyze-performance, generate-screenshot-strip, merge-blocklists, test-blocklist-restore, test-metadata-fixtures, blocklist-backup, blocklist-restore, performance, performance-suite, settings-regression, test-feed-data-source-adapter-simulator, verify-architecture")
+	fmt.Fprintln(os.Stderr, "commands: analyze-performance, generate-screenshot-strip, merge-blocklists, test-blocklist-restore, test-metadata-fixtures, blocklist-backup, blocklist-restore, performance, performance-suite, settings-regression, simulator-debug, simulator-settings-regression, test-feed-data-source-adapter-simulator, verify-settings, verify-architecture")
 }
 
 func main() {
@@ -1992,6 +2486,14 @@ func main() {
 			err = testMetadataFixtures(root)
 		} else if err == nil {
 			err = errors.New("usage: test-metadata-fixtures")
+		}
+	case "verify-settings":
+		var root string
+		root, err = repoRoot()
+		if err == nil && len(args) == 0 {
+			err = verifySettings(root)
+		} else if err == nil {
+			err = errors.New("usage: verify-settings")
 		}
 	case "blocklist-backup":
 		deviceID := pinnedDeviceID
@@ -2048,6 +2550,10 @@ func main() {
 		} else {
 			err = settingsRegression(args)
 		}
+	case "simulator-debug":
+		err = simulatorDebug(args)
+	case "simulator-settings-regression":
+		err = simulatorSettingsRegression(args)
 	case "test-feed-data-source-adapter-simulator":
 		if len(args) != 0 {
 			err = errors.New("usage: test-feed-data-source-adapter-simulator")

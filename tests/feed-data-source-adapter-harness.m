@@ -20,27 +20,42 @@ NSString * const FeedFilterStateDidChangeNotification = @"FeedFilterStateDidChan
 
 @interface FakeCollectionNode : NSObject
 @property(nonatomic) NSUInteger reloadCalls;
+@property(nonatomic, weak) id collectionView;
 @end
 
 @implementation FakeCollectionNode
 
 - (void)reloadData {
     self.reloadCalls += 1;
+    [self.collectionView setContentOffset:CGPointZero];
 }
 
 @end
 
 @interface FakeCollectionView : NSObject
 @property(nonatomic, strong) FakeCollectionNode *collectionNode;
+@property(nonatomic) CGPoint contentOffset;
+@property(nonatomic) BOOL pagingEnabled;
 @end
 
 @implementation FakeCollectionView
+
+- (BOOL)isPagingEnabled {
+    return self.pagingEnabled;
+}
+
 @end
 
 @interface FakeDirectCollectionView : NSObject
+@property(nonatomic) BOOL pagingEnabled;
 @end
 
 @implementation FakeDirectCollectionView
+
+- (BOOL)isPagingEnabled {
+    return NO;
+}
+
 @end
 
 @interface FakeNode : NSObject
@@ -254,6 +269,8 @@ int main(void) {
         FakeCollectionNode *collectionNode = [FakeCollectionNode new];
         FakeCollectionView *collectionView = [FakeCollectionView new];
         collectionView.collectionNode = collectionNode;
+        collectionNode.collectionView = collectionView;
+        [collectionView setContentOffset:CGPointMake(0.0, 780.0)];
         FeedDataSourceAdapter *adapter = [FeedDataSourceAdapter adapterWithCollectionView:(UICollectionView *)collectionView
                                                                                   dataSource:dataSource];
 
@@ -262,6 +279,8 @@ int main(void) {
         id blockedNode = [adapter collectionNode:collectionNode nodeForItemAtIndexPath:[NSIndexPath indexPathForItem:1 inSection:0]];
         Require([blockedNode isKindOfClass:NSClassFromString(@"FeedEmptyCellNode")], @"blocked node was not replaced");
         PumpMainQueue();
+        Require(CGPointEqualToPoint([collectionView contentOffset], CGPointMake(0.0, 780.0)),
+                @"filtered reload did not preserve the feed position");
         Require([adapter collectionNode:collectionNode numberOfItemsInSection:0] == 2, @"blocked item remained in snapshot");
         Require(collectionNode.reloadCalls == 1, @"late metadata caused more than one reload");
         Require([[adapter modelIdentifierForElementAtIndexPath:[NSIndexPath indexPathForItem:1 inSection:0] inNode:collectionNode] isEqualToString:third.identifier],
@@ -270,6 +289,24 @@ int main(void) {
                 @"blocked source identifier remained addressable");
         Require([[adapter indexPathForElementWithModelIdentifier:third.identifier inNode:collectionNode] isEqual:[NSIndexPath indexPathForItem:1 inSection:0]],
                 @"surviving source identifier did not translate to visible index");
+
+        FakeCollectionNode *pagedCollectionNode = [FakeCollectionNode new];
+        FakeCollectionView *pagedCollectionView = [FakeCollectionView new];
+        pagedCollectionView.pagingEnabled = YES;
+        pagedCollectionView.collectionNode = pagedCollectionNode;
+        pagedCollectionNode.collectionView = pagedCollectionView;
+        [pagedCollectionView setContentOffset:CGPointMake(0.0, 1334.0)];
+        FeedDataSourceAdapter *pagedAdapter = [FeedDataSourceAdapter adapterWithCollectionView:(UICollectionView *)pagedCollectionView
+                                                                                      dataSource:dataSource];
+        id pagedBlockedNode = [pagedAdapter collectionNode:pagedCollectionNode
+                                  nodeForItemAtIndexPath:[NSIndexPath indexPathForItem:1 inSection:0]];
+        Require([pagedBlockedNode isKindOfClass:NSClassFromString(@"FeedEmptyCellNode")],
+                @"paged blocked node was not replaced");
+        PumpMainQueue();
+        Require([pagedAdapter collectionNode:pagedCollectionNode numberOfItemsInSection:0] == 2,
+                @"paged blocked item remained in snapshot");
+        Require(CGPointEqualToPoint([pagedCollectionView contentOffset], CGPointMake(0.0, 1334.0)),
+                @"paged filtered reload did not preserve the page position");
 
         FeedNodeBlock nodeBlock = [adapter collectionNode:collectionNode nodeBlockForItemAtIndexPath:[NSIndexPath indexPathForItem:1 inSection:0]];
         [adapter upstreamWillReload];

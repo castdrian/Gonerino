@@ -3,3 +3,5 @@ packages/
 headers/ChangelogData.h
 .github/release-notes.md
 .DS_Store
+GOAL.md
+test-artifacts/
