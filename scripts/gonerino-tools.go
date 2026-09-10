@@ -1818,6 +1818,76 @@ func testFeedAdapterSimulator(args []string) error {
 	return fmt.Errorf("feed data-source adapter simulator checks did not report a pass:\n%s", output)
 }
 
+func testActionListSimulator(args []string) error {
+	root, err := repoRoot()
+	if err != nil {
+		return err
+	}
+	simulatorID := os.Getenv("GONERINO_SIMULATOR_ID")
+	if simulatorID == "" {
+		simulatorID = "booted"
+	}
+	if err := os.MkdirAll(filepath.Join(root, ".theos"), 0755); err != nil {
+		return err
+	}
+	buildDirectory, err := os.MkdirTemp(filepath.Join(root, ".theos"), "gonerino-action-harness.")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(buildDirectory)
+	sdk, err := runOutput("", "xcrun", "--sdk", "iphonesimulator", "--show-sdk-path")
+	if err != nil {
+		return err
+	}
+	sdkPath := strings.TrimSpace(string(sdk))
+	if _, err := runOutput("", "xcrun", "simctl", "bootstatus", simulatorID, "-b"); err != nil {
+		return err
+	}
+	binaryPath := filepath.Join(buildDirectory, "GonerinoActionHarness")
+	clangArgs := []string{
+		"-arch", "arm64",
+		"-isysroot", sdkPath,
+		"-mios-simulator-version-min=15.0",
+		"-fobjc-arc",
+		"-fblocks",
+		"-I" + filepath.Join(root, "headers"),
+		filepath.Join(root, "tests", "action-list-harness.m"),
+		filepath.Join(root, "sources", "GonerinoActionList.m"),
+		"-framework", "Foundation",
+		"-framework", "UIKit",
+		"-o", binaryPath,
+	}
+	if _, err := runOutput("", "xcrun", append([]string{"clang"}, clangArgs...)...); err != nil {
+		return err
+	}
+	appDirectory := filepath.Join(buildDirectory, "GonerinoActionHarness.app")
+	if err := os.MkdirAll(appDirectory, 0755); err != nil {
+		return err
+	}
+	if err := copyFile(binaryPath, filepath.Join(appDirectory, "GonerinoActionHarness")); err != nil {
+		return err
+	}
+	if err := copyFile(filepath.Join(root, "tests", "action-list-harness-Info.plist"), filepath.Join(appDirectory, "Info.plist")); err != nil {
+		return err
+	}
+	if _, err := runOutput("", "xcrun", "simctl", "install", simulatorID, appDirectory); err != nil {
+		return err
+	}
+	if _, err := runOutput("", "xcrun", "simctl", "launch", simulatorID, "dev.adrian.gonerino.action-harness"); err != nil {
+		return err
+	}
+	for attempt := 0; attempt < 20; attempt++ {
+		output, _ := runOutput("", "xcrun", "simctl", "spawn", simulatorID, "log", "show", "--last", "5s", "--style", "compact", "--predicate", `process == "GonerinoActionHarness"`)
+		if strings.Contains(string(output), "PASS: block action lists") {
+			fmt.Println("block action list simulator checks passed")
+			return nil
+		}
+		sleepMillis(250)
+	}
+	output, _ := runOutput("", "xcrun", "simctl", "spawn", simulatorID, "log", "show", "--last", "30s", "--style", "compact", "--predicate", `process == "GonerinoActionHarness"`)
+	return fmt.Errorf("block action list simulator checks did not report a pass:\n%s", output)
+}
+
 func copyFile(source, destination string) error {
 	contents, err := os.ReadFile(source)
 	if err != nil {
@@ -2402,7 +2472,9 @@ func verifyArchitecture(root string) error {
 		return errors.New("legacy settings lifecycle or title redirect state is still present")
 	}
 	required := map[string][]string{
+		"headers/GonerinoActionList.h":    {"GonerinoUniqueBlockActions"},
 		"headers/Util.h":                  {"FeedMetadataRecord"},
+		"sources/GonerinoActionList.m":    {"GonerinoPrependUniqueBlockActions"},
 		"sources/Util.m":                  {"AdaptLongFormVideoNode", "AdaptElementsFeedNode", "AdaptShortsNode"},
 		"sources/Tweak.x":                 {"setAsyncDataSource", "presentFromView", "shouldDismissOnAction = YES", "FeedFilterStateDidChangeNotification"},
 		"sources/FeedDataSourceAdapter.m": {"nodeForItemAtIndexPath", "sourceItemsBySection", "EmptyFeedNode", "calculateSizeThatFits", "FeedEmptyCellNode", "snapshotForCountRequestWithRetryCount"},
@@ -2458,7 +2530,7 @@ func verifyArchitecture(root string) error {
 
 func printUsage() {
 	fmt.Fprintln(os.Stderr, "usage: gonerino-tools COMMAND [ARGS]")
-	fmt.Fprintln(os.Stderr, "commands: analyze-performance, generate-screenshot-strip, merge-blocklists, test-blocklist-restore, test-metadata-fixtures, blocklist-backup, blocklist-restore, performance, performance-suite, settings-regression, simulator-debug, simulator-settings-regression, test-feed-data-source-adapter-simulator, verify-settings, verify-architecture")
+	fmt.Fprintln(os.Stderr, "commands: analyze-performance, generate-screenshot-strip, merge-blocklists, test-blocklist-restore, test-metadata-fixtures, blocklist-backup, blocklist-restore, performance, performance-suite, settings-regression, simulator-debug, simulator-settings-regression, test-action-list-simulator, test-feed-data-source-adapter-simulator, verify-settings, verify-architecture")
 }
 
 func main() {
@@ -2576,6 +2648,12 @@ func main() {
 			err = errors.New("usage: test-feed-data-source-adapter-simulator")
 		} else {
 			err = testFeedAdapterSimulator(args)
+		}
+	case "test-action-list-simulator":
+		if len(args) != 0 {
+			err = errors.New("usage: test-action-list-simulator")
+		} else {
+			err = testActionListSimulator(args)
 		}
 	case "verify-architecture":
 		var root string

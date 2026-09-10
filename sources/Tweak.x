@@ -1,6 +1,7 @@
 #import "Tweak.h"
 #import "FeedDataSourceAdapter.h"
 #import "Localization.h"
+#import "GonerinoActionList.h"
 #import "ReelSequenceFilter.h"
 #import "UpdateChecker.h"
 #import <objc/runtime.h>
@@ -394,7 +395,7 @@ static NSArray *MenuBlockingActions(NSDictionary *metadata,
         actionWithTitle:LocalizedString(@"Block channel")
               iconImage:[Util createBlockChannelIconWithSize:iconSize]
          secondaryIconImage:nil
-     accessibilityIdentifier:nil
+     accessibilityIdentifier:@"GonerinoBlockChannel"
                 handler:^ {
                     [[ChannelManager sharedInstance] addBlockedChannel:channel];
                     SendToast(weakSourceView,
@@ -405,7 +406,7 @@ static NSArray *MenuBlockingActions(NSDictionary *metadata,
         actionWithTitle:LocalizedString(@"Block video")
               iconImage:[Util createBlockVideoIconWithSize:iconSize]
          secondaryIconImage:nil
-     accessibilityIdentifier:nil
+     accessibilityIdentifier:@"GonerinoBlockVideo"
                 handler:^ {
                     [[VideoManager sharedInstance] addBlockedVideo:videoID title:videoTitle channel:channel];
                     SendToast(weakSourceView,
@@ -421,10 +422,14 @@ static NSArray *MenuBlockingActions(NSDictionary *metadata,
 }
 
 static NSArray *MDCBlockingActionsForSheet(id sheet, NSArray *actions) {
-    if (!CurrentShortsPlayer || ![actions isKindOfClass:[NSArray class]] || actions.count == 0)
+    if (![actions isKindOfClass:[NSArray class]])
         return actions;
-    if (objc_getAssociatedObject(sheet, MDCBlockingActionsKey))
-        return [objc_getAssociatedObject(sheet, MDCBlockingActionsKey) arrayByAddingObjectsFromArray:actions];
+    NSArray *normalizedActions = GonerinoUniqueBlockActions(actions);
+    if (!CurrentShortsPlayer || normalizedActions.count == 0)
+        return normalizedActions;
+    NSArray *associatedActions = objc_getAssociatedObject(sheet, MDCBlockingActionsKey);
+    if (associatedActions)
+        return GonerinoPrependUniqueBlockActions(normalizedActions, associatedActions);
 
     UIView *sourceView = ActionSheetSourceView(sheet);
     if (!sourceView && [CurrentShortsPlayer isKindOfClass:[UIViewController class]])
@@ -434,11 +439,11 @@ static NSArray *MDCBlockingActionsForSheet(id sheet, NSArray *actions) {
         ![metadata[@"channel"] isKindOfClass:[NSString class]] ||
         [(NSString *)metadata[@"id"] length] == 0 ||
         [(NSString *)metadata[@"channel"] length] == 0)
-        return actions;
+        return normalizedActions;
 
     Class actionClass = NSClassFromString(@"MDCActionSheetAction");
     if (!actionClass)
-        return actions;
+        return normalizedActions;
 
     UIImage *originalImage = ExplicitObjectValue(actions.firstObject, @"image");
     CGSize iconSize = originalImage.size;
@@ -481,7 +486,7 @@ static NSArray *MDCBlockingActionsForSheet(id sheet, NSArray *actions) {
         [Util createBlockVideoIconWithSize:iconSize],
         videoHandler);
     if (!blockChannelAction || !blockVideoAction)
-        return actions;
+        return normalizedActions;
 
     if ([blockChannelAction respondsToSelector:@selector(setAccessibilityIdentifier:)])
         [blockChannelAction setAccessibilityIdentifier:@"GonerinoBlockChannel"];
@@ -489,7 +494,7 @@ static NSArray *MDCBlockingActionsForSheet(id sheet, NSArray *actions) {
         [blockVideoAction setAccessibilityIdentifier:@"GonerinoBlockVideo"];
     NSArray *blockingActions = @[blockChannelAction, blockVideoAction];
     objc_setAssociatedObject(sheet, MDCBlockingActionsKey, blockingActions, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    return [blockingActions arrayByAddingObjectsFromArray:actions];
+    return GonerinoPrependUniqueBlockActions(normalizedActions, blockingActions);
 }
 
 static void InjectShortsBottomSheetActions(id contentViewController) {
@@ -515,18 +520,7 @@ static void InjectShortsBottomSheetActions(id contentViewController) {
                              BottomSheetBlockingActionsKey,
                              blockingActions,
                              OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    for (YTActionSheetAction *action in [blockingActions reverseObjectEnumerator]) {
-        NSString *title = action.title.lowercaseString;
-        BOOL alreadyPresent = NO;
-        for (YTActionSheetAction *existingAction in actions) {
-            if ([existingAction.title.lowercaseString isEqualToString:title]) {
-                alreadyPresent = YES;
-                break;
-            }
-        }
-        if (!alreadyPresent)
-            [actions insertObject:action atIndex:0];
-    }
+    [actions setArray:GonerinoPrependUniqueBlockActions(actions, blockingActions)];
     if ([actionOwner respondsToSelector:@selector(relayoutActionSheet)])
         [actionOwner performSelector:@selector(relayoutActionSheet)];
     if ([actionSheetController respondsToSelector:@selector(updateDialogToPreferredContentSize)])
@@ -540,19 +534,15 @@ static NSArray *MenuActionsWithBlockingActions(NSArray *actions, UIView *sourceV
     NSMutableDictionary *metadata = [CachedActionVideoInfo(nil, sourceView, sourceNode) mutableCopy] ?: [NSMutableDictionary dictionaryWithCapacity:3];
     MergeCachedMenuContextMetadata(metadata, renderers, entry);
     RememberActionMetadata(metadata, sourceView, sourceNode);
-    if (actions.count == 0)
-        return actions;
-    for (YTActionSheetAction *action in actions) {
-        NSString *title = action.title.lowercaseString;
-        if ([title isEqualToString:LocalizedString(@"block channel").lowercaseString] ||
-            [title isEqualToString:LocalizedString(@"block video").lowercaseString])
-            return actions;
-    }
+    NSArray *normalizedActions = GonerinoUniqueBlockActions(actions);
+    if (normalizedActions.count == 0)
+        return normalizedActions;
     if (metadata.count == 0)
-        return actions;
-    NSArray *blockingActions = MenuBlockingActions(metadata, actions.firstObject, sourceView);
-    NSArray *result = blockingActions.count > 0 ? [blockingActions arrayByAddingObjectsFromArray:actions] : actions;
-    return result;
+        return normalizedActions;
+    NSArray *blockingActions = MenuBlockingActions(metadata, normalizedActions.firstObject, sourceView);
+    return blockingActions.count > 0
+        ? GonerinoPrependUniqueBlockActions(normalizedActions, blockingActions)
+        : normalizedActions;
 }
 
 static void PrepareMenuControllerSheet(id menuController, UIView *sourceView) {
@@ -576,12 +566,19 @@ static void InsertStoredBlockingActions(id sheet) {
     if (![storedActions isKindOfClass:[NSMutableArray class]] || blockingActions.count == 0)
         return;
 
-    for (id action in blockingActions) {
-        if ([storedActions containsObject:action])
-            return;
+    NSArray *normalizedActions = GonerinoPrependUniqueBlockActions(storedActions, blockingActions);
+    BOOL changed = normalizedActions.count != storedActions.count;
+    if (!changed) {
+        for (NSUInteger index = 0; index < normalizedActions.count; index++) {
+            if (normalizedActions[index] != storedActions[index]) {
+                changed = YES;
+                break;
+            }
+        }
     }
-    for (id action in [blockingActions reverseObjectEnumerator])
-        [storedActions insertObject:action atIndex:0];
+    if (!changed)
+        return;
+    [storedActions setArray:normalizedActions];
     if ([sheet respondsToSelector:@selector(relayoutActionSheet)])
         [sheet performSelector:@selector(relayoutActionSheet)];
 }
@@ -742,7 +739,7 @@ static void AddBlockingActions(id sheet, YTActionSheetAction *originalAction) {
             actionWithTitle:LocalizedString(@"Block channel")
                   iconImage:[Util createBlockChannelIconWithSize:iconSize]
              secondaryIconImage:nil
-         accessibilityIdentifier:nil
+                  accessibilityIdentifier:@"GonerinoBlockChannel"
                 handler:^ {
                       ResolveActionVideoInfo(weakSheet,
                                              YES,
@@ -772,7 +769,7 @@ static void AddBlockingActions(id sheet, YTActionSheetAction *originalAction) {
             actionWithTitle:LocalizedString(@"Block video")
                   iconImage:[Util createBlockVideoIconWithSize:iconSize]
              secondaryIconImage:nil
-         accessibilityIdentifier:nil
+                  accessibilityIdentifier:@"GonerinoBlockVideo"
                 handler:^ {
                       ResolveActionVideoInfo(weakSheet,
                                              NO,
@@ -832,18 +829,14 @@ static void PrimeBlockingActionsForPresentation(id sheet, UIView *sourceView) {
 static NSArray *ActionsWithBlockingActions(id sheet, NSArray *actions) {
     if (!sheet || !actions)
         return actions;
+    NSArray *normalizedActions = GonerinoUniqueBlockActions(actions);
     NSArray *blockingActions = objc_getAssociatedObject(sheet, ActionSheetBlockingActionsKey);
-    if (blockingActions.count == 0 && actions.count > 0)
-        AddBlockingActions(sheet, actions.firstObject);
+    if (blockingActions.count == 0 && normalizedActions.count > 0)
+        AddBlockingActions(sheet, normalizedActions.firstObject);
     blockingActions = objc_getAssociatedObject(sheet, ActionSheetBlockingActionsKey);
     if (blockingActions.count == 0)
-        return actions;
-    NSMutableArray *result = [actions mutableCopy];
-    for (YTActionSheetAction *action in [blockingActions reverseObjectEnumerator]) {
-        if (![result containsObject:action])
-            [result insertObject:action atIndex:0];
-    }
-    return result.copy;
+        return normalizedActions;
+    return GonerinoPrependUniqueBlockActions(normalizedActions, blockingActions);
 }
 
 static UICollectionViewCell *FeedCellForSourceView(UIView *sourceView) {
