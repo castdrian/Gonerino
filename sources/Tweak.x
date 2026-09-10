@@ -17,7 +17,6 @@ static void *FeedDataSourceAdapterKey = &FeedDataSourceAdapterKey;
 static void *ActionSheetSourceViewKey = &ActionSheetSourceViewKey;
 static void *ActionSheetBlockingActionsKey = &ActionSheetBlockingActionsKey;
 static void *ShortsResponseMetadataKey = &ShortsResponseMetadataKey;
-static void *BottomSheetBlockingActionsKey = &BottomSheetBlockingActionsKey;
 static void *ActionMetadataKey = &ActionMetadataKey;
 static void *MDCBlockingActionsKey = &MDCBlockingActionsKey;
 static NSDictionary *CachedActionVideoInfo(id sheet, UIView *sourceView, id sourceNode);
@@ -286,8 +285,23 @@ static id ShortsPlayerForObject(id object) {
 
 static void SendToast(id object, NSString *message) {
     UIView *view = [object isKindOfClass:[UIView class]] ? object : ExplicitObjectValue(object, @"sourceView");
-    if (![view isKindOfClass:[UIView class]])
-        view = nil;
+    if (![view isKindOfClass:[UIView class]]) {
+        UIApplication *application = [UIApplication sharedApplication];
+        for (UIScene *scene in application.connectedScenes) {
+            if (![scene isKindOfClass:[UIWindowScene class]])
+                continue;
+            for (UIWindow *window in ((UIWindowScene *)scene).windows) {
+                if (window.isKeyWindow) {
+                    view = window;
+                    break;
+                }
+                if (![view isKindOfClass:[UIView class]])
+                    view = window;
+            }
+            if ([view isKindOfClass:[UIView class]] && [(UIWindow *)view isKeyWindow])
+                break;
+        }
+    }
     [Util showToast:message fromView:view];
 }
 
@@ -363,9 +377,7 @@ static void RememberActionMetadata(NSDictionary *metadata, UIView *sourceView, i
         [Util rememberFeedVideoMetadata:actionMetadata forNode:sourceNode];
         [FeedDataSourceAdapter rememberMetadata:actionMetadata forNode:sourceNode];
     }
-    id shortsPlayer = ShortsPlayerForObject(sourceView);
-    if (!shortsPlayer && !sourceView)
-        shortsPlayer = CurrentShortsPlayer;
+    id shortsPlayer = ShortsPlayerForObject(sourceView) ?: CurrentShortsPlayer;
     if (shortsPlayer)
         RememberShortsMetadataForPlayer(shortsPlayer, actionMetadata);
     if (!sourceNode && sourceView)
@@ -496,39 +508,11 @@ static NSArray *MDCBlockingActionsForSheet(id sheet, NSArray *actions) {
     return GonerinoPrependUniqueBlockActions(normalizedActions, blockingActions);
 }
 
-static void InjectShortsBottomSheetActions(id contentViewController) {
-    if (!contentViewController)
-        return;
-
-    id actionSheetController = DirectObjectIvar(contentViewController, @"actionsController") ?: contentViewController;
-    id actionOwner = DirectObjectIvar(actionSheetController, @"delegate") ?: contentViewController;
-    NSMutableArray *actions = DirectObjectIvar(actionOwner, @"actions");
-    if (!CurrentShortsPlayer || objc_getAssociatedObject(actionOwner, BottomSheetBlockingActionsKey))
-        return;
-    if (![actions isKindOfClass:[NSMutableArray class]] || actions.count == 0)
-        return;
-
-    UIView *sourceView = [CurrentShortsPlayer isKindOfClass:[UIViewController class]] ?
-        ((UIViewController *)CurrentShortsPlayer).view : nil;
-    NSDictionary *metadata = CachedActionVideoInfo(actionOwner, sourceView, nil);
-    NSArray *blockingActions = MenuBlockingActions(metadata, actions.firstObject, sourceView);
-    if (blockingActions.count == 0)
-        return;
-
-    objc_setAssociatedObject(actionOwner,
-                             BottomSheetBlockingActionsKey,
-                             blockingActions,
-                             OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    [actions setArray:GonerinoPrependUniqueBlockActions(actions, blockingActions)];
-    if ([actionOwner respondsToSelector:@selector(relayoutActionSheet)])
-        [actionOwner performSelector:@selector(relayoutActionSheet)];
-    if ([actionSheetController respondsToSelector:@selector(updateDialogToPreferredContentSize)])
-        [actionSheetController performSelector:@selector(updateDialogToPreferredContentSize)];
-}
-
 static NSArray *MenuActionsWithBlockingActions(NSArray *actions, UIView *sourceView, id renderers, id entry) {
     if (![actions isKindOfClass:[NSArray class]])
         return @[];
+    if (CurrentShortsPlayer)
+        return actions;
     id sourceNode = FeedNodeForSourceView(sourceView);
     NSMutableDictionary *metadata = [CachedActionVideoInfo(nil, sourceView, sourceNode) mutableCopy] ?: [NSMutableDictionary dictionaryWithCapacity:3];
     MergeCachedMenuContextMetadata(metadata, renderers, entry);
@@ -573,9 +557,7 @@ static NSDictionary *CachedActionVideoInfo(id sheet, UIView *sourceView, id sour
     MergeCachedMetadataForObject(info, sourceNode);
     MergeCachedMetadataForObject(info, sourceView);
 
-    id actionPlayer = ShortsPlayerForObject(sourceView);
-    if (!actionPlayer && !sourceView)
-        actionPlayer = CurrentShortsPlayer;
+    id actionPlayer = ShortsPlayerForObject(sourceView) ?: CurrentShortsPlayer;
     if (actionPlayer) {
         CurrentShortsPlayer = actionPlayer;
         id contentView = ExplicitObjectValue(actionPlayer, @"shortsContentView") ?: ExplicitObjectValue(actionPlayer, @"contentView");
@@ -687,8 +669,9 @@ static void AddBlockingActions(id sheet, YTActionSheetAction *originalAction) {
             return;
         }
 
-        if ([capturedMetadata[@"id"] length] == 0 || [capturedMetadata[@"channel"] length] == 0)
+        if ([capturedMetadata[@"id"] length] == 0 || [capturedMetadata[@"channel"] length] == 0) {
             return;
+        }
 
         objc_setAssociatedObject(sheet, injectionKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         objc_setAssociatedObject(sheet, injectionInProgressKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
@@ -787,11 +770,22 @@ static NSArray *ActionsWithBlockingActions(id sheet, NSArray *actions) {
     if (!sheet || !actions)
         return actions;
     NSArray *normalizedActions = GonerinoUniqueBlockActions(actions);
+    if (CurrentShortsPlayer)
+        return normalizedActions;
     NSArray *blockingActions = objc_getAssociatedObject(sheet, ActionSheetBlockingActionsKey);
     if (blockingActions.count == 0 && normalizedActions.count > 0)
         AddBlockingActions(sheet, normalizedActions.firstObject);
     blockingActions = objc_getAssociatedObject(sheet, ActionSheetBlockingActionsKey);
     if (blockingActions.count == 0)
+        return normalizedActions;
+    BOOL containsAllBlockingActions = YES;
+    for (id blockingAction in blockingActions) {
+        if (![normalizedActions containsObject:blockingAction]) {
+            containsAllBlockingActions = NO;
+            break;
+        }
+    }
+    if (containsAllBlockingActions)
         return normalizedActions;
     return GonerinoPrependUniqueBlockActions(normalizedActions, blockingActions);
 }
@@ -1110,21 +1104,24 @@ didUpdateWithPrevItems:(id)prevItems
 }
 
 - (void)addActionsContentView:(UIView *)contentView {
-    InjectShortsBottomSheetActions(self);
     %orig(contentView);
 }
 
 - (void)relayoutActionSheet {
-    InjectShortsBottomSheetActions(self);
     %orig;
 }
 
 - (void)viewDidLoad {
     %orig;
-    InjectShortsBottomSheetActions(self);
 }
 
 - (void)addAction:(YTActionSheetAction *)action {
+    if (CurrentShortsPlayer && !objc_getAssociatedObject(self, ActionSheetBlockingActionsKey)) {
+        AddBlockingActions(self, action);
+        NSArray *blockingActions = objc_getAssociatedObject(self, ActionSheetBlockingActionsKey);
+        for (YTActionSheetAction *blockingAction in blockingActions)
+            %orig(blockingAction);
+    }
     %orig(action);
 }
 
@@ -1155,6 +1152,8 @@ didUpdateWithPrevItems:(id)prevItems
 
 - (NSArray *)actions {
     NSArray *originalActions = %orig;
+    if (CurrentShortsPlayer)
+        return originalActions;
     return ActionsWithBlockingActions(self, originalActions);
 }
 
@@ -1176,6 +1175,8 @@ didUpdateWithPrevItems:(id)prevItems
 
 - (NSArray *)actions {
     NSArray *originalActions = %orig;
+    if (CurrentShortsPlayer)
+        return originalActions;
     return MDCBlockingActionsForSheet(self, originalActions);
 }
 
@@ -1309,49 +1310,6 @@ didUpdateWithPrevItems:(id)prevItems
 
 %end
 
-%hook YTBottomSheetController
-
-- (instancetype)initWithContentViewController:(UIViewController *)contentViewController {
-    YTBottomSheetController *result = %orig(contentViewController);
-    InjectShortsBottomSheetActions(contentViewController);
-    return result;
-}
-
-- (instancetype)initWithContentViewController:(UIViewController *)contentViewController
-                              enableViewPort:(BOOL)enableViewPort {
-    YTBottomSheetController *result = %orig(contentViewController, enableViewPort);
-    InjectShortsBottomSheetActions(contentViewController);
-    return result;
-}
-
-%end
-
-%hook YTActionSheetDialogViewController
-
-- (void)viewDidLoad {
-    InjectShortsBottomSheetActions(self);
-    %orig;
-    InjectShortsBottomSheetActions(self);
-}
-
-- (void)setPreferredContentSize:(CGSize)preferredContentSize {
-    InjectShortsBottomSheetActions(self);
-    %orig(preferredContentSize);
-    InjectShortsBottomSheetActions(self);
-}
-
-%end
-
-%hook UIViewController
-
-- (void)presentViewController:(UIViewController *)viewControllerToPresent
-                     animated:(BOOL)animated
-                   completion:(void (^)(void))completion {
-    %orig(viewControllerToPresent, animated, completion);
-}
-
-%end
-
 %hook YTShortsPlayerViewController
 
 - (id)initWithParentResponder:(id)parentResponder
@@ -1370,6 +1328,12 @@ didUpdateWithPrevItems:(id)prevItems
     CurrentShortsPlayer = self;
     %orig;
     CaptureCurrentShortsMetadata(self);
+}
+
+- (void)viewDidDisappear:(BOOL)animated {
+    %orig;
+    if (CurrentShortsPlayer == self)
+        CurrentShortsPlayer = nil;
 }
 
 - (void)handleReelItemWatchResponse:(id)response
@@ -1423,6 +1387,12 @@ didUpdateWithPrevItems:(id)prevItems
     CurrentShortsPlayer = self;
     %orig;
     CaptureCurrentShortsMetadata(self);
+}
+
+- (void)viewDidDisappear:(BOOL)animated {
+    %orig;
+    if (CurrentShortsPlayer == self)
+        CurrentShortsPlayer = nil;
 }
 
 - (void)currentVideoDidChange {
