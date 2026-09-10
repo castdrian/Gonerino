@@ -1,10 +1,11 @@
 #import "GonerinoActionList.h"
+#import <objc/message.h>
 
-static NSString *ActionStringValue(id action, NSString *key) {
-    if (!action || key.length == 0)
+static NSString *ActionStringValue(id action, SEL selector) {
+    if (!action || !selector || ![action respondsToSelector:selector])
         return nil;
     @try {
-        id value = [action valueForKey:key];
+        id value = ((id (*)(id, SEL))objc_msgSend)(action, selector);
         return [value isKindOfClass:[NSString class]] ? value : nil;
     } @catch (__unused NSException *exception) {
         return nil;
@@ -12,13 +13,13 @@ static NSString *ActionStringValue(id action, NSString *key) {
 }
 
 static NSString *BlockActionKey(id action) {
-    NSString *identifier = ActionStringValue(action, @"accessibilityIdentifier");
+    NSString *identifier = ActionStringValue(action, @selector(accessibilityIdentifier));
     if ([identifier isEqualToString:@"GonerinoBlockChannel"])
         return @"channel";
     if ([identifier isEqualToString:@"GonerinoBlockVideo"])
         return @"video";
 
-    NSString *title = ActionStringValue(action, @"title").lowercaseString;
+    NSString *title = ActionStringValue(action, @selector(title)).lowercaseString;
     if ([title isEqualToString:@"block channel"])
         return @"channel";
     if ([title isEqualToString:@"block video"])

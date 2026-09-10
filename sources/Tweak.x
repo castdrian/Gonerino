@@ -23,7 +23,6 @@ static void *MDCBlockingActionsKey = &MDCBlockingActionsKey;
 static NSDictionary *CachedActionVideoInfo(id sheet, UIView *sourceView, id sourceNode);
 static NSDictionary *FreshActionVideoInfo(id sheet, UIView *sourceView, id sourceNode);
 static void AddBlockingActions(id sheet, YTActionSheetAction *originalAction);
-static void InsertStoredBlockingActions(id sheet);
 
 static BOOL IsShortsDataSourceOrView(id view, id dataSource) {
     Class reelDataSourceClass = NSClassFromString(@"YTReelDataSource");
@@ -547,40 +546,9 @@ static NSArray *MenuActionsWithBlockingActions(NSArray *actions, UIView *sourceV
 
 static void PrepareMenuControllerSheet(id menuController, UIView *sourceView) {
     id sheet = ExplicitObjectValue(menuController, @"actionSheetController");
-    if (!sheet)
+    if (!sheet || !sourceView)
         return;
-    if (sourceView)
-        objc_setAssociatedObject(sheet, ActionSheetSourceViewKey, sourceView, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    NSDictionary *metadata = CachedActionVideoInfo(sheet, sourceView, nil);
-    if (metadata.count > 0)
-        objc_setAssociatedObject(sheet, ActionMetadataKey, metadata, OBJC_ASSOCIATION_COPY_NONATOMIC);
-    NSArray *actions = [sheet respondsToSelector:@selector(actions)] ? [[sheet actions] copy] : @[];
-    if (actions.count > 0 && [sheet respondsToSelector:@selector(addAction:)])
-        AddBlockingActions(sheet, actions.firstObject);
-    InsertStoredBlockingActions(sheet);
-}
-
-static void InsertStoredBlockingActions(id sheet) {
-    NSMutableArray *storedActions = DirectObjectIvar(sheet, @"actions");
-    NSArray *blockingActions = objc_getAssociatedObject(sheet, ActionSheetBlockingActionsKey);
-    if (![storedActions isKindOfClass:[NSMutableArray class]] || blockingActions.count == 0)
-        return;
-
-    NSArray *normalizedActions = GonerinoPrependUniqueBlockActions(storedActions, blockingActions);
-    BOOL changed = normalizedActions.count != storedActions.count;
-    if (!changed) {
-        for (NSUInteger index = 0; index < normalizedActions.count; index++) {
-            if (normalizedActions[index] != storedActions[index]) {
-                changed = YES;
-                break;
-            }
-        }
-    }
-    if (!changed)
-        return;
-    [storedActions setArray:normalizedActions];
-    if ([sheet respondsToSelector:@selector(relayoutActionSheet)])
-        [sheet performSelector:@selector(relayoutActionSheet)];
+    objc_setAssociatedObject(sheet, ActionSheetSourceViewKey, sourceView, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 }
 
 static void *ScrollablePageDataSourceKey = &ScrollablePageDataSourceKey;
@@ -813,17 +781,6 @@ static void AddBlockingActions(id sheet, YTActionSheetAction *originalAction) {
         objc_setAssociatedObject(sheet, injectionKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         objc_setAssociatedObject(sheet, injectionInProgressKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
-}
-
-static void PrimeBlockingActionsForPresentation(id sheet, UIView *sourceView) {
-    if (!sheet)
-        return;
-    if (sourceView)
-        objc_setAssociatedObject(sheet, ActionSheetSourceViewKey, sourceView, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    NSArray *actions = [sheet respondsToSelector:@selector(actions)] ? [[sheet actions] copy] : @[];
-    YTActionSheetAction *originalAction = actions.firstObject;
-    if (originalAction)
-        AddBlockingActions(sheet, originalAction);
 }
 
 static NSArray *ActionsWithBlockingActions(id sheet, NSArray *actions) {
@@ -1155,31 +1112,20 @@ didUpdateWithPrevItems:(id)prevItems
 - (void)addActionsContentView:(UIView *)contentView {
     InjectShortsBottomSheetActions(self);
     %orig(contentView);
-    InsertStoredBlockingActions(self);
 }
 
 - (void)relayoutActionSheet {
     InjectShortsBottomSheetActions(self);
     %orig;
-    InsertStoredBlockingActions(self);
 }
 
 - (void)viewDidLoad {
     %orig;
     InjectShortsBottomSheetActions(self);
-    InsertStoredBlockingActions(self);
 }
 
 - (void)addAction:(YTActionSheetAction *)action {
-    NSArray *blockingActions = objc_getAssociatedObject(self, ActionSheetBlockingActionsKey);
-    if (blockingActions.count == 0) {
-        AddBlockingActions(self, action);
-        blockingActions = objc_getAssociatedObject(self, ActionSheetBlockingActionsKey);
-        for (YTActionSheetAction *blockingAction in blockingActions)
-            %orig(blockingAction);
-    }
     %orig(action);
-    InsertStoredBlockingActions(self);
 }
 
 - (NSArray *)actions {
@@ -1188,14 +1134,14 @@ didUpdateWithPrevItems:(id)prevItems
 }
 
 - (void)presentFromView:(UIView *)view {
-    PrimeBlockingActionsForPresentation(self, view);
-    InsertStoredBlockingActions(self);
+    if (view)
+        objc_setAssociatedObject(self, ActionSheetSourceViewKey, view, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     %orig(view);
 }
 
 - (void)presentFromView:(UIView *)view completion:(id)completion {
-    PrimeBlockingActionsForPresentation(self, view);
-    InsertStoredBlockingActions(self);
+    if (view)
+        objc_setAssociatedObject(self, ActionSheetSourceViewKey, view, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     %orig(view, completion);
 }
 
@@ -1204,15 +1150,7 @@ didUpdateWithPrevItems:(id)prevItems
 %hook YTActionSheetController
 
 - (void)addAction:(YTActionSheetAction *)action {
-    NSArray *blockingActions = objc_getAssociatedObject(self, ActionSheetBlockingActionsKey);
-    if (blockingActions.count == 0) {
-        AddBlockingActions(self, action);
-        blockingActions = objc_getAssociatedObject(self, ActionSheetBlockingActionsKey);
-        for (YTActionSheetAction *blockingAction in blockingActions)
-            %orig(blockingAction);
-    }
     %orig(action);
-    InsertStoredBlockingActions(self);
 }
 
 - (NSArray *)actions {
@@ -1221,12 +1159,14 @@ didUpdateWithPrevItems:(id)prevItems
 }
 
 - (void)presentFromView:(UIView *)view {
-    PrimeBlockingActionsForPresentation(self, view);
+    if (view)
+        objc_setAssociatedObject(self, ActionSheetSourceViewKey, view, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     %orig(view);
 }
 
 - (void)presentFromView:(UIView *)view completion:(id)completion {
-    PrimeBlockingActionsForPresentation(self, view);
+    if (view)
+        objc_setAssociatedObject(self, ActionSheetSourceViewKey, view, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     %orig(view, completion);
 }
 
@@ -1392,14 +1332,12 @@ didUpdateWithPrevItems:(id)prevItems
     InjectShortsBottomSheetActions(self);
     %orig;
     InjectShortsBottomSheetActions(self);
-    InsertStoredBlockingActions(ExplicitObjectValue(self, @"delegate"));
 }
 
 - (void)setPreferredContentSize:(CGSize)preferredContentSize {
     InjectShortsBottomSheetActions(self);
     %orig(preferredContentSize);
     InjectShortsBottomSheetActions(self);
-    InsertStoredBlockingActions(ExplicitObjectValue(self, @"delegate"));
 }
 
 %end
@@ -1409,11 +1347,6 @@ didUpdateWithPrevItems:(id)prevItems
 - (void)presentViewController:(UIViewController *)viewControllerToPresent
                      animated:(BOOL)animated
                    completion:(void (^)(void))completion {
-    NSString *className = NSStringFromClass([viewControllerToPresent class]).lowercaseString;
-    BOOL hasActionSheetInterface = [viewControllerToPresent respondsToSelector:@selector(actions)] &&
-                                   [viewControllerToPresent respondsToSelector:@selector(addAction:)];
-    if ([className containsString:@"actionsheet"] || hasActionSheetInterface)
-        PrimeBlockingActionsForPresentation(viewControllerToPresent, ActionSheetSourceView(viewControllerToPresent));
     %orig(viewControllerToPresent, animated, completion);
 }
 
