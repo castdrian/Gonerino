@@ -311,7 +311,7 @@ int main(void) {
         FeedNodeBlock nodeBlock = [adapter collectionNode:collectionNode nodeBlockForItemAtIndexPath:[NSIndexPath indexPathForItem:1 inSection:0]];
         [adapter upstreamWillReload];
         id staleNode = nodeBlock();
-        Require([staleNode isKindOfClass:NSClassFromString(@"FeedEmptyCellNode")], @"stale node block returned old content");
+        Require(staleNode == third, @"stale node block did not preserve the upstream node");
 
         FakeDirectCollectionView *directCollectionView = [FakeDirectCollectionView new];
         FeedDataSourceAdapter *directAdapter = [FeedDataSourceAdapter adapterWithCollectionView:(UICollectionView *)directCollectionView

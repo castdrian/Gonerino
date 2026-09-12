@@ -58,6 +58,18 @@ static NSObject *SequenceStoreLock(void) {
 static NSUInteger SequenceGeneration = 1;
 static BOOL SequenceRefreshQueued = NO;
 
+static id ReelObjectIvar(id object, NSString *name) {
+    if (!object || name.length == 0)
+        return nil;
+    for (Class currentClass = object_getClass(object); currentClass; currentClass = class_getSuperclass(currentClass)) {
+        Ivar ivar = class_getInstanceVariable(currentClass, name.UTF8String);
+        if (!ivar || ivar_getTypeEncoding(ivar)[0] != '@')
+            continue;
+        return object_getIvar(object, ivar);
+    }
+    return nil;
+}
+
 static BOOL SnapshotMatches(ReelSequenceSnapshot *snapshot,
                             NSOrderedSet *sourceReels,
                             NSUInteger generation,
@@ -74,7 +86,16 @@ static BOOL SnapshotMatches(ReelSequenceSnapshot *snapshot,
 static FeedMetadataRecord *MetadataForReel(id reel) {
     if (!reel || reel == [NSNull null])
         return nil;
-    return [Util feedVideoMetadataFromModel:reel];
+    FeedMetadataRecord *metadata = [Util feedVideoMetadataFromModel:reel];
+    NSString *videoID = metadata.videoID.length > 0 ? metadata.videoID : [Util feedVideoIDForObject:reel];
+    FeedMetadataRecord *cached = videoID.length > 0 ? [Util cachedFeedVideoMetadataForVideoID:videoID] : nil;
+    if (!metadata)
+        return cached;
+    if (!cached)
+        return metadata;
+    return [[FeedMetadataRecord alloc] initWithVideoID:metadata.videoID.length > 0 ? metadata.videoID : cached.videoID
+                                                 title:metadata.title.length > 0 ? metadata.title : cached.title
+                                               channel:metadata.channel.length > 0 ? metadata.channel : cached.channel];
 }
 
 static ReelSequenceSnapshot *BuildSnapshot(id dataSource, NSOrderedSet *sourceReels) {
@@ -151,98 +172,57 @@ static NSInteger VisibleIndexForSourceIndex(ReelSequenceSnapshot *snapshot, NSIn
     return NSNotFound;
 }
 
-static id ObjectIvarValue(id object, NSString *name) {
-    if (!object || name.length == 0)
-        return nil;
-    Ivar ivar = class_getInstanceVariable([object class], name.UTF8String);
-    if (!ivar || ivar_getTypeEncoding(ivar)[0] != '@')
-        return nil;
-    return object_getIvar(object, ivar);
-}
-
-static void SetObjectIvarValue(id object, NSString *name, id value) {
-    if (!object || name.length == 0)
-        return;
-    Ivar ivar = class_getInstanceVariable([object class], name.UTF8String);
-    if (!ivar || ivar_getTypeEncoding(ivar)[0] != '@')
-        return;
-    object_setIvar(object, ivar, value);
-}
-
-static id PageViewControllerForSequenceController(id controller) {
-    if (!controller)
-        return nil;
-    id scrollablePageViewController = ObjectIvarValue(controller, @"_scrollablePageViewController");
-    if (scrollablePageViewController)
-        return scrollablePageViewController;
-    if ([controller respondsToSelector:@selector(pageViewController)])
-        return ((id (*)(id, SEL))objc_msgSend)(controller, @selector(pageViewController));
-    return ObjectIvarValue(controller, @"_pageViewController");
-}
-
-static id PageDataSourceAdapterForPageViewController(id pageViewController) {
-    if (!pageViewController)
-        return nil;
-    return ObjectIvarValue(pageViewController, @"_dataSourceAdapter") ?: ObjectIvarValue(pageViewController, @"_dataSource");
-}
-
-static void ResetPageControllerCache(id controller) {
-    id pageViewController = PageViewControllerForSequenceController(controller);
-    id adapter = ObjectIvarValue(controller, @"_scrollablePageViewControllerAdapter") ?:
-                 PageDataSourceAdapterForPageViewController(pageViewController);
-    if (!pageViewController || !adapter)
-        return;
-    NSInteger currentIndex = [pageViewController respondsToSelector:@selector(currentViewControllerIndex)]
-        ? ((NSInteger (*)(id, SEL))objc_msgSend)(pageViewController, @selector(currentViewControllerIndex))
-        : NSNotFound;
-    SetObjectIvarValue(adapter, @"_staticWindowViewControllers", @[]);
-    SetObjectIvarValue(adapter, @"_dynamicForwardViewControllers", [NSMutableArray array]);
-    SetObjectIvarValue(pageViewController, @"_currentViewController", nil);
-    SetObjectIvarValue(pageViewController, @"_visibleViewControllers", [NSMutableSet set]);
-    if ([adapter respondsToSelector:@selector(reloadPreviousAndNextControllers)])
-        ((void (*)(id, SEL))objc_msgSend)(adapter, @selector(reloadPreviousAndNextControllers));
-    if ([pageViewController respondsToSelector:@selector(reloadForSectionsWithGroup:)])
-        ((BOOL (*)(id, SEL, id))objc_msgSend)(pageViewController, @selector(reloadForSectionsWithGroup:), nil);
-    if (currentIndex != NSNotFound &&
-        [pageViewController respondsToSelector:@selector(scrollToControllerAtIndex:animated:completion:)])
-        ((void (*)(id, SEL, NSInteger, BOOL, id))objc_msgSend)(pageViewController,
-                                                                @selector(scrollToControllerAtIndex:animated:completion:),
-                                                                currentIndex,
-                                                                NO,
-                                                                nil);
-    if ([controller respondsToSelector:@selector(currentReelIndex)] &&
-        [controller respondsToSelector:@selector(transitionToReelAtIndex:transitionType:animated:)]) {
-        NSUInteger reelIndex = ((NSUInteger (*)(id, SEL))objc_msgSend)(controller, @selector(currentReelIndex));
-        ((void (*)(id, SEL, NSUInteger, NSUInteger, BOOL))objc_msgSend)(controller,
-                                                                          @selector(transitionToReelAtIndex:transitionType:animated:),
-                                                                          reelIndex,
-                                                                          0,
-                                                                          NO);
-    }
-}
-
 static void RefreshSequenceController(id controller) {
-    ResetPageControllerCache(controller);
-    if ([controller respondsToSelector:@selector(refreshContent)]) {
-        ((void (*)(id, SEL))objc_msgSend)(controller, @selector(refreshContent));
-        return;
-    }
-    if ([controller respondsToSelector:@selector(reloadForSectionsWithGroup:)]) {
-        ((BOOL (*)(id, SEL, id))objc_msgSend)(controller, @selector(reloadForSectionsWithGroup:), nil);
-        return;
-    }
-    if ([controller respondsToSelector:@selector(currentReelIndex)] &&
-        [controller respondsToSelector:@selector(transitionToReelAtIndex:transitionType:animated:)]) {
-        NSUInteger index = ((NSUInteger (*)(id, SEL))objc_msgSend)(controller, @selector(currentReelIndex));
-        ((void (*)(id, SEL, NSUInteger, NSUInteger, BOOL))objc_msgSend)(controller,
-                                                                          @selector(transitionToReelAtIndex:transitionType:animated:),
-                                                                          index,
-                                                                          0,
-                                                                          NO);
-        return;
-    }
-    if ([controller respondsToSelector:@selector(reloadPreviousAndNextViewControllers)]) {
-        ((void (*)(id, SEL))objc_msgSend)(controller, @selector(reloadPreviousAndNextViewControllers));
+    @try {
+        id dataSource = nil;
+        @synchronized (SequenceStoreLock()) {
+            dataSource = [SequenceControllerDataSources() objectForKey:controller];
+        }
+        NSOrderedSet *filteredReels = nil;
+        if ([dataSource respondsToSelector:@selector(reels)]) {
+            @try {
+                filteredReels = ((id (*)(id, SEL))objc_msgSend)(dataSource, @selector(reels));
+            } @catch (__unused NSException *exception) {
+                filteredReels = nil;
+            }
+        }
+        if ([filteredReels isKindOfClass:[NSOrderedSet class]] && filteredReels.count == 0) {
+            if ([dataSource respondsToSelector:@selector(softRefreshModel)])
+                ((void (*)(id, SEL))objc_msgSend)(dataSource, @selector(softRefreshModel));
+            else if ([dataSource respondsToSelector:@selector(refreshModel)])
+                ((void (*)(id, SEL))objc_msgSend)(dataSource, @selector(refreshModel));
+            return;
+        }
+        BOOL hasCurrentIndex = NO;
+        NSUInteger currentIndex = 0;
+        if ([controller respondsToSelector:@selector(currentReelIndex)]) {
+            currentIndex = ((NSUInteger (*)(id, SEL))objc_msgSend)(controller, @selector(currentReelIndex));
+            hasCurrentIndex = YES;
+        }
+        id pageController = ReelObjectIvar(controller, @"_scrollablePageViewController") ?: ReelObjectIvar(controller, @"_pageViewController");
+        id pageAdapter = ReelObjectIvar(controller, @"_scrollablePageViewControllerAdapter");
+        if (!pageAdapter)
+            pageAdapter = ReelObjectIvar(pageController, @"_dataSourceAdapter") ?: ReelObjectIvar(pageController, @"_dataSource");
+        NSUInteger targetIndex = hasCurrentIndex && filteredReels.count > 0 ? MIN(currentIndex, filteredReels.count - 1) : 0;
+        BOOL reboundPageController = NO;
+        if (pageController && pageAdapter &&
+            [pageController respondsToSelector:@selector(setDataSourceAdapter:initialIndex:)]) {
+            ((void (*)(id, SEL, id, NSInteger))objc_msgSend)(pageController,
+                                                               @selector(setDataSourceAdapter:initialIndex:),
+                                                               pageAdapter,
+                                                               (NSInteger)targetIndex);
+            reboundPageController = YES;
+        } else if ([pageAdapter respondsToSelector:@selector(resetDataSource)]) {
+            ((void (*)(id, SEL))objc_msgSend)(pageAdapter, @selector(resetDataSource));
+        }
+        if (!reboundPageController && [controller respondsToSelector:@selector(refreshContent)]) {
+            ((void (*)(id, SEL))objc_msgSend)(controller, @selector(refreshContent));
+        } else if (!reboundPageController && [controller respondsToSelector:@selector(reloadForSectionsWithGroup:)]) {
+            ((BOOL (*)(id, SEL, id))objc_msgSend)(controller, @selector(reloadForSectionsWithGroup:), nil);
+        } else if (!reboundPageController && [controller respondsToSelector:@selector(reloadPreviousAndNextViewControllers)]) {
+            ((void (*)(id, SEL))objc_msgSend)(controller, @selector(reloadPreviousAndNextViewControllers));
+        }
+    } @catch (__unused NSException *exception) {
     }
 }
 
@@ -279,10 +259,18 @@ static void RefreshRegisteredControllers(void) {
 
 + (NSSet *)filteredVideoIDsForDataSource:(id)dataSource sourceVideoIDs:(NSSet *)sourceVideoIDs {
     ReelSequenceSnapshot *snapshot = CurrentSnapshot(dataSource);
-    if (!snapshot || ![sourceVideoIDs isKindOfClass:[NSSet class]] || ![Util filteringEnabled])
+    if (![sourceVideoIDs isKindOfClass:[NSSet class]] || ![Util filteringEnabled])
         return sourceVideoIDs ?: [NSSet set];
     NSMutableSet *filtered = [sourceVideoIDs mutableCopy];
-    [filtered minusSet:snapshot.blockedVideoIDs];
+    if (snapshot)
+        [filtered minusSet:snapshot.blockedVideoIDs];
+    for (NSString *videoID in sourceVideoIDs) {
+        if (![videoID isKindOfClass:[NSString class]])
+            continue;
+        FeedMetadataRecord *metadata = [Util cachedFeedVideoMetadataForVideoID:videoID];
+        if (metadata && [Util nodeContainsBlockedVideo:[NSNull null] metadata:metadata])
+            [filtered removeObject:videoID];
+    }
     return filtered.copy;
 }
 

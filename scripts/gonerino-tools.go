@@ -2446,7 +2446,6 @@ func verifyArchitecture(root string) error {
 		"deleteItemsAtIndexPaths",
 		"scrollToItemAtIndexPath",
 		"setContentOffset",
-		"reelContentViewRequestsAdvanceToNextVideo",
 		"%hook YTInlinePlaybackPlayerNode",
 		"%hook YTElementsInlineMutedPlaybackView",
 		"setAsdPlayableEntry:",

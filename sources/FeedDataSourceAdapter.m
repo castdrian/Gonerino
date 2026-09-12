@@ -33,6 +33,7 @@ typedef id _Nullable (^FeedNodeBlock)(void);
 @property(nonatomic) NSUInteger sourceGeneration;
 @property(nonatomic) BOOL reloadQueued;
 @property(nonatomic) BOOL performingFilteredReload;
+@property(nonatomic) BOOL filteredReloadPending;
 @property(nonatomic) NSUInteger filteredReloadToken;
 - (nullable NSIndexPath *)sourceIndexPathForContentView:(UIView *)contentView collectionView:(UICollectionView *)collectionView;
 - (void)finishFilteredReloadWithToken:(NSUInteger)token;
@@ -786,8 +787,9 @@ static id EmptyFeedNode(void) {
     @synchronized (self) {
         for (NSString *sourcePath in self.metadataBySourcePath) {
             FeedMetadataRecord *candidate = self.metadataBySourcePath[sourcePath];
-            if (FeedMetadataMatches(candidate, metadata))
+            if (FeedMetadataMatches(candidate, metadata)) {
                 self.forcedBlockedMetadataBySourcePath[sourcePath] = candidate;
+            }
         }
     }
 }
@@ -919,8 +921,9 @@ static id EmptyFeedNode(void) {
     FeedMetadataRecord *metadata = [self metadataForNode:node];
     BOOL blocked = [Util nodeContainsBlockedVideo:node metadata:metadata];
     if (blocked) {
-        if (!self.performingFilteredReload)
-            [self queueFilteredReload];
+        if (self.performingFilteredReload)
+            return node;
+        [self queueFilteredReload];
         return EmptyFeedNode() ?: node;
     }
     return node;
@@ -957,7 +960,7 @@ static id EmptyFeedNode(void) {
         if (!adapter)
             return node;
         if (!sourceGenerationMatches)
-            return EmptyFeedNode() ?: node;
+            return node;
         return [adapter filteredNode:node atSourceIndexPath:indexPath identifier:identifier];
     } copy];
 }
@@ -1207,11 +1210,24 @@ static id EmptyFeedNode(void) {
         });
         return;
     }
-    if (self.reloadQueued)
-        return;
-    self.reloadQueued = YES;
+    @synchronized (self) {
+        self.snapshot = nil;
+        if (self.performingFilteredReload) {
+            self.filteredReloadPending = YES;
+            return;
+        }
+        if (self.reloadQueued)
+            return;
+        self.reloadQueued = YES;
+    }
     dispatch_async(dispatch_get_main_queue(), ^{
-        self.reloadQueued = NO;
+        @synchronized (self) {
+            self.reloadQueued = NO;
+            if (self.performingFilteredReload) {
+                self.filteredReloadPending = YES;
+                return;
+            }
+        }
         UICollectionView *collectionView = self.collectionView;
         if (!collectionView)
             return;
@@ -1220,6 +1236,7 @@ static id EmptyFeedNode(void) {
             self.snapshot = nil;
             reloadToken = ++self.filteredReloadToken;
             self.performingFilteredReload = YES;
+            self.filteredReloadPending = NO;
         }
         __weak FeedDataSourceAdapter *weakSelf = self;
         void (^finishReload)(void) = ^{
@@ -1255,27 +1272,32 @@ static id EmptyFeedNode(void) {
         });
         return;
     }
+    BOOL reloadAgain = NO;
     @synchronized (self) {
         if (self.filteredReloadToken == token) {
             self.performingFilteredReload = NO;
+            reloadAgain = self.filteredReloadPending;
+            self.filteredReloadPending = NO;
         }
     }
+    if (reloadAgain)
+        [self queueFilteredReload];
 }
 
 - (void)upstreamWillReload {
     NSArray *nodesToInvalidate = @[];
     @synchronized (self) {
-        self.sourceGeneration += 1;
         self.snapshot = nil;
-        if (!self.performingFilteredReload) {
-            nodesToInvalidate = [[self.sourcePathByNode keyEnumerator] allObjects];
-            [self.metadataBySourcePath removeAllObjects];
-            [self.metadataByIdentifier removeAllObjects];
-            [self.sourcePathByNode removeAllObjects];
-            [self.nodeBySourcePath removeAllObjects];
-            [self.sourceIdentityByPath removeAllObjects];
-            [self.forcedBlockedMetadataBySourcePath removeAllObjects];
-        }
+        self.sourceGeneration += 1;
+        if (self.performingFilteredReload)
+            return;
+        nodesToInvalidate = [[self.sourcePathByNode keyEnumerator] allObjects];
+        [self.metadataBySourcePath removeAllObjects];
+        [self.metadataByIdentifier removeAllObjects];
+        [self.sourcePathByNode removeAllObjects];
+        [self.nodeBySourcePath removeAllObjects];
+        [self.sourceIdentityByPath removeAllObjects];
+        [self.forcedBlockedMetadataBySourcePath removeAllObjects];
     }
     for (id node in nodesToInvalidate)
         [Util resetFeedVideoMetadataForNode:node];
