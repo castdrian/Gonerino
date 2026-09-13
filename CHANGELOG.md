@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.8.2 - 2026-09-13
+
+### Fixes
+
+- align Gonerino icon with YouTube toolbar (5982799)
+
 ## 1.8.1 - 2026-09-12
 
 ### Fixes
