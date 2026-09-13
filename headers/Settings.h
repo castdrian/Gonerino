@@ -1,7 +1,3 @@
-#import "ChannelManager.h"
-#import "VideoManager.h"
-#import "WordManager.h"
-
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 #import <YouTubeHeader/YTAlertView.h>
 #import <YouTubeHeader/YTAppSettingsSectionItemActionController.h>
@@ -17,17 +13,21 @@
 #import <rootless.h>
 #import <version.h>
 
+#import "ChannelManager.h"
+#import "VideoManager.h"
+#import "WordManager.h"
+
 NS_ASSUME_NONNULL_BEGIN
 
-#define SECTION_HEADER(s)                                                                                              \
-    [sectionItems addObject:[objc_getClass("YTSettingsSectionItem")                                                    \
-                                          itemWithTitle:@"\t"                                                          \
-                                       titleDescription:s                                                              \
-                                accessibilityIdentifier:nil                                                            \
-                                        detailTextBlock:nil                                                            \
-                                            selectBlock:^BOOL(YTSettingsCell *cell, NSUInteger sectionItemIndex) {     \
-                                                return NO;                                                             \
-                                            }]]
+#define SECTION_HEADER(s)                                                                          \
+    [sectionItems                                                                                  \
+        addObject:[objc_getClass("YTSettingsSectionItem")                                          \
+                                itemWithTitle:@"\t"                                                \
+                             titleDescription:s                                                    \
+                      accessibilityIdentifier:nil                                                  \
+                              detailTextBlock:nil                                                  \
+                                  selectBlock:^BOOL(YTSettingsCell *cell,                          \
+                                                    NSUInteger sectionItemIndex) { return NO; }]]
 
 static const NSInteger SettingsCategory = 0x676e726e;
 
@@ -44,7 +44,7 @@ static BOOL isImportOperation = NO;
 @end
 
 @interface YTSettingsViewController ()
-@property(nonatomic, strong, readonly, nullable) YTNavigationController *navigationController;
+@property (nonatomic, strong, readonly, nullable) YTNavigationController *navigationController;
 @end
 
 @interface YTSettingsViewController (SettingsIntegration)
@@ -55,7 +55,7 @@ static BOOL isImportOperation = NO;
            headerHidden:(BOOL)headerHidden;
 @end
 
-@interface YTSettingsSectionItemManager (SettingsIntegration)<UIDocumentPickerDelegate>
+@interface YTSettingsSectionItemManager (SettingsIntegration) <UIDocumentPickerDelegate>
 - (void)settingsIntegrationUpdateSectionWithEntry:(nullable id)entry;
 - (void)settingsIntegrationReloadSection;
 @end

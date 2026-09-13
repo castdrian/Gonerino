@@ -6,17 +6,17 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
-extern NSString * const FeedFilterStateDidChangeNotification;
+extern NSString *const FeedFilterStateDidChangeNotification;
 
 @interface FeedMetadataRecord : NSObject
 
-@property(nonatomic, copy, readonly) NSString *videoID;
-@property(nonatomic, copy, readonly) NSString *title;
-@property(nonatomic, copy, readonly) NSString *channel;
+@property (nonatomic, copy, readonly) NSString *videoID;
+@property (nonatomic, copy, readonly) NSString *title;
+@property (nonatomic, copy, readonly) NSString *channel;
 
 - (instancetype)initWithVideoID:(nullable NSString *)videoID
-                           title:(nullable NSString *)title
-                         channel:(nullable NSString *)channel;
+                          title:(nullable NSString *)title
+                        channel:(nullable NSString *)channel;
 - (NSDictionary<NSString *, NSString *> *)dictionaryRepresentation;
 
 @end
@@ -39,18 +39,20 @@ extern NSString * const FeedFilterStateDidChangeNotification;
 + (void)refreshPreferenceSnapshot;
 + (nullable NSDictionary<NSString *, NSString *> *)freshVideoInfoFromNode:(nullable id)node;
 + (nullable NSDictionary<NSString *, NSString *> *)freshVideoInfoFromNode:(nullable id)node
-                                                               sourceView:(nullable UIView *)sourceView;
+                                                               sourceView:
+                                                                   (nullable UIView *)sourceView;
 + (void)invalidateVideoInfoForNode:(nullable id)node;
 + (void)resetFeedVideoMetadataForNode:(nullable id)node;
 + (BOOL)isUsableVideoTitle:(nullable NSString *)title;
 + (void)showToast:(NSString *)message fromView:(nullable UIView *)view;
 + (void)extractVideoInfoFromNode:(id)node
-                      completion:(void (^)(NSString *videoId, NSString *videoTitle, NSString *ownerName))completion;
+                      completion:(void (^)(NSString *videoId, NSString *videoTitle,
+                                           NSString *ownerName))completion;
 
 + (BOOL)nodeContainsBlockedVideo:(id)node;
 + (BOOL)nodeContainsBlockedVideo:(id)node metadata:(nullable FeedMetadataRecord *)metadata;
 + (BOOL)nodeContainsBlockedVideo:(id)node
-                        videoInfo:(nullable NSDictionary<NSString *, NSString *> *)videoInfo;
+                       videoInfo:(nullable NSDictionary<NSString *, NSString *> *)videoInfo;
 
 + (UIImage *)createBlockChannelIconWithSize:(CGSize)size;
 + (UIImage *)createBlockVideoIconWithSize:(CGSize)size;

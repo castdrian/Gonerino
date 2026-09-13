@@ -1,52 +1,122 @@
-#import "Settings.h"
-#import "CustomSettings.h"
-#import "Localization.h"
+#import <UIKit/UIKit.h>
 #import <objc/message.h>
 #import <objc/runtime.h>
 
-static void *SettingsManagerAssociationKey = &SettingsManagerAssociationKey;
-static const NSUInteger SettingsGroup = 0x67726e72;
+#import "CustomSettings.h"
+#import "Localization.h"
+#import "Settings.h"
+#import "Util.h"
 
-static void AssociateSettingsDestinationManager(UIViewController *viewController,
-                                                YTSettingsSectionItemManager *manager);
+static void            *SettingsManagerAssociationKey   = &SettingsManagerAssociationKey;
+static void            *SettingsIconImageAssociationKey = &SettingsIconImageAssociationKey;
+static const NSUInteger SettingsGroup                   = 0x67726e72;
+static const NSInteger  SettingsIconType                = YT_PICTURE_IN_PICTURE;
 
-static id SettingsObjectValue(id object, NSString *key) {
+static UIImage *SettingsIconImage(void)
+{
+    return [Util createBlockVideoIconWithSize:CGSizeMake(24.0, 24.0)];
+}
+
+static void InstallLegacySettingsCategoryHook(void)
+{
+    Class targetClass = NSClassFromString(@"YTAppSettingsPresentationData");
+    SEL selector = @selector(settingsCategoryOrder);
+    Method method = targetClass ? class_getClassMethod(targetClass, selector) : NULL;
+    if (!method)
+        return;
+    static BOOL installed = NO;
+    if (installed)
+        return;
+    IMP original = method_getImplementation(method);
+    id replacement = ^id(id object, SEL command) {
+        NSArray *order = ((id (*)(id, SEL)) original)(object, command);
+        if ([order containsObject:@(SettingsCategory)])
+            return order;
+        NSMutableArray *result = order.mutableCopy ?: [NSMutableArray array];
+        NSUInteger insertIndex = [order indexOfObject:@(1)];
+        if (insertIndex == NSNotFound)
+            [result addObject:@(SettingsCategory)];
+        else
+            [result insertObject:@(SettingsCategory) atIndex:insertIndex + 1];
+        return result.copy;
+    };
+    IMP replacementImplementation = imp_implementationWithBlock(replacement);
+    if (!replacementImplementation)
+        return;
+    method_setImplementation(method, replacementImplementation);
+    installed = YES;
+}
+
+    static void
+    AssociateSettingsDestinationManager(UIViewController             *viewController,
+                                        YTSettingsSectionItemManager *manager);
+
+static id SettingsObjectValue(id object, NSString *key)
+{
     if (!object || key.length == 0)
         return nil;
-    @try {
+    @try
+    {
         return [object valueForKey:key];
-    } @catch (__unused NSException *exception) {
+    }
+    @catch (__unused NSException *exception)
+    {
         return nil;
     }
 }
 
-static id SettingsIvarObject(id object, const char *name) {
+static id SettingsIvarObject(id object, const char *name)
+{
     if (!object || !name)
         return nil;
-    Ivar ivar = class_getInstanceVariable(object_getClass(object), name);
+    Ivar        ivar         = class_getInstanceVariable(object_getClass(object), name);
     const char *typeEncoding = ivar ? ivar_getTypeEncoding(ivar) : NULL;
     if (!typeEncoding || typeEncoding[0] != '@')
         return nil;
     return object_getIvar(object, ivar);
 }
 
-static YTSettingsViewController *SettingsViewControllerFromObject(id object) {
-    if ([object isKindOfClass:%c(YTSettingsViewController)])
-        return (YTSettingsViewController *)object;
+static YTSettingsViewController *SettingsViewControllerFromObject(id object)
+{
+    if ([object isKindOfClass: %c(YTSettingsViewController)])
+        return (YTSettingsViewController *) object;
     return nil;
 }
 
+%hook YTIIcon
+
+- (UIImage *)iconImageWithColor:(UIColor *)color
+{
+    UIImage *image = objc_getAssociatedObject(self, SettingsIconImageAssociationKey);
+    if (!image && self.iconType == SettingsIconType)
+        image = SettingsIconImage();
+    return image ?: %orig;
+}
+
+- (UIImage *)iconImageWithSelected:(BOOL)selected
+{
+    UIImage *image = objc_getAssociatedObject(self, SettingsIconImageAssociationKey);
+    if (!image && self.iconType == SettingsIconType)
+        image = SettingsIconImage();
+    return image ?: %orig;
+}
+
+%end
+
 static BOOL ViewControllerHierarchyContains(UIViewController *rootViewController,
-                                             UIViewController *target,
-                                             NSUInteger depth) {
+                                            UIViewController *target, NSUInteger depth)
+{
     if (!rootViewController || !target || depth > 12)
         return NO;
     if (rootViewController == target)
         return YES;
-    if (rootViewController.presentedViewController && !rootViewController.presentedViewController.isBeingDismissed &&
-        ViewControllerHierarchyContains(rootViewController.presentedViewController, target, depth + 1))
+    if (rootViewController.presentedViewController &&
+        !rootViewController.presentedViewController.isBeingDismissed &&
+        ViewControllerHierarchyContains(rootViewController.presentedViewController, target,
+                                        depth + 1))
         return YES;
-    for (UIViewController *childViewController in rootViewController.childViewControllers) {
+    for (UIViewController *childViewController in rootViewController.childViewControllers)
+    {
         if (ViewControllerHierarchyContains(childViewController, target, depth + 1))
             return YES;
     }
@@ -54,66 +124,71 @@ static BOOL ViewControllerHierarchyContains(UIViewController *rootViewController
 }
 
 static UINavigationController *NavigationControllerContaining(UIViewController *rootViewController,
-                                                               UIViewController *target,
-                                                               NSUInteger depth) {
+                                                              UIViewController *target,
+                                                              NSUInteger        depth)
+{
     if (!rootViewController || !target || depth > 8)
         return nil;
     if ([rootViewController isKindOfClass:[UINavigationController class]] &&
         ViewControllerHierarchyContains(rootViewController, target, 0))
-        return (UINavigationController *)rootViewController;
-    if (rootViewController.presentedViewController && !rootViewController.presentedViewController.isBeingDismissed) {
-        UINavigationController *navigationController = NavigationControllerContaining(rootViewController.presentedViewController,
-                                                                                         target,
-                                                                                         depth + 1);
+        return (UINavigationController *) rootViewController;
+    if (rootViewController.presentedViewController &&
+        !rootViewController.presentedViewController.isBeingDismissed)
+    {
+        UINavigationController *navigationController = NavigationControllerContaining(
+            rootViewController.presentedViewController, target, depth + 1);
         if (navigationController)
             return navigationController;
     }
-    for (UIViewController *childViewController in rootViewController.childViewControllers) {
-        UINavigationController *navigationController = NavigationControllerContaining(childViewController,
-                                                                                         target,
-                                                                                         depth + 1);
+    for (UIViewController *childViewController in rootViewController.childViewControllers)
+    {
+        UINavigationController *navigationController =
+            NavigationControllerContaining(childViewController, target, depth + 1);
         if (navigationController)
             return navigationController;
     }
     return nil;
 }
 
-static void AssociateSettingsManager(YTSettingsViewController *settingsViewController,
-                                     YTSettingsSectionItemManager *manager) {
+static void AssociateSettingsManager(YTSettingsViewController     *settingsViewController,
+                                     YTSettingsSectionItemManager *manager)
+{
     if (!settingsViewController || !manager)
         return;
 
-    objc_setAssociatedObject(settingsViewController,
-                             SettingsManagerAssociationKey,
-                             manager,
+    objc_setAssociatedObject(settingsViewController, SettingsManagerAssociationKey, manager,
                              OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     UINavigationController *navigationController = settingsViewController.navigationController;
-    if (!navigationController) {
-        for (UIWindow *window in [UIApplication sharedApplication].windows) {
+    if (!navigationController)
+    {
+        for (UIWindow *window in [UIApplication sharedApplication].windows)
+        {
             navigationController = NavigationControllerContaining(window.rootViewController,
-                                                                   settingsViewController,
-                                                                   0);
+                                                                  settingsViewController, 0);
             if (navigationController)
                 break;
         }
     }
     if (navigationController)
-        objc_setAssociatedObject(navigationController,
-                                 SettingsManagerAssociationKey,
-                                 manager,
+        objc_setAssociatedObject(navigationController, SettingsManagerAssociationKey, manager,
                                  OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 }
 
-static UIViewController *TopVisibleViewController(UIViewController *viewController) {
+static UIViewController *TopVisibleViewController(UIViewController *viewController)
+{
     if (!viewController)
         return nil;
-    if (viewController.presentedViewController && !viewController.presentedViewController.isBeingDismissed)
+    if (viewController.presentedViewController &&
+        !viewController.presentedViewController.isBeingDismissed)
         return TopVisibleViewController(viewController.presentedViewController);
     if ([viewController isKindOfClass:[UINavigationController class]])
-        return TopVisibleViewController([(UINavigationController *)viewController visibleViewController]);
+        return TopVisibleViewController(
+            [(UINavigationController *) viewController visibleViewController]);
     if ([viewController isKindOfClass:[UITabBarController class]])
-        return TopVisibleViewController([(UITabBarController *)viewController selectedViewController]);
-    for (UIViewController *child in viewController.childViewControllers.reverseObjectEnumerator) {
+        return TopVisibleViewController(
+            [(UITabBarController *) viewController selectedViewController]);
+    for (UIViewController *child in viewController.childViewControllers.reverseObjectEnumerator)
+    {
         if (child.viewIfLoaded.window)
             return TopVisibleViewController(child);
     }
@@ -121,59 +196,76 @@ static UIViewController *TopVisibleViewController(UIViewController *viewControll
 }
 
 static YTSettingsViewController *SettingsViewControllerInHierarchy(UIViewController *viewController,
-                                                                    NSUInteger depth) {
+                                                                   NSUInteger        depth)
+{
     if (!viewController || depth > 12)
         return nil;
-    if ([viewController isKindOfClass:%c(YTSettingsViewController)])
-        return (YTSettingsViewController *)viewController;
-    if (viewController.presentedViewController && !viewController.presentedViewController.isBeingDismissed) {
-        YTSettingsViewController *settingsViewController = SettingsViewControllerInHierarchy(viewController.presentedViewController,
-                                                                                              depth + 1);
+    if ([viewController isKindOfClass: %c(YTSettingsViewController)])
+        return (YTSettingsViewController *) viewController;
+    if (viewController.presentedViewController &&
+        !viewController.presentedViewController.isBeingDismissed)
+    {
+        YTSettingsViewController *settingsViewController =
+            SettingsViewControllerInHierarchy(viewController.presentedViewController, depth + 1);
         if (settingsViewController)
             return settingsViewController;
     }
-    if ([viewController isKindOfClass:[UINavigationController class]]) {
-        for (UIViewController *childViewController in ((UINavigationController *)viewController).viewControllers) {
-            YTSettingsViewController *settingsViewController = SettingsViewControllerInHierarchy(childViewController,
-                                                                                                  depth + 1);
+    if ([viewController isKindOfClass:[UINavigationController class]])
+    {
+        for (UIViewController *childViewController in ((UINavigationController *) viewController)
+                 .viewControllers)
+        {
+            YTSettingsViewController *settingsViewController =
+                SettingsViewControllerInHierarchy(childViewController, depth + 1);
             if (settingsViewController)
                 return settingsViewController;
         }
     }
-    if ([viewController isKindOfClass:[UISplitViewController class]]) {
-        for (UIViewController *childViewController in ((UISplitViewController *)viewController).viewControllers) {
-            YTSettingsViewController *settingsViewController = SettingsViewControllerInHierarchy(childViewController,
-                                                                                                  depth + 1);
+    if ([viewController isKindOfClass:[UISplitViewController class]])
+    {
+        for (UIViewController *childViewController in ((UISplitViewController *) viewController)
+                 .viewControllers)
+        {
+            YTSettingsViewController *settingsViewController =
+                SettingsViewControllerInHierarchy(childViewController, depth + 1);
             if (settingsViewController)
                 return settingsViewController;
         }
     }
-    for (UIViewController *childViewController in viewController.childViewControllers) {
-        YTSettingsViewController *settingsViewController = SettingsViewControllerInHierarchy(childViewController,
-                                                                                              depth + 1);
+    for (UIViewController *childViewController in viewController.childViewControllers)
+    {
+        YTSettingsViewController *settingsViewController =
+            SettingsViewControllerInHierarchy(childViewController, depth + 1);
         if (settingsViewController)
             return settingsViewController;
     }
     return nil;
 }
 
-static YTSettingsViewController *SettingsViewControllerForManager(YTSettingsSectionItemManager *manager) {
+static YTSettingsViewController *
+SettingsViewControllerForManager(YTSettingsSectionItemManager *manager)
+{
     if (!manager)
         return nil;
 
-    for (NSString *key in @[@"_dataDelegate", @"_settingsViewControllerDelegate"]) {
+    for (NSString *key in @[ @"_dataDelegate", @"_settingsViewControllerDelegate" ])
+    {
         id delegate = SettingsObjectValue(manager, key);
-        if ([delegate isKindOfClass:%c(YTSettingsViewController)])
+        if ([delegate isKindOfClass: %c(YTSettingsViewController)])
             return delegate;
     }
 
     id responder = nil;
-    @try {
+    @try
+    {
         responder = [manager parentResponder];
-    } @catch (__unused NSException *exception) {
     }
-    for (NSUInteger depth = 0; responder && depth < 8; depth++) {
-        if ([responder isKindOfClass:%c(YTSettingsViewController)])
+    @catch (__unused NSException *exception)
+    {
+    }
+    for (NSUInteger depth = 0; responder && depth < 8; depth++)
+    {
+        if ([responder isKindOfClass: %c(YTSettingsViewController)])
             return responder;
         if (![responder respondsToSelector:@selector(nextResponder)])
             break;
@@ -181,41 +273,50 @@ static YTSettingsViewController *SettingsViewControllerForManager(YTSettingsSect
     }
 
     Class settingsClass = %c(YTSettingsViewController);
-    for (UIWindow *window in [UIApplication sharedApplication].windows) {
+    for (UIWindow *window in [UIApplication sharedApplication].windows)
+    {
         UIViewController *candidate = TopVisibleViewController(window.rootViewController);
         if ([candidate isKindOfClass:settingsClass])
-            return (YTSettingsViewController *)candidate;
+            return (YTSettingsViewController *) candidate;
     }
     return nil;
 }
 
-static YTSettingsViewController *SettingsControllerInNavigationController(UINavigationController *navigationController) {
+static YTSettingsViewController *
+SettingsControllerInNavigationController(UINavigationController *navigationController)
+{
     if (!navigationController)
         return nil;
-    for (UIViewController *viewController in navigationController.viewControllers.reverseObjectEnumerator) {
-        YTSettingsViewController *settingsViewController = SettingsViewControllerInHierarchy(viewController, 0);
+    for (UIViewController *viewController in navigationController.viewControllers
+             .reverseObjectEnumerator)
+    {
+        YTSettingsViewController *settingsViewController =
+            SettingsViewControllerInHierarchy(viewController, 0);
         if (settingsViewController)
             return settingsViewController;
     }
     return nil;
 }
 
-static NSNumber *SettingsCategoryValueFromDescription(NSString *description) {
+static NSNumber *SettingsCategoryValueFromDescription(NSString *description)
+{
     NSRange markerRange = [description rangeOfString:@"category_id:"];
     if (markerRange.location == NSNotFound)
         return nil;
-    NSString *suffix = [description substringFromIndex:NSMaxRange(markerRange)];
-    NSScanner *scanner = [NSScanner scannerWithString:suffix];
-    unsigned long long value = 0;
+    NSString          *suffix  = [description substringFromIndex:NSMaxRange(markerRange)];
+    NSScanner         *scanner = [NSScanner scannerWithString:suffix];
+    unsigned long long value   = 0;
     if (![scanner scanUnsignedLongLong:&value])
         return nil;
     return @(value);
 }
 
-static NSNumber *SettingsCategoryValue(id object) {
+static NSNumber *SettingsCategoryValue(id object)
+{
     if (!object)
         return nil;
-    for (NSString *key in @[@"category", @"categoryID", @"categoryId", @"settingsCategory"]) {
+    for (NSString *key in @[ @"category", @"categoryID", @"categoryId", @"settingsCategory" ])
+    {
         id value = SettingsObjectValue(object, key);
         if ([value respondsToSelector:@selector(unsignedIntegerValue)])
             return @([value unsignedIntegerValue]);
@@ -223,7 +324,8 @@ static NSNumber *SettingsCategoryValue(id object) {
     return SettingsCategoryValueFromDescription([object description] ?: @"");
 }
 
-static NSString *SettingsCandidateTitle(UIViewController *candidate) {
+static NSString *SettingsCandidateTitle(UIViewController *candidate)
+{
     if (!candidate)
         return @"";
     if (candidate.title.length > 0)
@@ -231,14 +333,16 @@ static NSString *SettingsCandidateTitle(UIViewController *candidate) {
     return candidate.navigationItem.title ?: @"";
 }
 
-static BOOL SettingsCandidateIsGonerino(UIViewController *candidate) {
+static BOOL SettingsCandidateIsGonerino(UIViewController *candidate)
+{
     if (!candidate)
         return NO;
     Class customSettingsClass = NSClassFromString(@"SettingsPageViewController");
     if (customSettingsClass && [candidate isKindOfClass:customSettingsClass])
         return NO;
-    NSArray *objects = @[candidate, SettingsObjectValue(candidate, @"content") ?: [NSNull null]];
-    for (id object in objects) {
+    NSArray *objects = @[ candidate, SettingsObjectValue(candidate, @"content") ?: [NSNull null] ];
+    for (id object in objects)
+    {
         if (object == [NSNull null])
             continue;
         NSNumber *category = SettingsCategoryValue(object);
@@ -248,8 +352,9 @@ static BOOL SettingsCandidateIsGonerino(UIViewController *candidate) {
             category = SettingsCategoryValue(SettingsObjectValue(object, @"navigationEndpoint"));
         if (category)
             return category.unsignedIntegerValue == SettingsCategory;
-        if ([object isKindOfClass:[UIViewController class]]) {
-            NSString *title = SettingsCandidateTitle((UIViewController *)object);
+        if ([object isKindOfClass:[UIViewController class]])
+        {
+            NSString *title = SettingsCandidateTitle((UIViewController *) object);
             if (title.length > 0 && [title isEqualToString:LocalizedString(@"Gonerino")])
                 return YES;
         }
@@ -257,18 +362,23 @@ static BOOL SettingsCandidateIsGonerino(UIViewController *candidate) {
     return NO;
 }
 
-static YTSettingsSectionItemManager *SettingsManagerForController(YTSettingsViewController *settingsViewController) {
+static YTSettingsSectionItemManager *
+SettingsManagerForController(YTSettingsViewController *settingsViewController)
+{
     if (!settingsViewController)
         return nil;
-    YTSettingsSectionItemManager *manager = objc_getAssociatedObject(settingsViewController,
-                                                                      SettingsManagerAssociationKey);
+    YTSettingsSectionItemManager *manager =
+        objc_getAssociatedObject(settingsViewController, SettingsManagerAssociationKey);
     if (!manager)
         manager = objc_getAssociatedObject(settingsViewController.navigationController,
                                            SettingsManagerAssociationKey);
-    if (!manager) {
-        for (NSString *key in @[@"_sectionItemManager", @"sectionItemManager"]) {
+    if (!manager)
+    {
+        for (NSString *key in @[ @"_sectionItemManager", @"sectionItemManager" ])
+        {
             id candidate = SettingsIvarObject(settingsViewController, key.UTF8String);
-            if ([candidate isKindOfClass:%c(YTSettingsSectionItemManager)]) {
+            if ([candidate isKindOfClass: %c(YTSettingsSectionItemManager)])
+            {
                 manager = candidate;
                 break;
             }
@@ -279,24 +389,28 @@ static YTSettingsSectionItemManager *SettingsManagerForController(YTSettingsView
     return manager;
 }
 
-static UINavigationController *SettingsNavigationControllerForViewController(YTSettingsViewController *settingsViewController) {
+static UINavigationController *
+SettingsNavigationControllerForViewController(YTSettingsViewController *settingsViewController)
+{
     if (!settingsViewController)
         return nil;
     UINavigationController *navigationController = settingsViewController.navigationController;
     if (navigationController)
         return navigationController;
-    for (UIWindow *window in [UIApplication sharedApplication].windows) {
-        navigationController = NavigationControllerContaining(window.rootViewController,
-                                                               settingsViewController,
-                                                               0);
+    for (UIWindow *window in [UIApplication sharedApplication].windows)
+    {
+        navigationController =
+            NavigationControllerContaining(window.rootViewController, settingsViewController, 0);
         if (navigationController)
             return navigationController;
     }
     return nil;
 }
 
-static UIViewController *CreateSettingsDestinationForCandidate(YTSettingsViewController *settingsViewController,
-                                                               UIViewController *candidate) {
+static UIViewController *
+CreateSettingsDestinationForCandidate(YTSettingsViewController *settingsViewController,
+                                      UIViewController         *candidate)
+{
     if (!settingsViewController || !candidate)
         return nil;
     Class customSettingsClass = NSClassFromString(@"SettingsPageViewController");
@@ -312,14 +426,14 @@ static UIViewController *CreateSettingsDestinationForCandidate(YTSettingsViewCon
     return destination;
 }
 
-static BOOL PushSettingsDestination(UIViewController *source,
-                                    UIViewController *destination,
-                                    BOOL animated) {
+static BOOL PushSettingsDestination(UIViewController *source, UIViewController *destination,
+                                    BOOL animated)
+{
     if (!source || !destination)
         return NO;
     UINavigationController *navigationController = nil;
     if ([source isKindOfClass:[UINavigationController class]])
-        navigationController = (UINavigationController *)source;
+        navigationController = (UINavigationController *) source;
     else
         navigationController = source.navigationController;
     if (!navigationController)
@@ -328,22 +442,22 @@ static BOOL PushSettingsDestination(UIViewController *source,
     return YES;
 }
 
-static void AssociateSettingsDestinationManager(UIViewController *viewController,
-                                                YTSettingsSectionItemManager *manager) {
+static void AssociateSettingsDestinationManager(UIViewController             *viewController,
+                                                YTSettingsSectionItemManager *manager)
+{
     if (!viewController || !manager)
         return;
-    objc_setAssociatedObject(viewController,
-                             SettingsManagerAssociationKey,
-                             manager,
+    objc_setAssociatedObject(viewController, SettingsManagerAssociationKey, manager,
                              OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 }
 
 static BOOL PushCustomSettingsDestination(YTSettingsViewController *settingsViewController,
-                                          BOOL animated) {
+                                          BOOL                      animated)
+{
     if (!settingsViewController)
         return NO;
     YTSettingsSectionItemManager *manager = SettingsManagerForController(settingsViewController);
-    UINavigationController *navigationController =
+    UINavigationController       *navigationController =
         SettingsNavigationControllerForViewController(settingsViewController);
     if (!manager || !navigationController)
         return NO;
@@ -355,14 +469,18 @@ static BOOL PushCustomSettingsDestination(YTSettingsViewController *settingsView
     return YES;
 }
 
-static BOOL SettingsDestinationContainsCustomPage(UIViewController *viewController) {
+static BOOL SettingsDestinationContainsCustomPage(UIViewController *viewController)
+{
     Class customSettingsClass = NSClassFromString(@"SettingsPageViewController");
     if (!customSettingsClass || !viewController)
         return NO;
     if ([viewController isKindOfClass:customSettingsClass])
         return YES;
-    if ([viewController isKindOfClass:[UINavigationController class]]) {
-        for (UIViewController *childViewController in ((UINavigationController *)viewController).viewControllers) {
+    if ([viewController isKindOfClass:[UINavigationController class]])
+    {
+        for (UIViewController *childViewController in ((UINavigationController *) viewController)
+                 .viewControllers)
+        {
             if ([childViewController isKindOfClass:customSettingsClass])
                 return YES;
         }
@@ -370,15 +488,17 @@ static BOOL SettingsDestinationContainsCustomPage(UIViewController *viewControll
     return NO;
 }
 
-static UIViewController *CreateCustomSettingsSplitDestination(YTSettingsViewController *settingsViewController) {
+static UIViewController *
+CreateCustomSettingsSplitDestination(YTSettingsViewController *settingsViewController)
+{
     YTSettingsSectionItemManager *manager = SettingsManagerForController(settingsViewController);
     if (!manager)
         return nil;
     UIViewController *customSettingsViewController = CreateCustomSettingsViewController(manager);
     if (!customSettingsViewController)
         return nil;
-    UINavigationController *navigationController = [[UINavigationController alloc]
-        initWithRootViewController:customSettingsViewController];
+    UINavigationController *navigationController =
+        [[UINavigationController alloc] initWithRootViewController:customSettingsViewController];
     navigationController.navigationBarHidden = NO;
     AssociateSettingsDestinationManager(navigationController, manager);
     AssociateSettingsDestinationManager(customSettingsViewController, manager);
@@ -387,13 +507,15 @@ static UIViewController *CreateCustomSettingsSplitDestination(YTSettingsViewCont
 
 %hook YTAppSettingsGroupPresentationData
 
-+ (NSArray *)orderedGroups {
+    + (NSArray *) orderedGroups
+{
     NSArray *groups = %orig;
-    for (YTSettingsGroupData *group in groups) {
+    for (YTSettingsGroupData *group in groups)
+    {
         if (group.type == SettingsGroup)
             return groups;
     }
-    NSMutableArray *result = groups.mutableCopy ?: [NSMutableArray array];
+    NSMutableArray      *result = groups.mutableCopy ?: [NSMutableArray array];
     YTSettingsGroupData *group = [[%c(YTSettingsGroupData) alloc] initWithGroupType:SettingsGroup];
     [result insertObject:group atIndex:0];
     return result.copy;
@@ -403,19 +525,22 @@ static UIViewController *CreateCustomSettingsSplitDestination(YTSettingsViewCont
 
 %hook YTSettingsGroupData
 
-- (NSArray<NSNumber *> *)orderedCategories {
+    - (NSArray<NSNumber *> *) orderedCategories
+{
     if (self.type == SettingsGroup)
-        return @[@(SettingsCategory)];
+        return @[ @(SettingsCategory) ];
     return %orig;
 }
 
-- (NSArray<NSNumber *> *)orderedCategoriesForGroupType:(NSUInteger)type {
+- (NSArray<NSNumber *> *)orderedCategoriesForGroupType:(NSUInteger)type
+{
     if (type == SettingsGroup)
-        return @[@(SettingsCategory)];
+        return @[ @(SettingsCategory) ];
     return %orig;
 }
 
-- (NSString *)titleForSettingGroupType:(NSUInteger)type {
+- (NSString *)titleForSettingGroupType:(NSUInteger)type
+{
     if (type == SettingsGroup)
         return nil;
     return %orig;
@@ -423,17 +548,16 @@ static UIViewController *CreateCustomSettingsSplitDestination(YTSettingsViewCont
 
 %end
 
-%hook YTSettingsSectionItemManager
+        %hook YTSettingsSectionItemManager
 
-- (id)initWithParentResponder:(id)parentResponder
-       controllerDelegate:(id)controllerDelegate
-             dataDelegate:(id)dataDelegate
-settingsViewControllerDelegate:(id)settingsViewControllerDelegate {
-    id result = %orig(parentResponder,
-                      controllerDelegate,
-                      dataDelegate,
-                      settingsViewControllerDelegate);
-    YTSettingsViewController *settingsViewController = SettingsViewControllerFromObject(dataDelegate);
+    - (id) initWithParentResponder : (id) parentResponder controllerDelegate
+    : (id) controllerDelegate dataDelegate : (id) dataDelegate settingsViewControllerDelegate
+    : (id) settingsViewControllerDelegate
+{
+    id result =
+        %orig(parentResponder, controllerDelegate, dataDelegate, settingsViewControllerDelegate);
+    YTSettingsViewController *settingsViewController =
+        SettingsViewControllerFromObject(dataDelegate);
     if (!settingsViewController)
         settingsViewController = SettingsViewControllerFromObject(settingsViewControllerDelegate);
     if (!settingsViewController)
@@ -443,14 +567,18 @@ settingsViewControllerDelegate:(id)settingsViewControllerDelegate {
     return result;
 }
 
-%new
-- (void)settingsIntegrationUpdateSectionWithEntry:(id)entry {
+%new - (void) settingsIntegrationUpdateSectionWithEntry : (id) entry
+{
     YTSettingsViewController *settingsViewController = SettingsViewControllerForManager(self);
     if (!settingsViewController)
         return;
 
     YTIIcon *icon = [%c(YTIIcon) new];
-    icon.iconType = YT_FILTER;
+    icon.iconType  = SettingsIconType;
+    UIImage *image = SettingsIconImage();
+    if (image)
+        objc_setAssociatedObject(icon, SettingsIconImageAssociationKey, image,
+                                 OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     AssociateSettingsManager(settingsViewController, self);
     [settingsViewController setSectionItems:[NSMutableArray array]
                                 forCategory:SettingsCategory
@@ -460,8 +588,10 @@ settingsViewControllerDelegate:(id)settingsViewControllerDelegate {
                                headerHidden:NO];
 }
 
-- (void)updateSectionForCategory:(NSUInteger)category withEntry:(id)entry {
-    if (category == SettingsCategory) {
+- (void)updateSectionForCategory:(NSUInteger)category withEntry:(id)entry
+{
+    if (category == SettingsCategory)
+    {
         YTSettingsViewController *settingsViewController = SettingsViewControllerForManager(self);
         AssociateSettingsManager(settingsViewController, self);
         [self settingsIntegrationUpdateSectionWithEntry:entry];
@@ -470,8 +600,8 @@ settingsViewControllerDelegate:(id)settingsViewControllerDelegate {
     %orig;
 }
 
-%new
-- (void)settingsIntegrationReloadSection {
+%new - (void) settingsIntegrationReloadSection
+{
     dispatch_async(dispatch_get_main_queue(), ^{
         YTSettingsViewController *settingsViewController = SettingsViewControllerForManager(self);
         if (!settingsViewController)
@@ -484,19 +614,25 @@ settingsViewControllerDelegate:(id)settingsViewControllerDelegate {
 
 %end
 
-%hook YTWrapperSplitViewController
+        %hook YTWrapperSplitViewController
 
-- (void)didSelectCellAtIndexPath:(NSIndexPath *)indexPath {
+    - (void) didSelectCellAtIndexPath : (NSIndexPath *) indexPath
+{
     %orig(indexPath);
 }
 
-- (void)setSecondViewController:(UIViewController *)viewController {
-    UIViewController *masterViewController = SettingsObjectValue(self, @"viewController");
-    YTSettingsViewController *settingsViewController = SettingsViewControllerInHierarchy(masterViewController, 0);
+- (void)setSecondViewController:(UIViewController *)viewController
+{
+    UIViewController         *masterViewController = SettingsObjectValue(self, @"viewController");
+    YTSettingsViewController *settingsViewController =
+        SettingsViewControllerInHierarchy(masterViewController, 0);
     if (SettingsCandidateIsGonerino(viewController) &&
-        !SettingsDestinationContainsCustomPage(viewController)) {
-        UIViewController *customDestination = CreateCustomSettingsSplitDestination(settingsViewController);
-        if (customDestination) {
+        !SettingsDestinationContainsCustomPage(viewController))
+    {
+        UIViewController *customDestination =
+            CreateCustomSettingsSplitDestination(settingsViewController);
+        if (customDestination)
+        {
             %orig(customDestination);
             return;
         }
@@ -504,55 +640,66 @@ settingsViewControllerDelegate:(id)settingsViewControllerDelegate {
     %orig(viewController);
 }
 
-- (void)updateSplitPane {
+- (void)updateSplitPane
+{
     %orig;
 }
 
-- (void)updateSplitPane_regular {
+- (void)updateSplitPane_regular
+{
     %orig;
 }
 
-- (void)updateSplitPane_compact {
+- (void)updateSplitPane_compact
+{
     %orig;
 }
 
-- (void)selectDefaultSecondaryPane {
+- (void)selectDefaultSecondaryPane
+{
     %orig;
 }
 
-- (void)selectMatchingBlock {
+- (void)selectMatchingBlock
+{
     %orig;
 }
 
-- (void)setSelectMatchingBlock:(id)block {
+- (void)setSelectMatchingBlock:(id)block
+{
     %orig(block);
 }
 
-- (void)showViewController:(UIViewController *)viewController sender:(id)sender {
+- (void)showViewController:(UIViewController *)viewController sender:(id)sender
+{
     %orig(viewController, sender);
 }
 
 %end
 
-%hook YTAppSettingsSectionItemActionController
+        %hook YTAppSettingsSectionItemActionController
 
-- (void)displaySettingsViewController:(UIViewController *)viewController {
+    - (void) displaySettingsViewController : (UIViewController *) viewController
+{
     %orig(viewController);
 }
 
 %end
 
-%hook YTSettingsViewController
+        %hook YTSettingsViewController
 
-- (void)sendSettingsNavigationEndpointForCategory:(NSUInteger)category {
+    - (void) sendSettingsNavigationEndpointForCategory : (NSUInteger) category
+{
     if (category == SettingsCategory && PushCustomSettingsDestination(self, YES))
         return;
     %orig(category);
 }
 
-- (void)didReceiveDrillDownItem:(id)item {
+- (void)didReceiveDrillDownItem:(id)item
+{
     NSNumber *category = SettingsCategoryValue(item);
-    if (category.unsignedIntegerValue == SettingsCategory) {
+    if (category.unsignedIntegerValue == SettingsCategory)
+    {
         if (PushCustomSettingsDestination(self, YES))
             return;
     }
@@ -564,7 +711,8 @@ settingsViewControllerDelegate:(id)settingsViewControllerDelegate {
                   title:(NSString *)title
                    icon:(YTIIcon *)icon
        titleDescription:(NSString *)titleDescription
-                   headerHidden:(BOOL)headerHidden {
+           headerHidden:(BOOL)headerHidden
+{
     %orig;
     if (category != SettingsCategory)
         return;
@@ -572,29 +720,37 @@ settingsViewControllerDelegate:(id)settingsViewControllerDelegate {
     AssociateSettingsManager(self, manager);
 }
 
-- (void)pushViewController:(UIViewController *)viewController {
-    UIViewController *customViewController = CreateSettingsDestinationForCandidate(self, viewController);
+- (void)pushViewController:(UIViewController *)viewController
+{
+    UIViewController *customViewController =
+        CreateSettingsDestinationForCandidate(self, viewController);
     if (customViewController && PushSettingsDestination(self, customViewController, YES))
         return;
     %orig(customViewController ?: viewController);
 }
 
-- (void)pushViewController:(UIViewController *)viewController animated:(BOOL)animated {
-    UIViewController *customViewController = CreateSettingsDestinationForCandidate(self, viewController);
+- (void)pushViewController:(UIViewController *)viewController animated:(BOOL)animated
+{
+    UIViewController *customViewController =
+        CreateSettingsDestinationForCandidate(self, viewController);
     if (customViewController && PushSettingsDestination(self, customViewController, animated))
         return;
     %orig(customViewController ?: viewController, animated);
 }
 
-- (void)showOrPushViewController:(UIViewController *)viewController {
-    UIViewController *customViewController = CreateSettingsDestinationForCandidate(self, viewController);
+- (void)showOrPushViewController:(UIViewController *)viewController
+{
+    UIViewController *customViewController =
+        CreateSettingsDestinationForCandidate(self, viewController);
     if (customViewController && PushSettingsDestination(self, customViewController, YES))
         return;
     %orig(customViewController ?: viewController);
 }
 
-- (void)showViewController:(UIViewController *)viewController sender:(id)sender {
-    UIViewController *customViewController = CreateSettingsDestinationForCandidate(self, viewController);
+- (void)showViewController:(UIViewController *)viewController sender:(id)sender
+{
+    UIViewController *customViewController =
+        CreateSettingsDestinationForCandidate(self, viewController);
     if (customViewController && PushSettingsDestination(self, customViewController, YES))
         return;
     %orig(customViewController ?: viewController, sender);
@@ -602,48 +758,65 @@ settingsViewControllerDelegate:(id)settingsViewControllerDelegate {
 
 %end
 
-%hook YTNavigationController
+        %hook YTNavigationController
 
-- (void)pushViewController:(UIViewController *)viewController {
-    YTSettingsViewController *settingsViewController = SettingsControllerInNavigationController(self);
-    UIViewController *customViewController = CreateSettingsDestinationForCandidate(settingsViewController, viewController);
+    - (void) pushViewController : (UIViewController *) viewController
+{
+    YTSettingsViewController *settingsViewController =
+        SettingsControllerInNavigationController(self);
+    UIViewController *customViewController =
+        CreateSettingsDestinationForCandidate(settingsViewController, viewController);
     if (customViewController && PushSettingsDestination(self, customViewController, YES))
         return;
     %orig(customViewController ?: viewController);
 }
 
-- (void)pushViewController:(UIViewController *)viewController animated:(BOOL)animated {
-    YTSettingsViewController *settingsViewController = SettingsControllerInNavigationController(self);
-    UIViewController *customViewController = CreateSettingsDestinationForCandidate(settingsViewController, viewController);
+- (void)pushViewController:(UIViewController *)viewController animated:(BOOL)animated
+{
+    YTSettingsViewController *settingsViewController =
+        SettingsControllerInNavigationController(self);
+    UIViewController *customViewController =
+        CreateSettingsDestinationForCandidate(settingsViewController, viewController);
     if (customViewController && PushSettingsDestination(self, customViewController, animated))
         return;
     %orig(customViewController ?: viewController, animated);
 }
 
-- (void)showOrPushViewController:(UIViewController *)viewController {
-    YTSettingsViewController *settingsViewController = SettingsControllerInNavigationController(self);
-    UIViewController *customViewController = CreateSettingsDestinationForCandidate(settingsViewController, viewController);
+- (void)showOrPushViewController:(UIViewController *)viewController
+{
+    YTSettingsViewController *settingsViewController =
+        SettingsControllerInNavigationController(self);
+    UIViewController *customViewController =
+        CreateSettingsDestinationForCandidate(settingsViewController, viewController);
     if (customViewController && PushSettingsDestination(self, customViewController, YES))
         return;
     %orig(customViewController ?: viewController);
 }
 
-- (void)showViewController:(UIViewController *)viewController sender:(id)sender {
-    YTSettingsViewController *settingsViewController = SettingsControllerInNavigationController(self);
-    UIViewController *customViewController = CreateSettingsDestinationForCandidate(settingsViewController, viewController);
+- (void)showViewController:(UIViewController *)viewController sender:(id)sender
+{
+    YTSettingsViewController *settingsViewController =
+        SettingsControllerInNavigationController(self);
+    UIViewController *customViewController =
+        CreateSettingsDestinationForCandidate(settingsViewController, viewController);
     if (customViewController && PushSettingsDestination(self, customViewController, YES))
         return;
     %orig(customViewController ?: viewController, sender);
 }
 
-- (void)setViewControllers:(NSArray<UIViewController *> *)viewControllers {
-    YTSettingsViewController *settingsViewController = SettingsControllerInNavigationController(self);
+- (void)setViewControllers:(NSArray<UIViewController *> *)viewControllers
+{
+    YTSettingsViewController *settingsViewController =
+        SettingsControllerInNavigationController(self);
     NSUInteger settingsIndex = [viewControllers indexOfObjectIdenticalTo:settingsViewController];
-    if (settingsIndex != NSNotFound && settingsIndex + 1 < viewControllers.count) {
-        UIViewController *customViewController = CreateSettingsDestinationForCandidate(settingsViewController,
-                                                                                         viewControllers[settingsIndex + 1]);
-        if (customViewController) {
-            NSMutableArray<UIViewController *> *replacedViewControllers = viewControllers.mutableCopy;
+    if (settingsIndex != NSNotFound && settingsIndex + 1 < viewControllers.count)
+    {
+        UIViewController *customViewController = CreateSettingsDestinationForCandidate(
+            settingsViewController, viewControllers[settingsIndex + 1]);
+        if (customViewController)
+        {
+            NSMutableArray<UIViewController *> *replacedViewControllers =
+                viewControllers.mutableCopy;
             replacedViewControllers[settingsIndex + 1] = customViewController;
             %orig(replacedViewControllers);
             return;
@@ -652,14 +825,19 @@ settingsViewControllerDelegate:(id)settingsViewControllerDelegate {
     %orig;
 }
 
-- (void)setViewControllers:(NSArray<UIViewController *> *)viewControllers animated:(BOOL)animated {
-    YTSettingsViewController *settingsViewController = SettingsControllerInNavigationController(self);
+- (void)setViewControllers:(NSArray<UIViewController *> *)viewControllers animated:(BOOL)animated
+{
+    YTSettingsViewController *settingsViewController =
+        SettingsControllerInNavigationController(self);
     NSUInteger settingsIndex = [viewControllers indexOfObjectIdenticalTo:settingsViewController];
-    if (settingsIndex != NSNotFound && settingsIndex + 1 < viewControllers.count) {
-        UIViewController *customViewController = CreateSettingsDestinationForCandidate(settingsViewController,
-                                                                                         viewControllers[settingsIndex + 1]);
-        if (customViewController) {
-            NSMutableArray<UIViewController *> *replacedViewControllers = viewControllers.mutableCopy;
+    if (settingsIndex != NSNotFound && settingsIndex + 1 < viewControllers.count)
+    {
+        UIViewController *customViewController = CreateSettingsDestinationForCandidate(
+            settingsViewController, viewControllers[settingsIndex + 1]);
+        if (customViewController)
+        {
+            NSMutableArray<UIViewController *> *replacedViewControllers =
+                viewControllers.mutableCopy;
             replacedViewControllers[settingsIndex + 1] = customViewController;
             %orig(replacedViewControllers, animated);
             return;
@@ -670,38 +848,53 @@ settingsViewControllerDelegate:(id)settingsViewControllerDelegate {
 
 %end
 
-%hook UINavigationController
+        %hook UINavigationController
 
-- (void)pushViewController:(UIViewController *)viewController {
-    YTSettingsViewController *settingsViewController = SettingsControllerInNavigationController(self);
-    UIViewController *customViewController = CreateSettingsDestinationForCandidate(settingsViewController, viewController);
-    if (customViewController) {
+    - (void) pushViewController : (UIViewController *) viewController
+{
+    YTSettingsViewController *settingsViewController =
+        SettingsControllerInNavigationController(self);
+    UIViewController *customViewController =
+        CreateSettingsDestinationForCandidate(settingsViewController, viewController);
+    if (customViewController)
+    {
         [self pushViewController:customViewController animated:YES];
         return;
     }
     %orig;
 }
 
-- (void)pushViewController:(UIViewController *)viewController animated:(BOOL)animated {
-    YTSettingsViewController *settingsViewController = SettingsControllerInNavigationController(self);
-    UIViewController *customViewController = CreateSettingsDestinationForCandidate(settingsViewController, viewController);
+- (void)pushViewController:(UIViewController *)viewController animated:(BOOL)animated
+{
+    YTSettingsViewController *settingsViewController =
+        SettingsControllerInNavigationController(self);
+    UIViewController *customViewController =
+        CreateSettingsDestinationForCandidate(settingsViewController, viewController);
     %orig(customViewController ?: viewController, animated);
 }
 
-- (void)showOrPushViewController:(UIViewController *)viewController {
-    YTSettingsViewController *settingsViewController = SettingsControllerInNavigationController(self);
-    UIViewController *customViewController = CreateSettingsDestinationForCandidate(settingsViewController, viewController);
-    if (customViewController) {
+- (void)showOrPushViewController:(UIViewController *)viewController
+{
+    YTSettingsViewController *settingsViewController =
+        SettingsControllerInNavigationController(self);
+    UIViewController *customViewController =
+        CreateSettingsDestinationForCandidate(settingsViewController, viewController);
+    if (customViewController)
+    {
         [self pushViewController:customViewController animated:YES];
         return;
     }
     %orig;
 }
 
-- (void)showViewController:(UIViewController *)viewController sender:(id)sender {
-    YTSettingsViewController *settingsViewController = SettingsControllerInNavigationController(self);
-    UIViewController *customViewController = CreateSettingsDestinationForCandidate(settingsViewController, viewController);
-    if (customViewController) {
+- (void)showViewController:(UIViewController *)viewController sender:(id)sender
+{
+    YTSettingsViewController *settingsViewController =
+        SettingsControllerInNavigationController(self);
+    UIViewController *customViewController =
+        CreateSettingsDestinationForCandidate(settingsViewController, viewController);
+    if (customViewController)
+    {
         [self pushViewController:customViewController animated:YES];
         return;
     }
@@ -710,6 +903,8 @@ settingsViewControllerDelegate:(id)settingsViewControllerDelegate {
 
 %end
 
-%ctor {
+    %ctor
+{
     %init;
+    InstallLegacySettingsCategoryHook();
 }

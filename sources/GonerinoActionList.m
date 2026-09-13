@@ -1,18 +1,24 @@
 #import "GonerinoActionList.h"
+
 #import <objc/message.h>
 
-static NSString *ActionStringValue(id action, SEL selector) {
+static NSString *ActionStringValue(id action, SEL selector)
+{
     if (!action || !selector || ![action respondsToSelector:selector])
         return nil;
-    @try {
-        id value = ((id (*)(id, SEL))objc_msgSend)(action, selector);
+    @try
+    {
+        id value = ((id (*)(id, SEL)) objc_msgSend)(action, selector);
         return [value isKindOfClass:[NSString class]] ? value : nil;
-    } @catch (__unused NSException *exception) {
+    }
+    @catch (__unused NSException *exception)
+    {
         return nil;
     }
 }
 
-static NSString *BlockActionKey(id action) {
+static NSString *BlockActionKey(id action)
+{
     NSString *identifier = ActionStringValue(action, @selector(accessibilityIdentifier));
     if ([identifier isEqualToString:@"GonerinoBlockChannel"])
         return @"channel";
@@ -27,13 +33,15 @@ static NSString *BlockActionKey(id action) {
     return nil;
 }
 
-NSArray *GonerinoUniqueBlockActions(NSArray *actions) {
+NSArray *GonerinoUniqueBlockActions(NSArray *actions)
+{
     if (![actions isKindOfClass:[NSArray class]])
         return @[];
 
-    NSMutableArray *result = [NSMutableArray arrayWithCapacity:actions.count];
-    NSMutableSet *seenKeys = [NSMutableSet setWithCapacity:2];
-    for (id action in actions) {
+    NSMutableArray *result   = [NSMutableArray arrayWithCapacity:actions.count];
+    NSMutableSet   *seenKeys = [NSMutableSet setWithCapacity:2];
+    for (id action in actions)
+    {
         NSString *key = BlockActionKey(action);
         if (key && [seenKeys containsObject:key])
             continue;
@@ -44,7 +52,8 @@ NSArray *GonerinoUniqueBlockActions(NSArray *actions) {
     return result.copy;
 }
 
-NSArray *GonerinoPrependUniqueBlockActions(NSArray *actions, NSArray *blockActions) {
+NSArray *GonerinoPrependUniqueBlockActions(NSArray *actions, NSArray *blockActions)
+{
     NSMutableArray *result = [NSMutableArray arrayWithArray:blockActions ?: @[]];
     [result addObjectsFromArray:actions ?: @[]];
     return GonerinoUniqueBlockActions(result);
