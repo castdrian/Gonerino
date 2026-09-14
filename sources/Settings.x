@@ -12,6 +12,37 @@ static void            *SettingsIconImageAssociationKey = &SettingsIconImageAsso
 static const NSUInteger SettingsGroup                   = 0x67726e72;
 static const NSInteger  SettingsIconType                = YT_PICTURE_IN_PICTURE;
 
+static const void *SharedSettingsIconImageKey(void)
+{
+    return (const void *) sel_registerName("settingsIntegrationIconImage");
+}
+
+static NSArray *SharedSettingsCategories(void)
+{
+    Class groupClass = NSClassFromString(@"YTSettingsGroupData");
+    SEL categoriesSelector = NSSelectorFromString(@"settingsIntegrationCategories");
+    NSArray *registeredCategories = nil;
+    if (groupClass && [groupClass respondsToSelector:categoriesSelector])
+    {
+        NSArray *(*message)(id, SEL) = (NSArray *(*)(id, SEL)) objc_msgSend;
+        registeredCategories = message(groupClass, categoriesSelector);
+    }
+    NSMutableArray *categories = registeredCategories.mutableCopy ?: [NSMutableArray array];
+    if (![categories containsObject:@(SettingsCategory)])
+        [categories insertObject:@(SettingsCategory) atIndex:0];
+    return categories.copy;
+}
+
+static NSMutableArray *SettingsCategoryRegistry(void)
+{
+    static NSMutableArray *categories;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        categories = [NSMutableArray arrayWithObject:@(SettingsCategory)];
+    });
+    return categories;
+}
+
 static UIImage *SettingsIconImage(void)
 {
     return [Util createBlockVideoIconWithSize:CGSizeMake(24.0, 24.0)];
@@ -30,14 +61,19 @@ static void InstallLegacySettingsCategoryHook(void)
     IMP original = method_getImplementation(method);
     id replacement = ^id(id object, SEL command) {
         NSArray *order = ((id (*)(id, SEL)) original)(object, command);
-        if ([order containsObject:@(SettingsCategory)])
-            return order;
         NSMutableArray *result = order.mutableCopy ?: [NSMutableArray array];
         NSUInteger insertIndex = [order indexOfObject:@(1)];
         if (insertIndex == NSNotFound)
-            [result addObject:@(SettingsCategory)];
+            insertIndex = result.count;
         else
-            [result insertObject:@(SettingsCategory) atIndex:insertIndex + 1];
+            insertIndex++;
+        for (NSNumber *category in SharedSettingsCategories())
+        {
+            if ([result containsObject:category])
+                continue;
+            [result insertObject:category atIndex:MIN(insertIndex, result.count)];
+            insertIndex++;
+        }
         return result.copy;
     };
     IMP replacementImplementation = imp_implementationWithBlock(replacement);
@@ -87,7 +123,9 @@ static YTSettingsViewController *SettingsViewControllerFromObject(id object)
 
 - (UIImage *)iconImageWithColor:(UIColor *)color
 {
-    UIImage *image = objc_getAssociatedObject(self, SettingsIconImageAssociationKey);
+    UIImage *image = objc_getAssociatedObject(self, SharedSettingsIconImageKey());
+    if (!image)
+        image = objc_getAssociatedObject(self, SettingsIconImageAssociationKey);
     if (!image && self.iconType == SettingsIconType)
         image = SettingsIconImage();
     return image ?: %orig;
@@ -95,7 +133,9 @@ static YTSettingsViewController *SettingsViewControllerFromObject(id object)
 
 - (UIImage *)iconImageWithSelected:(BOOL)selected
 {
-    UIImage *image = objc_getAssociatedObject(self, SettingsIconImageAssociationKey);
+    UIImage *image = objc_getAssociatedObject(self, SharedSettingsIconImageKey());
+    if (!image)
+        image = objc_getAssociatedObject(self, SettingsIconImageAssociationKey);
     if (!image && self.iconType == SettingsIconType)
         image = SettingsIconImage();
     return image ?: %orig;
@@ -362,6 +402,55 @@ static BOOL SettingsCandidateIsGonerino(UIViewController *candidate)
     return NO;
 }
 
+static NSNumber *SettingsCandidateCategory(UIViewController *candidate)
+{
+    if (!candidate)
+        return nil;
+    NSArray *objects = @[ candidate, SettingsObjectValue(candidate, @"content") ?: [NSNull null] ];
+    for (id object in objects)
+    {
+        if (object == [NSNull null])
+            continue;
+        NSNumber *category = SettingsCategoryValue(object);
+        if (!category)
+            category = SettingsCategoryValue(SettingsObjectValue(object, @"model"));
+        if (!category)
+            category = SettingsCategoryValue(SettingsObjectValue(object, @"navigationEndpoint"));
+        if (category)
+            return category;
+    }
+    return nil;
+}
+
+static UIViewController *SharedSettingsDestinationForCategory(
+    YTSettingsViewController *settingsViewController,
+    NSUInteger               category)
+{
+    if (!settingsViewController || category == SettingsCategory ||
+        ![SharedSettingsCategories() containsObject:@(category)])
+        return nil;
+    NSMutableDictionary *userInfo = [@{
+        @"category" : @(category),
+        @"controller" : settingsViewController
+    } mutableCopy];
+    [[NSNotificationCenter defaultCenter]
+        postNotificationName:@"SettingsIntegrationCreateSettingsDestination"
+                      object:settingsViewController
+                    userInfo:userInfo];
+    UIViewController *destination = userInfo[@"destination"];
+    return [destination isKindOfClass:[UIViewController class]] ? destination : nil;
+}
+
+static UIViewController *SharedSettingsDestinationForCandidate(
+    YTSettingsViewController *settingsViewController,
+    UIViewController         *candidate)
+{
+    NSNumber *category = SettingsCandidateCategory(candidate);
+    return category ? SharedSettingsDestinationForCategory(settingsViewController,
+                                                            category.unsignedIntegerValue)
+                    : nil;
+}
+
 static YTSettingsSectionItemManager *
 SettingsManagerForController(YTSettingsViewController *settingsViewController)
 {
@@ -416,10 +505,10 @@ CreateSettingsDestinationForCandidate(YTSettingsViewController *settingsViewCont
     Class customSettingsClass = NSClassFromString(@"SettingsPageViewController");
     if (customSettingsClass && [candidate isKindOfClass:customSettingsClass])
         return nil;
+    if (!SettingsCandidateIsGonerino(candidate))
+        return SharedSettingsDestinationForCandidate(settingsViewController, candidate);
     YTSettingsSectionItemManager *manager = SettingsManagerForController(settingsViewController);
     if (!manager)
-        return nil;
-    if (!SettingsCandidateIsGonerino(candidate))
         return nil;
     UIViewController *destination = CreateCustomSettingsViewController(manager);
     AssociateSettingsDestinationManager(destination, manager);
@@ -525,17 +614,37 @@ CreateCustomSettingsSplitDestination(YTSettingsViewController *settingsViewContr
 
 %hook YTSettingsGroupData
 
-    - (NSArray<NSNumber *> *) orderedCategories
+%new
++ (NSArray<NSNumber *> *)settingsIntegrationCategories
+{
+    @synchronized (SettingsCategoryRegistry())
+    {
+        return [SettingsCategoryRegistry() copy];
+    }
+}
+
+%new
++ (void)registerSettingsIntegrationCategory:(NSInteger)category
+{
+    NSNumber *value = @(category);
+    @synchronized (SettingsCategoryRegistry())
+    {
+        if (![SettingsCategoryRegistry() containsObject:value])
+            [SettingsCategoryRegistry() addObject:value];
+    }
+}
+
+- (NSArray<NSNumber *> *) orderedCategories
 {
     if (self.type == SettingsGroup)
-        return @[ @(SettingsCategory) ];
+        return SharedSettingsCategories();
     return %orig;
 }
 
 - (NSArray<NSNumber *> *)orderedCategoriesForGroupType:(NSUInteger)type
 {
     if (type == SettingsGroup)
-        return @[ @(SettingsCategory) ];
+        return SharedSettingsCategories();
     return %orig;
 }
 
@@ -595,6 +704,17 @@ CreateCustomSettingsSplitDestination(YTSettingsViewController *settingsViewContr
         YTSettingsViewController *settingsViewController = SettingsViewControllerForManager(self);
         AssociateSettingsManager(settingsViewController, self);
         [self settingsIntegrationUpdateSectionWithEntry:entry];
+        return;
+    }
+    if ([SharedSettingsCategories() containsObject:@(category)])
+    {
+        [[NSNotificationCenter defaultCenter]
+            postNotificationName:@"SettingsIntegrationConfigureCategory"
+                          object:self
+                        userInfo:@{
+                            @"category" : @(category),
+                            @"entry" : entry ?: [NSNull null]
+                        }];
         return;
     }
     %orig;
@@ -688,9 +808,13 @@ CreateCustomSettingsSplitDestination(YTSettingsViewController *settingsViewContr
 
         %hook YTSettingsViewController
 
-    - (void) sendSettingsNavigationEndpointForCategory : (NSUInteger) category
+- (void) sendSettingsNavigationEndpointForCategory : (NSUInteger) category
 {
     if (category == SettingsCategory && PushCustomSettingsDestination(self, YES))
+        return;
+    UIViewController *customViewController =
+        SharedSettingsDestinationForCategory(self, category);
+    if (customViewController && PushSettingsDestination(self, customViewController, YES))
         return;
     %orig(category);
 }
@@ -703,6 +827,10 @@ CreateCustomSettingsSplitDestination(YTSettingsViewController *settingsViewContr
         if (PushCustomSettingsDestination(self, YES))
             return;
     }
+    UIViewController *customViewController =
+        SharedSettingsDestinationForCategory(self, category.unsignedIntegerValue);
+    if (customViewController && PushSettingsDestination(self, customViewController, YES))
+        return;
     %orig(item);
 }
 
