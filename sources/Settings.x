@@ -40,6 +40,15 @@ static NSArray *SharedSettingsCategories(void)
     return categories.copy;
 }
 
+static NSArray *CategoriesWithoutSharedSettings(NSArray *categories)
+{
+    if (categories.count == 0)
+        return categories ?: @[];
+    NSMutableArray *filtered = categories.mutableCopy;
+    [filtered removeObjectsInArray:SharedSettingsCategories()];
+    return filtered.copy;
+}
+
 static NSMutableArray *SettingsCategoryRegistry(void)
 {
     static NSMutableArray *categories;
@@ -647,14 +656,14 @@ CreateCustomSettingsSplitDestination(YTSettingsViewController *settingsViewContr
 {
     if (self.type == SettingsGroup)
         return SharedSettingsCategories();
-    return %orig;
+    return CategoriesWithoutSharedSettings(%orig);
 }
 
 - (NSArray<NSNumber *> *)orderedCategoriesForGroupType:(NSUInteger)type
 {
     if (type == SettingsGroup)
         return SharedSettingsCategories();
-    return %orig;
+    return CategoriesWithoutSharedSettings(%orig);
 }
 
 - (NSString *)titleForSettingGroupType:(NSUInteger)type
