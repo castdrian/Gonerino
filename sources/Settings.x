@@ -1044,4 +1044,6 @@ CreateCustomSettingsSplitDestination(YTSettingsViewController *settingsViewContr
 {
     %init;
     InstallLegacySettingsCategoryHook();
+    [[NSNotificationCenter defaultCenter] postNotificationName:@"SettingsIntegrationHostReady"
+                                                        object:nil];
 }
