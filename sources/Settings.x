@@ -17,6 +17,13 @@ static const void *SharedSettingsIconImageKey(void)
     return (const void *) sel_registerName("settingsIntegrationIconImage");
 }
 
+static BOOL GroupedSettingsAvailable(void)
+{
+    Class presentationClass = NSClassFromString(@"YTAppSettingsGroupPresentationData");
+    return presentationClass &&
+           class_getClassMethod(presentationClass, @selector(orderedGroups)) != NULL;
+}
+
 static NSArray *SharedSettingsCategories(void)
 {
     Class groupClass = NSClassFromString(@"YTSettingsGroupData");
@@ -61,6 +68,8 @@ static void InstallLegacySettingsCategoryHook(void)
     IMP original = method_getImplementation(method);
     id replacement = ^id(id object, SEL command) {
         NSArray *order = ((id (*)(id, SEL)) original)(object, command);
+        if (GroupedSettingsAvailable())
+            return order;
         NSMutableArray *result = order.mutableCopy ?: [NSMutableArray array];
         NSUInteger insertIndex = [order indexOfObject:@(1)];
         if (insertIndex == NSNotFound)
