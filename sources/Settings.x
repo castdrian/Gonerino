@@ -68,18 +68,18 @@ static void InstallLegacySettingsCategoryHook(void)
     IMP original = method_getImplementation(method);
     id replacement = ^id(id object, SEL command) {
         NSArray *order = ((id (*)(id, SEL)) original)(object, command);
-        if (GroupedSettingsAvailable())
-            return order;
         NSMutableArray *result = order.mutableCopy ?: [NSMutableArray array];
-        NSUInteger insertIndex = [order indexOfObject:@(1)];
+        NSArray *sharedCategories = SharedSettingsCategories();
+        [result removeObjectsInArray:sharedCategories];
+        if (GroupedSettingsAvailable())
+            return result.copy;
+        NSUInteger insertIndex = [result indexOfObject:@(1)];
         if (insertIndex == NSNotFound)
             insertIndex = result.count;
         else
             insertIndex++;
-        for (NSNumber *category in SharedSettingsCategories())
+        for (NSNumber *category in sharedCategories)
         {
-            if ([result containsObject:category])
-                continue;
             [result insertObject:category atIndex:MIN(insertIndex, result.count)];
             insertIndex++;
         }
