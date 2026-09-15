@@ -1,9 +1,178 @@
 #import "Util.h"
 
+#import <mach-o/loader.h>
 #import <objc/runtime.h>
 
 #import "ChannelManager.h"
 #import "VideoManager.h"
+
+static NSString *const kGonerinoYouTubeTeamIdentifier = @"EQHXZ8M8AV";
+
+static NSDictionary *EntitlementsBlobAtOffset(uint32_t offset, FILE *file)
+{
+    if (fseek(file, offset, SEEK_SET) != 0)
+    {
+        return nil;
+    }
+
+    struct {
+        uint32_t magic;
+        uint32_t length;
+    } blobHeader;
+
+    if (fread(&blobHeader, sizeof(blobHeader), 1, file) != 1)
+    {
+        return nil;
+    }
+
+    blobHeader.magic  = CFSwapInt32BigToHost(blobHeader.magic);
+    blobHeader.length = CFSwapInt32BigToHost(blobHeader.length);
+
+    if (blobHeader.magic != 0xfade7171)
+    {
+        return nil;
+    }
+
+    uint32_t       entitlementsLength = blobHeader.length - 8;
+    NSMutableData *entitlementsData   = [NSMutableData dataWithLength:entitlementsLength];
+    if (fread([entitlementsData mutableBytes], entitlementsLength, 1, file) != 1)
+    {
+        return nil;
+    }
+
+    NSError      *error        = nil;
+    NSDictionary *entitlements = [NSPropertyListSerialization propertyListWithData:entitlementsData
+                                                                           options:0
+                                                                            format:nil
+                                                                             error:&error];
+    return (error || !entitlements) ? nil : entitlements;
+}
+
+static NSDictionary *EntitlementsAtOffset(uint32_t offset, FILE *file)
+{
+    if (fseek(file, offset, SEEK_SET) != 0)
+    {
+        return nil;
+    }
+
+    struct {
+        uint32_t magic;
+        uint32_t length;
+        uint32_t count;
+    } superBlob;
+
+    if (fread(&superBlob, sizeof(superBlob), 1, file) != 1)
+    {
+        return nil;
+    }
+
+    superBlob.magic = CFSwapInt32BigToHost(superBlob.magic);
+    superBlob.count = CFSwapInt32BigToHost(superBlob.count);
+
+    if (superBlob.magic != 0xfade0cc0)
+    {
+        return nil;
+    }
+
+    for (uint32_t i = 0; i < superBlob.count; i++)
+    {
+        struct {
+            uint32_t type;
+            uint32_t offset;
+        } blobIndex;
+
+        if (fread(&blobIndex, sizeof(blobIndex), 1, file) != 1)
+        {
+            continue;
+        }
+
+        blobIndex.type   = CFSwapInt32BigToHost(blobIndex.type);
+        blobIndex.offset = CFSwapInt32BigToHost(blobIndex.offset);
+
+        if (blobIndex.type == 5)
+        {
+            long          currentPos   = ftell(file);
+            NSDictionary *entitlements = EntitlementsBlobAtOffset(offset + blobIndex.offset, file);
+            fseek(file, currentPos, SEEK_SET);
+            if (entitlements)
+            {
+                return entitlements;
+            }
+        }
+    }
+
+    return nil;
+}
+
+static NSDictionary *EntitlementsFrom64BitBinary(FILE *file)
+{
+    struct mach_header_64 header;
+    if (fread(&header, sizeof(header), 1, file) != 1)
+    {
+        return nil;
+    }
+
+    for (uint32_t i = 0; i < header.ncmds; i++)
+    {
+        struct load_command cmd;
+        long                cmdPos = ftell(file);
+
+        if (fread(&cmd, sizeof(cmd), 1, file) != 1)
+        {
+            return nil;
+        }
+
+        if (cmd.cmd == LC_CODE_SIGNATURE)
+        {
+            struct linkedit_data_command sigCmd;
+            fseek(file, cmdPos, SEEK_SET);
+            if (fread(&sigCmd, sizeof(sigCmd), 1, file) != 1)
+            {
+                return nil;
+            }
+            return EntitlementsAtOffset(sigCmd.dataoff, file);
+        }
+
+        fseek(file, cmdPos + cmd.cmdsize, SEEK_SET);
+    }
+
+    return nil;
+}
+
+static NSDictionary *ApplicationEntitlements(void)
+{
+    NSBundle *bundle         = [NSBundle mainBundle];
+    NSString *executableName = bundle.infoDictionary[@"CFBundleExecutable"];
+    NSString *executablePath =
+        executableName ? [bundle pathForResource:executableName ofType:nil] : nil;
+    if (!executablePath)
+    {
+        return @{};
+    }
+
+    FILE *file = fopen([executablePath UTF8String], "rb");
+    if (!file)
+    {
+        return @{};
+    }
+
+    uint32_t magic;
+    if (fread(&magic, sizeof(magic), 1, file) != 1)
+    {
+        fclose(file);
+        return @{};
+    }
+    fseek(file, 0, SEEK_SET);
+
+    NSDictionary *result = @{};
+    if (magic == MH_MAGIC_64 || magic == MH_CIGAM_64)
+    {
+        result = EntitlementsFrom64BitBinary(file) ?: @{};
+    }
+
+    fclose(file);
+    return result;
+}
 
 NSString *const FeedFilterStateDidChangeNotification = @"FeedFilterStateDidChangeNotification";
 
@@ -2473,6 +2642,13 @@ static FeedMetadataRecord *MetadataRecordByCombining(FeedMetadataRecord *first,
     {
         return nil;
     }
+}
+
++ (BOOL)hasYouTubeProductionEntitlements
+{
+    NSDictionary *entitlements   = ApplicationEntitlements();
+    NSString     *teamIdentifier = entitlements[@"com.apple.developer.team-identifier"];
+    return [teamIdentifier isEqualToString:kGonerinoYouTubeTeamIdentifier];
 }
 
 @end

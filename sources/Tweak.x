@@ -54,8 +54,8 @@ static void InstallFeedDataSourceAdapter(UICollectionView *collectionView, id da
         [existingAdapter replaceDataSource:dataSource];
         return;
     }
-    FeedDataSourceAdapter *adapter =
-        [FeedDataSourceAdapter adapterWithCollectionView:collectionView dataSource:dataSource];
+    FeedDataSourceAdapter *adapter = [FeedDataSourceAdapter adapterWithCollectionView:collectionView
+                                                                           dataSource:dataSource];
     objc_setAssociatedObject(collectionView, FeedDataSourceAdapterKey, adapter,
                              OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 }
@@ -200,8 +200,9 @@ static void AssociateVideoIDWithNode(id node, NSString *videoID)
     NSString *existingVideoID = [Util feedVideoIDForObject:node];
     if (existingVideoID.length > 0 && ![existingVideoID isEqualToString:videoID])
         [Util resetFeedVideoMetadataForNode:node];
-    FeedMetadataRecord *metadata =
-        [[FeedMetadataRecord alloc] initWithVideoID:videoID title:nil channel:nil];
+    FeedMetadataRecord *metadata = [[FeedMetadataRecord alloc] initWithVideoID:videoID
+                                                                         title:nil
+                                                                       channel:nil];
     [Util setFeedVideoID:videoID forObject:node];
     [Util rememberFeedVideoMetadata:metadata forNode:node];
     [FeedDataSourceAdapter rememberMetadata:metadata forNode:node];
@@ -1059,7 +1060,7 @@ static UICollectionViewCell *FeedCellForSourceView(UIView *sourceView)
 
 %hook ELMCellNode
 
-    - (void) setElement : (id) element
+- (void)setElement:(id)element
 {
     %orig;
     [FeedDataSourceAdapter invalidateMetadataForNode:self];
@@ -1068,9 +1069,9 @@ static UICollectionViewCell *FeedCellForSourceView(UIView *sourceView)
 
 %end
 
-        %hook ASCollectionView
+%hook ASCollectionView
 
-    - (void) setDataSource : (id) dataSource
+- (void)setDataSource:(id)dataSource
 {
     %orig(dataSource);
 }
@@ -1104,9 +1105,9 @@ static UICollectionViewCell *FeedCellForSourceView(UIView *sourceView)
 
 %end
 
-        %hook YTAsyncCollectionView
+%hook YTAsyncCollectionView
 
-    - (void) setAsyncDataSource : (id) dataSource
+- (void)setAsyncDataSource:(id)dataSource
 {
     if (IsShortsDataSourceOrView(self, dataSource))
     {
@@ -1122,9 +1123,9 @@ static UICollectionViewCell *FeedCellForSourceView(UIView *sourceView)
 
 %end
 
-        %hook ASCollectionNode
+%hook ASCollectionNode
 
-    - (void) reloadData
+- (void)reloadData
 {
     PrepareCollectionNodeForReload(self);
     %orig;
@@ -1138,14 +1139,17 @@ static UICollectionViewCell *FeedCellForSourceView(UIView *sourceView)
 
 %end
 
-        %hook YTDefaultSheetController
+%hook YTDefaultSheetController
 
-    - (instancetype) initWithSheetStyle : (NSInteger) sheetStyle headerTitle
-    : (NSString *) headerTitle headerSubtitle : (NSString *) headerSubtitle shouldDisableLogging
-    : (BOOL) shouldDisableLogging delegate : (id) delegate parentResponder : (id) parentResponder
+- (instancetype)initWithSheetStyle:(NSInteger)sheetStyle
+                       headerTitle:(NSString *)headerTitle
+                    headerSubtitle:(NSString *)headerSubtitle
+              shouldDisableLogging:(BOOL)shouldDisableLogging
+                          delegate:(id)delegate
+                   parentResponder:(id)parentResponder
 {
-    YTDefaultSheetController *result = %orig(sheetStyle, headerTitle, headerSubtitle,
-                                              shouldDisableLogging, delegate, parentResponder);
+    YTDefaultSheetController *result = %orig(
+        sheetStyle, headerTitle, headerSubtitle, shouldDisableLogging, delegate, parentResponder);
     return result;
 }
 
@@ -1225,9 +1229,9 @@ static UICollectionViewCell *FeedCellForSourceView(UIView *sourceView)
 
 %end
 
-        %hook YTActionSheetController
+%hook YTActionSheetController
 
-    - (void) addAction : (YTActionSheetAction *) action
+- (void)addAction:(YTActionSheetAction *)action
 {
     %orig(action);
 }
@@ -1256,9 +1260,9 @@ static UICollectionViewCell *FeedCellForSourceView(UIView *sourceView)
 
 %end
 
-        %hook MDCActionSheetController
+%hook MDCActionSheetController
 
-    - (NSArray *) actions
+- (NSArray *)actions
 {
     NSArray *originalActions = %orig;
     return MDCBlockingActionsForSheet(self, originalActions);
@@ -1276,9 +1280,9 @@ static UICollectionViewCell *FeedCellForSourceView(UIView *sourceView)
 
 %end
 
-        %hook YTMenuController
+%hook YTMenuController
 
-    - (void) setActionSheetController : (id) actionSheetController
+- (void)setActionSheetController:(id)actionSheetController
 {
     %orig(actionSheetController);
     PrepareMenuControllerSheet(self, nil);
@@ -1326,7 +1330,8 @@ static UICollectionViewCell *FeedCellForSourceView(UIView *sourceView)
                   firstResponder:(id)firstResponder
 {
     PrepareMenuControllerSheet(self, view);
-    %orig(renderer, view, entry, dismissalBlock, addCancelAction, shouldLogItems, firstResponder);
+    %orig(renderer, view, entry, dismissalBlock, addCancelAction, shouldLogItems,
+                     firstResponder);
     PrepareMenuControllerSheet(self, view);
 }
 
@@ -1340,8 +1345,8 @@ static UICollectionViewCell *FeedCellForSourceView(UIView *sourceView)
                       completion:(id)completion
 {
     PrepareMenuControllerSheet(self, view);
-    %orig(renderer, view, entry, dismissalBlock, addCancelAction, shouldLogItems, firstResponder,
-           completion);
+    %orig(renderer, view, entry, dismissalBlock, addCancelAction, shouldLogItems,
+                     firstResponder, completion);
     PrepareMenuControllerSheet(self, view);
 }
 
@@ -1357,7 +1362,7 @@ static UICollectionViewCell *FeedCellForSourceView(UIView *sourceView)
 {
     PrepareMenuControllerSheet(self, view);
     %orig(renderer, view, entry, dismissalBlock, addCancelAction, shouldLogItems,
-           skipCollapsedState, firstResponder, completion);
+                     skipCollapsedState, firstResponder, completion);
     PrepareMenuControllerSheet(self, view);
 }
 
@@ -1416,13 +1421,15 @@ static UICollectionViewCell *FeedCellForSourceView(UIView *sourceView)
 
 %end
 
-        %hook YTShortsPlayerViewController
+%hook YTShortsPlayerViewController
 
-    - (id) initWithParentResponder : (id) parentResponder pivotBarViewController
-    : (id) pivotBarViewController model : (id) model mayShowNavigationEduOverlay
-    : (BOOL) mayShowNavigationEduOverlay
+- (id)initWithParentResponder:(id)parentResponder
+         pivotBarViewController:(id)pivotBarViewController
+                          model:(id)model
+    mayShowNavigationEduOverlay:(BOOL)mayShowNavigationEduOverlay
 {
-    id result = %orig(parentResponder, pivotBarViewController, model, mayShowNavigationEduOverlay);
+    id result = %orig(parentResponder, pivotBarViewController, model,
+                                 mayShowNavigationEduOverlay);
     if (result)
     {
         CurrentShortsPlayer = result;
@@ -1476,9 +1483,9 @@ static UICollectionViewCell *FeedCellForSourceView(UIView *sourceView)
 
 %end
 
-        %hook YTReelPlayerViewController
+%hook YTReelPlayerViewController
 
-    - (id) sequenceController
+- (id)sequenceController
 {
     return %orig;
 }
@@ -1493,7 +1500,8 @@ static UICollectionViewCell *FeedCellForSourceView(UIView *sourceView)
                           model:(id)model
     mayShowNavigationEduOverlay:(BOOL)mayShowNavigationEduOverlay
 {
-    id result = %orig(parentResponder, pivotBarViewController, model, mayShowNavigationEduOverlay);
+    id result = %orig(parentResponder, pivotBarViewController, model,
+                                 mayShowNavigationEduOverlay);
     if (result)
     {
         CurrentShortsPlayer = result;
@@ -1556,11 +1564,13 @@ static UICollectionViewCell *FeedCellForSourceView(UIView *sourceView)
 
 %end
 
-        %hook ELMImageNode
+%hook ELMImageNode
 
-    - (id) downloadImageWithURL : (NSURL *) url shouldRetry : (BOOL) shouldRetry callbackQueue
-    : (id) queue downloadProgress : (id) progress completion
-    : (void (^)(id, NSError *, id, id)) completion
+- (id)downloadImageWithURL:(NSURL *)url
+               shouldRetry:(BOOL)shouldRetry
+             callbackQueue:(id)queue
+          downloadProgress:(id)progress
+                completion:(void (^)(id, NSError *, id, id))completion
 {
     NSString *videoID = [Util feedVideoIDFromThumbnailURL:url];
     if (videoID.length == 0)
@@ -1625,10 +1635,11 @@ static UICollectionViewCell *FeedCellForSourceView(UIView *sourceView)
 
 %end
 
-        %hook YTThumbnailController
+%hook YTThumbnailController
 
-    - (instancetype) initWithImageView : (YTImageView *) imageView URLs
-    : (NSDictionary *) URLs imageService : (id) imageService
+- (instancetype)initWithImageView:(YTImageView *)imageView
+                             URLs:(NSDictionary *)URLs
+                     imageService:(id)imageService
 {
     NSString *videoID = nil;
     for (id value in URLs.allValues)
@@ -1647,9 +1658,9 @@ static UICollectionViewCell *FeedCellForSourceView(UIView *sourceView)
 
 %end
 
-        %hook YTImageView
+%hook YTImageView
 
-    - (void) setImage : (UIImage *) image animated : (BOOL) animated
+- (void)setImage:(UIImage *)image animated:(BOOL)animated
 {
     NSString *videoID = [Util feedVideoIDForObject:self.delegate];
     if (videoID.length > 0)
@@ -1659,10 +1670,10 @@ static UICollectionViewCell *FeedCellForSourceView(UIView *sourceView)
 
 %end
 
-    static void *NavigationButtonOwnersKey         = &NavigationButtonOwnersKey;
-static void     *NavigationButtonImageKey          = &NavigationButtonImageKey;
-static void     *NavigationButtonImagePageStyleKey = &NavigationButtonImagePageStyleKey;
-static void     *NavigationButtonStateKey          = &NavigationButtonStateKey;
+static void *NavigationButtonOwnersKey         = &NavigationButtonOwnersKey;
+static void *NavigationButtonImageKey          = &NavigationButtonImageKey;
+static void *NavigationButtonImagePageStyleKey = &NavigationButtonImagePageStyleKey;
+static void *NavigationButtonStateKey          = &NavigationButtonStateKey;
 
 static NSHashTable *NavigationButtonOwners(void)
 {
@@ -1716,7 +1727,7 @@ static void PrepareNavigationButton(YTRightNavigationButtons *owner)
                      forControlEvents:UIControlEventTouchUpInside];
         [owner addSubview:owner.actionButton];
     }
-    BOOL shouldShow = ShouldShowNavigationButton();
+    BOOL shouldShow           = ShouldShowNavigationButton();
     owner.actionButton.hidden = !shouldShow;
 }
 
@@ -1753,9 +1764,9 @@ static NSArray<UIImage *> *NavigationButtonImages(YTRightNavigationButtons *owne
     Class    iconClass     = %c(QTMIcon);
     if ([iconClass respondsToSelector:@selector(tintImage:color:)])
     {
-        enabledImage = [iconClass tintImage:baseImage color:tintColor];
-        disabledImage =
-            [iconClass tintImage:baseImage color:[tintColor colorWithAlphaComponent:0.4]];
+        enabledImage  = [iconClass tintImage:baseImage color:tintColor];
+        disabledImage = [iconClass tintImage:baseImage
+                                       color:[tintColor colorWithAlphaComponent:0.4]];
     }
     enabledImage  = enabledImage
                         ?: [baseImage imageWithTintColor:tintColor
@@ -1822,7 +1833,9 @@ static void RefreshNavigationButtons(void)
         dispatch_async(dispatch_get_main_queue(), refresh);
 }
 
-%hook YTRightNavigationButtons %property(retain, nonatomic) YTQTMButton *actionButton;
+%hook YTRightNavigationButtons
+    %property(retain, nonatomic) YTQTMButton *actionButton;
+;
 
 - (instancetype)initWithFrame:(CGRect)frame
 {
@@ -1895,7 +1908,7 @@ static void RefreshNavigationButtons(void)
 
 %end
 
-    %ctor
+%ctor
 {
     %init;
     GonerinoStartUpdateChecker();

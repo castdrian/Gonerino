@@ -57,6 +57,8 @@ extern NSString *const FeedFilterStateDidChangeNotification;
 + (UIImage *)createBlockChannelIconWithSize:(CGSize)size;
 + (UIImage *)createBlockVideoIconWithSize:(CGSize)size;
 
++ (BOOL)hasYouTubeProductionEntitlements;
+
 @end
 
 NS_ASSUME_NONNULL_END
