@@ -9,7 +9,7 @@
 
 static void            *SettingsManagerAssociationKey   = &SettingsManagerAssociationKey;
 static void            *SettingsIconImageAssociationKey = &SettingsIconImageAssociationKey;
-static const NSUInteger SettingsGroup                   = 0x67726e72;
+static const NSUInteger SettingsGroup                   = 0x70737974;
 static const NSInteger  SettingsIconType                = YT_PICTURE_IN_PICTURE;
 
 static const void *SharedSettingsIconImageKey(void)
@@ -648,6 +648,13 @@ CreateCustomSettingsSplitDestination(YTSettingsViewController *settingsViewContr
         if (![SettingsCategoryRegistry() containsObject:value])
             [SettingsCategoryRegistry() addObject:value];
     }
+    SEL tweaksSelector = @selector(tweaks);
+    if ([self respondsToSelector:tweaksSelector])
+    {
+        NSMutableArray *tweaks = ((id (*)(id, SEL)) objc_msgSend)(self, tweaksSelector);
+        if ([tweaks isKindOfClass:[NSMutableArray class]] && ![tweaks containsObject:value])
+            [tweaks addObject:value];
+    }
 }
 
 - (NSArray<NSNumber *> *)orderedCategories
@@ -664,6 +671,36 @@ CreateCustomSettingsSplitDestination(YTSettingsViewController *settingsViewContr
         return SharedSettingsCategories();
     NSArray *categories = %orig;
     return CategoriesWithoutSharedSettings(categories);
+}
+
+- (NSArray<NSNumber *> *)accountCategories
+{
+    return CategoriesWithoutSharedSettings(%orig);
+}
+
+- (NSArray<NSNumber *> *)appPreferenceCategories
+{
+    return CategoriesWithoutSharedSettings(%orig);
+}
+
+- (NSArray<NSNumber *> *)videoPreferencesCategories
+{
+    return CategoriesWithoutSharedSettings(%orig);
+}
+
+- (NSArray<NSNumber *> *)privacyCategories
+{
+    return CategoriesWithoutSharedSettings(%orig);
+}
+
+- (NSArray<NSNumber *> *)miscellaneousCategories
+{
+    return CategoriesWithoutSharedSettings(%orig);
+}
+
+- (NSArray<NSNumber *> *)developmentCategories
+{
+    return CategoriesWithoutSharedSettings(%orig);
 }
 
 - (NSString *)titleForSettingGroupType:(NSUInteger)type
