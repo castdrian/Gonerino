@@ -639,15 +639,27 @@ CreateCustomSettingsSplitDestination(YTSettingsViewController *settingsViewContr
 + (NSArray *)orderedGroups
 {
     NSArray *groups = %orig;
+    NSMutableArray *result = [NSMutableArray arrayWithCapacity:groups.count + 1];
+    BOOL hasSettingsGroup = NO;
     for (YTSettingsGroupData *group in groups)
     {
         if (group.type == SettingsGroup)
-            return groups;
+        {
+            if (hasSettingsGroup)
+                continue;
+            hasSettingsGroup = YES;
+        }
+        [result addObject:group];
     }
-    NSMutableArray      *result = groups.mutableCopy ?: [NSMutableArray array];
-    YTSettingsGroupData *group =
-        [[%c(YTSettingsGroupData) alloc] initWithGroupType:SettingsGroup];
-    [result insertObject:group atIndex:0];
+    Class groupDataClass = NSClassFromString(@"YTSettingsGroupData");
+    BOOL hasGroupedSettingsProvider =
+        groupDataClass && [groupDataClass respondsToSelector:@selector(tweaks)];
+    if (!hasSettingsGroup && !hasGroupedSettingsProvider)
+    {
+        YTSettingsGroupData *group =
+            [[%c(YTSettingsGroupData) alloc] initWithGroupType:SettingsGroup];
+        [result insertObject:group atIndex:0];
+    }
     return result.copy;
 }
 
