@@ -40,10 +40,16 @@ static NSArray *SharedSettingsCategories(void)
     return categories.copy;
 }
 
+static NSArray *KnownLegacySettingsCategories(void)
+{
+    return @[ @(0x79746864), @(0x7963716c), @(1222) ];
+}
+
 static NSArray *SettingsGroupCategories(void)
 {
     NSMutableOrderedSet *categories = [NSMutableOrderedSet orderedSet];
     [categories addObject:@(SettingsCategory)];
+    [categories addObjectsFromArray:KnownLegacySettingsCategories()];
 
     Class groupClass = NSClassFromString(@"YTSettingsGroupData");
     SEL tweaksSelector = @selector(tweaks);
