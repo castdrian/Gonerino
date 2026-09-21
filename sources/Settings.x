@@ -712,32 +712,38 @@ CreateCustomSettingsSplitDestination(YTSettingsViewController *settingsViewContr
 
 - (NSArray<NSNumber *> *)accountCategories
 {
-    return CategoriesWithoutSharedSettings(%orig);
+    NSArray *categories = %orig;
+    return CategoriesWithoutSharedSettings(categories);
 }
 
 - (NSArray<NSNumber *> *)appPreferenceCategories
 {
-    return CategoriesWithoutSharedSettings(%orig);
+    NSArray *categories = %orig;
+    return CategoriesWithoutSharedSettings(categories);
 }
 
 - (NSArray<NSNumber *> *)videoPreferencesCategories
 {
-    return CategoriesWithoutSharedSettings(%orig);
+    NSArray *categories = %orig;
+    return CategoriesWithoutSharedSettings(categories);
 }
 
 - (NSArray<NSNumber *> *)privacyCategories
 {
-    return CategoriesWithoutSharedSettings(%orig);
+    NSArray *categories = %orig;
+    return CategoriesWithoutSharedSettings(categories);
 }
 
 - (NSArray<NSNumber *> *)miscellaneousCategories
 {
-    return CategoriesWithoutSharedSettings(%orig);
+    NSArray *categories = %orig;
+    return CategoriesWithoutSharedSettings(categories);
 }
 
 - (NSArray<NSNumber *> *)developmentCategories
 {
-    return CategoriesWithoutSharedSettings(%orig);
+    NSArray *categories = %orig;
+    return CategoriesWithoutSharedSettings(categories);
 }
 
 - (NSString *)titleForSettingGroupType:(NSUInteger)type
