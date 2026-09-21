@@ -40,12 +40,31 @@ static NSArray *SharedSettingsCategories(void)
     return categories.copy;
 }
 
+static NSArray *SettingsGroupCategories(void)
+{
+    NSMutableOrderedSet *categories = [NSMutableOrderedSet orderedSet];
+    [categories addObject:@(SettingsCategory)];
+
+    Class groupClass = NSClassFromString(@"YTSettingsGroupData");
+    SEL tweaksSelector = @selector(tweaks);
+    if (groupClass && [groupClass respondsToSelector:tweaksSelector])
+    {
+        id (*message)(id, SEL) = (id (*)(id, SEL)) objc_msgSend;
+        id tweaks = message(groupClass, tweaksSelector);
+        if ([tweaks isKindOfClass:[NSArray class]])
+            [categories addObjectsFromArray:tweaks];
+    }
+
+    [categories addObjectsFromArray:SharedSettingsCategories()];
+    return categories.array;
+}
+
 static NSArray *CategoriesWithoutSharedSettings(NSArray *categories)
 {
     if (categories.count == 0)
         return categories ?: @[];
     NSMutableArray *filtered = categories.mutableCopy;
-    [filtered removeObjectsInArray:SharedSettingsCategories()];
+    [filtered removeObjectsInArray:SettingsGroupCategories()];
     return filtered.copy;
 }
 
@@ -77,7 +96,7 @@ static void InstallLegacySettingsCategoryHook(void)
     id  replacement = ^id(id object, SEL command) {
         NSArray        *order            = ((id (*)(id, SEL)) original)(object, command);
         NSMutableArray *result           = order.mutableCopy ?: [NSMutableArray array];
-        NSArray        *sharedCategories = SharedSettingsCategories();
+        NSArray        *sharedCategories = SettingsGroupCategories();
         [result removeObjectsInArray:sharedCategories];
         if (GroupedSettingsAvailable())
             return result.copy;
@@ -660,7 +679,7 @@ CreateCustomSettingsSplitDestination(YTSettingsViewController *settingsViewContr
 - (NSArray<NSNumber *> *)orderedCategories
 {
     if (self.type == SettingsGroup)
-        return SharedSettingsCategories();
+        return SettingsGroupCategories();
     NSArray *categories = %orig;
     return CategoriesWithoutSharedSettings(categories);
 }
@@ -668,7 +687,7 @@ CreateCustomSettingsSplitDestination(YTSettingsViewController *settingsViewContr
 - (NSArray<NSNumber *> *)orderedCategoriesForGroupType:(NSUInteger)type
 {
     if (type == SettingsGroup)
-        return SharedSettingsCategories();
+        return SettingsGroupCategories();
     NSArray *categories = %orig;
     return CategoriesWithoutSharedSettings(categories);
 }
