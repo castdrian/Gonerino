@@ -15,6 +15,9 @@
 "disabled" = "desactivado";
 "Manage filtering, block lists, import/export, and support" = "Gestionar filtros, listas de bloqueo, importación/exportación y soporte";
 "About" = "Acerca de";
+"Discord" = "Discord";
+"Check for Updates" = "Check for Updates";
+"Check for Gonerino updates on launch" = "Check for Gonerino updates on launch";
 "Support" = "Asistencia";
 "Enable Gonerino" = "Activar Gonerino";
 "Show Gonerino Button" = "Mostrar botón de Gonerino";
