@@ -104,6 +104,10 @@ static void GonerinoConfigureNotifications(void)
 
 static void GonerinoCheckLatestRelease(void)
 {
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    if ([defaults objectForKey:@"GonerinoCheckForUpdates"] != nil &&
+        ![defaults boolForKey:@"GonerinoCheckForUpdates"])
+        return;
     NSURL *URL =
         [NSURL URLWithString:@"https://api.github.com/repos/castdrian/Gonerino/releases/latest"];
     if (!URL)
@@ -139,6 +143,10 @@ void GonerinoStartUpdateChecker(void)
 {
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
+        NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+        if ([defaults objectForKey:@"GonerinoCheckForUpdates"] != nil &&
+            ![defaults boolForKey:@"GonerinoCheckForUpdates"])
+            return;
         GonerinoConfigureNotifications();
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t) (2.0 * NSEC_PER_SEC)),
                        dispatch_get_main_queue(), ^{ GonerinoCheckLatestRelease(); });

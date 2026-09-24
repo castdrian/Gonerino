@@ -25,6 +25,24 @@ static void ShowToast(UIViewController *viewController, NSString *message)
     [Util showToast:message fromView:viewController.view];
 }
 
+static UIImage *GonerinoDiscordImage(void)
+{
+    NSString *path = [[[NSBundle mainBundle] pathForResource:@"Gonerino" ofType:@"bundle"]
+        stringByAppendingPathComponent:@"discord.png"];
+    if (![[NSFileManager defaultManager] fileExistsAtPath:path])
+        path = @"/Library/Application Support/Gonerino.bundle/discord.png";
+    if (![[NSFileManager defaultManager] fileExistsAtPath:path])
+        path = @"/var/jb/Library/Application Support/Gonerino.bundle/discord.png";
+    UIImage *image = [UIImage imageWithContentsOfFile:path];
+    if (!image)
+        return nil;
+    UIGraphicsImageRenderer *renderer =
+        [[UIGraphicsImageRenderer alloc] initWithSize:CGSizeMake(28.0, 28.0)];
+    return [renderer imageWithActions:^(UIGraphicsImageRendererContext *context) {
+        [image drawInRect:CGRectMake(0.0, 0.0, 28.0, 28.0)];
+    }];
+}
+
 static UIButton *NavigationBackButton(NSString *title, id target, SEL action)
 {
     UIButton *button = [UIButton buttonWithType:UIButtonTypeSystem];
@@ -387,6 +405,7 @@ static NSAttributedString *RenderedGonerinoChangelog(void)
 @property (nonatomic, weak) YTSettingsSectionItemManager *settingsManager;
 @property (nonatomic, assign) BOOL                        importingSettings;
 @property (nonatomic, strong) NSURL                      *exportFileURL;
+@property (nonatomic, strong) UISwitch                   *updateSwitch;
 - (instancetype)initWithSettingsManager:(YTSettingsSectionItemManager *)settingsManager;
 @end
 
@@ -448,6 +467,14 @@ static NSAttributedString *RenderedGonerinoChangelog(void)
     [self.view addSubview:self.tableView];
     self.tableView.rowHeight                  = UITableViewAutomaticDimension;
     self.tableView.estimatedRowHeight         = 56.0;
+    self.updateSwitch = [UISwitch new];
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    self.updateSwitch.on = [defaults objectForKey:@"GonerinoCheckForUpdates"] == nil
+                               ? YES
+                               : [defaults boolForKey:@"GonerinoCheckForUpdates"];
+    [self.updateSwitch addTarget:self
+                          action:@selector(updateCheckChanged:)
+                forControlEvents:UIControlEventValueChanged];
     self.navigationItem.largeTitleDisplayMode = UINavigationItemLargeTitleDisplayModeNever;
     self.navigationItem.hidesBackButton       = YES;
     if (UIDevice.currentDevice.userInterfaceIdiom == UIUserInterfaceIdiomPad)
@@ -506,7 +533,7 @@ static NSAttributedString *RenderedGonerinoChangelog(void)
         case 3:
             return 2;
         default:
-            return 1;
+            return 3;
     }
 }
 
@@ -540,6 +567,10 @@ static NSAttributedString *RenderedGonerinoChangelog(void)
         return LocalizedString(@[ @"Channels", @"Videos", @"Words" ][indexPath.row]);
     if (indexPath.section == 3)
         return LocalizedString(@[ @"Export Settings", @"Import Settings" ][indexPath.row]);
+    if (indexPath.section == 4 && indexPath.row == 0)
+        return LocalizedString(@"Check for Updates");
+    if (indexPath.section == 4 && indexPath.row == 1)
+        return LocalizedString(@"Discord");
     return [NSString stringWithFormat:@"%@ %@", LocalizedString(@"Version"), TWEAK_VERSION];
 }
 
@@ -564,7 +595,9 @@ static NSAttributedString *RenderedGonerinoChangelog(void)
                               [WordManager sharedInstance].blockedWords.count);
     }
 
-    if (indexPath.section == 4)
+    if (indexPath.section == 4 && indexPath.row == 0)
+        return LocalizedString(@"Check for Gonerino updates on launch");
+    if (indexPath.section == 4 && indexPath.row == 2)
         return LocalizedString(@"Read the latest changes");
 
     return nil;
@@ -609,6 +642,12 @@ static NSAttributedString *RenderedGonerinoChangelog(void)
                                                         object:nil];
 }
 
+- (void)updateCheckChanged:(UISwitch *)sender
+{
+    [[NSUserDefaults standardUserDefaults] setBool:sender.isOn forKey:@"GonerinoCheckForUpdates"];
+    [[NSUserDefaults standardUserDefaults] synchronize];
+}
+
 - (void)actionButtonTapped:(UIButton *)sender
 {
     NSInteger section   = sender.tag / 100;
@@ -623,7 +662,9 @@ static NSAttributedString *RenderedGonerinoChangelog(void)
         else
             [self importSettings];
     }
-    else if (section == 4)
+    else if (section == 4 && row == 1)
+        URLString = @"https://discord.gg/NdaBaxFKnn";
+    else if (section == 4 && row == 2)
     {
         [self openChangelog];
     }
@@ -667,19 +708,24 @@ static NSAttributedString *RenderedGonerinoChangelog(void)
 
     NSString *title     = [self titleForRow:indexPath];
     BOOL      prominent = indexPath.section == 0;
-    BOOL      changelog = indexPath.section == 4;
+    BOOL      discord   = indexPath.section == 4 && indexPath.row == 1;
+    BOOL      changelog = indexPath.section == 4 && indexPath.row == 2;
     UIButton *button    = [UIButton buttonWithType:UIButtonTypeSystem];
     if (@available(iOS 15.0, *))
     {
         UIButtonConfiguration *configuration =
             prominent ? [UIButtonConfiguration tintedButtonConfiguration]
                       : [UIButtonConfiguration plainButtonConfiguration];
-        configuration.image         = [UIImage
-            systemImageNamed:prominent
-                                 ? @"heart.fill"
-                                 : (changelog ? @"sparkles"
-                                              : (indexPath.row == 0 ? @"square.and.arrow.up"
-                                                                    : @"square.and.arrow.down"))];
+        configuration.image         = prominent
+                                          ? [UIImage systemImageNamed:@"heart.fill"]
+                                          : (discord
+                                                 ? GonerinoDiscordImage()
+                                                 : [UIImage
+                                                       systemImageNamed:(changelog
+                                                                             ? @"sparkles"
+                                                                             : (indexPath.row == 0
+                                                                                    ? @"square.and.arrow.up"
+                                                                                    : @"square.and.arrow.down"))]);
         configuration.title         = title;
         configuration.imagePadding  = prominent ? 8.0 : 6.0;
         configuration.contentInsets = prominent
@@ -691,12 +737,16 @@ static NSAttributedString *RenderedGonerinoChangelog(void)
     }
     else
     {
-        NSString *symbol = prominent
-                               ? @"heart.fill"
-                               : (changelog ? @"sparkles"
-                                            : (indexPath.row == 0 ? @"square.and.arrow.up"
-                                                                  : @"square.and.arrow.down"));
-        [button setImage:[UIImage systemImageNamed:symbol] forState:UIControlStateNormal];
+        UIImage *image = prominent
+                             ? [UIImage systemImageNamed:@"heart.fill"]
+                             : (discord ? GonerinoDiscordImage()
+                                         : [UIImage
+                                               systemImageNamed:(changelog
+                                                                     ? @"sparkles"
+                                                                     : (indexPath.row == 0
+                                                                            ? @"square.and.arrow.up"
+                                                                            : @"square.and.arrow.down"))]);
+        [button setImage:image forState:UIControlStateNormal];
         [button setTitle:title forState:UIControlStateNormal];
         button.imageEdgeInsets = UIEdgeInsetsMake(0.0, 0.0, 0.0, 6.0);
         button.contentEdgeInsets =
@@ -754,20 +804,34 @@ static NSAttributedString *RenderedGonerinoChangelog(void)
 - (UITableViewCell *)tableView:(UITableView *)tableView
          cellForRowAtIndexPath:(NSIndexPath *)indexPath
 {
-    if (indexPath.section == 0 || indexPath.section >= 3)
+    if (indexPath.section == 0 || indexPath.section == 3 ||
+        (indexPath.section == 4 && (indexPath.row == 1 || indexPath.row == 2)))
         return [self buttonCellForTableView:tableView indexPath:indexPath];
 
-    NSString *identifier =
-        indexPath.section == 1 ? @"SettingsSwitchCell" : @"SettingsNavigationCell";
+    BOOL switchRow = indexPath.section == 1 || (indexPath.section == 4 && indexPath.row == 0);
+    NSString *identifier = switchRow ? (indexPath.section == 1 ? @"SettingsSwitchCell"
+                                                               : @"SettingsUpdateCell")
+                                     : @"SettingsNavigationCell";
     UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:identifier];
     if (!cell)
         cell = [[UITableViewCell alloc]
-              initWithStyle:indexPath.section == 1 ? UITableViewCellStyleDefault
-                                                   : UITableViewCellStyleSubtitle
+              initWithStyle:switchRow && indexPath.section == 1 ? UITableViewCellStyleDefault
+                                                                : UITableViewCellStyleSubtitle
             reuseIdentifier:identifier];
 
     cell.textLabel.text       = [self titleForRow:indexPath];
     cell.detailTextLabel.text = [self subtitleForRow:indexPath];
+    if (indexPath.section == 4 && indexPath.row == 0)
+    {
+        cell.backgroundColor = UIColor.clearColor;
+        cell.contentView.backgroundColor = UIColor.clearColor;
+        cell.backgroundView = [UIView new];
+        cell.backgroundView.backgroundColor = UIColor.clearColor;
+        cell.selectedBackgroundView = [UIView new];
+        cell.selectedBackgroundView.backgroundColor = UIColor.clearColor;
+        if (@available(iOS 14.0, *))
+            cell.backgroundConfiguration = [UIBackgroundConfiguration clearConfiguration];
+    }
     if (indexPath.section == 1)
     {
         UISwitch *control = [UISwitch new];
@@ -778,6 +842,13 @@ static NSAttributedString *RenderedGonerinoChangelog(void)
             forControlEvents:UIControlEventValueChanged];
         cell.accessoryView  = control;
         cell.accessoryType  = UITableViewCellAccessoryNone;
+        cell.selectionStyle = UITableViewCellSelectionStyleNone;
+    }
+    else if (indexPath.section == 4 && indexPath.row == 0)
+    {
+        cell.detailTextLabel.text = [self subtitleForRow:indexPath];
+        cell.accessoryView = self.updateSwitch;
+        cell.accessoryType = UITableViewCellAccessoryNone;
         cell.selectionStyle = UITableViewCellSelectionStyleNone;
     }
     else
@@ -988,7 +1059,10 @@ static NSAttributedString *RenderedGonerinoChangelog(void)
                               ? YES
                               : [defaults boolForKey:@"GonerinoShowButton"]),
         @"blockPeopleWatched" : @([defaults boolForKey:@"GonerinoPeopleWatched"]),
-        @"blockMightLike" : @([defaults boolForKey:@"GonerinoMightLike"])
+        @"blockMightLike" : @([defaults boolForKey:@"GonerinoMightLike"]),
+        @"checkForUpdates" : @([defaults objectForKey:@"GonerinoCheckForUpdates"] == nil
+                                    ? YES
+                                    : [defaults boolForKey:@"GonerinoCheckForUpdates"])
     };
 }
 
@@ -1056,7 +1130,8 @@ static NSAttributedString *RenderedGonerinoChangelog(void)
         @"gonerinoEnabled" : @"GonerinoEnabled",
         @"showButton" : @"GonerinoShowButton",
         @"blockPeopleWatched" : @"GonerinoPeopleWatched",
-        @"blockMightLike" : @"GonerinoMightLike"
+        @"blockMightLike" : @"GonerinoMightLike",
+        @"checkForUpdates" : @"GonerinoCheckForUpdates"
     };
     for (NSString *settingsKey in defaultKeys)
     {
@@ -1137,7 +1212,20 @@ static NSAttributedString *RenderedGonerinoChangelog(void)
         return;
     }
     if (indexPath.section == 4)
-        [self openChangelog];
+    {
+        if (indexPath.row == 0)
+        {
+            [self.updateSwitch setOn:!self.updateSwitch.isOn animated:YES];
+            [self updateCheckChanged:self.updateSwitch];
+        }
+        else if (indexPath.row == 1)
+            [[UIApplication sharedApplication]
+                          openURL:[NSURL URLWithString:@"https://discord.gg/NdaBaxFKnn"]
+                          options:@{}
+                completionHandler:nil];
+        else
+            [self openChangelog];
+    }
 }
 
 @end
