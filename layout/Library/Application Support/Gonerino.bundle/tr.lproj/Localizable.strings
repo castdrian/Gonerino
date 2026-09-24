@@ -15,6 +15,9 @@
 "disabled" = "devre dışı";
 "Manage filtering, block lists, import/export, and support" = "Filtrelemeyi, engelleme listelerini, içe/dışa aktarmayı ve desteği yönet";
 "About" = "Hakkında";
+"Discord" = "Discord";
+"Check for Updates" = "Check for Updates";
+"Check for Gonerino updates on launch" = "Check for Gonerino updates on launch";
 "Support" = "Destek";
 "Enable Gonerino" = "Gonerino'yu etkinleştir";
 "Show Gonerino Button" = "Gonerino düğmesini göster";
