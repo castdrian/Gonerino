@@ -49,7 +49,7 @@
 "Add" = "추가";
 "Cancel" = "취소";
 "Delete Channel" = "채널 삭제";
-"Are you sure you want to delete '%@'?" = "'%@'를 삭제하시겠습니까?";
+"Are you sure you want to delete '%@'?" = "'%@'을(를) 삭제하시겠습니까?";
 "Delete" = "삭제";
 "Blocked Videos" = "차단된 동영상";
 "Search videos" = "동영상 검색";
@@ -67,7 +67,7 @@
 "Import Settings" = "설정 가져오기";
 "Could not create settings file" = "설정 파일을 생성할 수 없습니다";
 "Settings exported successfully" = "설정을 성공적으로 내보냈습니다";
-"Settings export failed" = "설정 내보내기 실패";
+"Settings export failed" = "설정 내보내기에 실패했습니다";
 "Export cancelled" = "내보내기가 취소되었습니다";
 "Import cancelled" = "가져오기가 취소되었습니다";
 "Invalid settings file format" = "잘못된 설정 파일 형식입니다";
