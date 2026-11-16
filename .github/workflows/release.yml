@@ -24,7 +24,7 @@ jobs:
           go-version: stable
 
       - name: Prepare Theos
-        uses: Randomblock1/theos-action@v1.5
+        uses: Randomblock1/theos-action@v1.6
 
       - name: Clone YouTubeHeader
         run: |
